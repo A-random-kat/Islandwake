@@ -52,34 +52,56 @@ const islandData = [
   { name: "Mosshook", x: 82, z: 42, color: 0x6dbc6c, goods: { Silk: 45, Spice: 75, Iron: 56, Tea: 39, Pearls: 72 } },
   { name: "Moon Shoal", x: -48, z: 68, color: 0x92d37e, goods: { Silk: 82, Spice: 51, Iron: 72, Tea: 33, Pearls: 118 } },
   { name: "Brass Quay", x: 4, z: 4, color: 0xc8b66b, goods: { Silk: 53, Spice: 63, Iron: 44, Tea: 71, Pearls: 95 } },
+  { name: "Saffron Atoll", x: 20, z: -120, color: 0x91c96d, goods: { Silk: 69, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
+  { name: "Frostwane", x: -116, z: -106, color: 0x9fcf9a, goods: { Silk: 38, Spice: 83, Iron: 81, Tea: 46, Pearls: 76 } },
+  { name: "Glasswind", x: 116, z: -18, color: 0x75caa5, goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
+  { name: "Crown Harbor", x: 18, z: 112, color: 0x82bd72, goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
+  { name: "Blackreef", x: -118, z: 24, color: 0x5fa66a, goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
+  { name: "Emerald Reach", x: 118, z: 104, color: 0x68c46f, goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
 ];
 
 const shipCatalog = [
-  { id: "skiff", name: "Harbor Skiff", price: 0, hp: 90, armor: 0.03, speed: 15, regen: 1.4, color: 0xcc4e3f, model: "skiff" },
-  { id: "cog", name: "North Sea Cog", price: 320, hp: 150, armor: 0.14, speed: 10, regen: 1.8, color: 0xa86e3a, model: "cog" },
-  { id: "longship", name: "Viking Longship", price: 460, hp: 105, armor: 0.06, speed: 24, regen: 1.6, color: 0xc84f3f, model: "longship" },
-  { id: "dhow", name: "Arabian Dhow", price: 540, hp: 120, armor: 0.07, speed: 19, regen: 2.2, color: 0xf0d05a, model: "dhow" },
-  { id: "junk", name: "Ming Junk", price: 620, hp: 170, armor: 0.18, speed: 15, regen: 2.7, color: 0x4aa66b, model: "junk" },
-  { id: "knarr", name: "Norse Knarr", price: 680, hp: 185, armor: 0.16, speed: 12, regen: 2.1, color: 0x9b6b35, model: "knarr" },
-  { id: "brig", name: "Naval Brig", price: 760, hp: 180, armor: 0.22, speed: 20, regen: 2.2, color: 0x51758f, model: "brig" },
-  { id: "lugger", name: "Channel Lugger", price: 840, hp: 130, armor: 0.09, speed: 22, regen: 1.9, color: 0x4f9a9a, model: "lugger" },
-  { id: "cat", name: "Polynesian Catamaran", price: 900, hp: 120, armor: 0.05, speed: 28, regen: 1.7, color: 0xef6f4f, model: "cat" },
-  { id: "dart", name: "Corsair Cutter", price: 980, hp: 115, armor: 0.08, speed: 30, regen: 1.5, color: 0x35a9b5, model: "dart" },
-  { id: "clipper", name: "Tea Clipper", price: 1080, hp: 125, armor: 0.06, speed: 32, regen: 1.4, color: 0xe2aa32, model: "clipper" },
-  { id: "schooner", name: "Baltimore Schooner", price: 1120, hp: 145, armor: 0.1, speed: 26, regen: 1.9, color: 0x58c6f2, model: "schooner" },
-  { id: "galley", name: "Venetian Galley", price: 1180, hp: 155, armor: 0.12, speed: 23, regen: 2.1, color: 0xd7b44a, model: "galley" },
-  { id: "xebec", name: "Mediterranean Xebec", price: 1220, hp: 150, armor: 0.11, speed: 29, regen: 1.9, color: 0xd45f3f, model: "xebec" },
-  { id: "caravel", name: "Explorer Caravel", price: 1320, hp: 175, armor: 0.17, speed: 16, regen: 2.5, color: 0xd2a94b, model: "caravel" },
-  { id: "snow", name: "Baltic Snow", price: 1420, hp: 205, armor: 0.22, speed: 19, regen: 2.4, color: 0xa4c9e8, model: "snow" },
-  { id: "turtle", name: "Bombard Barge", price: 1480, hp: 300, armor: 0.36, speed: 8, regen: 3.1, color: 0x5d9f73, model: "turtle" },
-  { id: "fluyt", name: "Dutch Fluyt", price: 1560, hp: 240, armor: 0.18, speed: 13, regen: 2.6, color: 0xd18b45, model: "fluyt" },
-  { id: "frigate", name: "Fifth-Rate Frigate", price: 1680, hp: 225, armor: 0.27, speed: 24, regen: 2.3, color: 0x4051a8, model: "frigate" },
-  { id: "storm", name: "Royal Cutter", price: 1760, hp: 155, armor: 0.14, speed: 31, regen: 1.8, color: 0x3556b8, model: "storm" },
-  { id: "galleon", name: "Spanish Galleon", price: 1980, hp: 265, armor: 0.31, speed: 12, regen: 2.6, color: 0x7e4c9d, model: "galleon" },
-  { id: "carrack", name: "Great Carrack", price: 2260, hp: 300, armor: 0.33, speed: 10, regen: 2.9, color: 0xb84f44, model: "carrack" },
-  { id: "treasure", name: "Treasure Junk", price: 2440, hp: 360, armor: 0.34, speed: 9, regen: 3.4, color: 0xd6a83c, model: "treasure" },
-  { id: "manowar", name: "Ship of the Line", price: 2860, hp: 390, armor: 0.42, speed: 11, regen: 3.2, color: 0xd8b24a, model: "manowar" },
-  { id: "ironclad", name: "Coastal Ironclad", price: 3200, hp: 440, armor: 0.62, speed: 7, regen: 2.4, color: 0x6f7780, model: "ironclad" },
+  { id: "skiff", name: "Harbor Skiff", price: 0, hp: 145, armor: 0.02, speed: 15, regen: 1.6, color: 0xcc4e3f, model: "skiff" },
+  { id: "shallop", name: "Coastal Shallop", price: 380, hp: 165, armor: 0.02, speed: 17, regen: 1.7, color: 0xb86d3d, model: "skiff" },
+  { id: "pinnace", name: "Scout Pinnace", price: 520, hp: 185, armor: 0.03, speed: 20, regen: 1.8, color: 0x5b9eb5, model: "dart" },
+  { id: "hoy", name: "Dutch Hoy", price: 680, hp: 220, armor: 0.04, speed: 11, regen: 1.9, color: 0xb0824a, model: "cog" },
+  { id: "cog", name: "North Sea Cog", price: 880, hp: 260, armor: 0.06, speed: 10, regen: 2.0, color: 0xa86e3a, model: "cog" },
+  { id: "longship", name: "Viking Longship", price: 980, hp: 205, armor: 0.03, speed: 24, regen: 1.8, color: 0xc84f3f, model: "longship" },
+  { id: "dogger", name: "North Sea Dogger", price: 1120, hp: 230, armor: 0.04, speed: 18, regen: 1.9, color: 0x7c9a7e, model: "lugger" },
+  { id: "dhow", name: "Arabian Dhow", price: 1250, hp: 235, armor: 0.03, speed: 19, regen: 2.2, color: 0xf0d05a, model: "dhow" },
+  { id: "sloop", name: "Bermuda Sloop", price: 1420, hp: 225, armor: 0.04, speed: 27, regen: 1.8, color: 0x4aa5c6, model: "storm" },
+  { id: "knarr", name: "Norse Knarr", price: 1580, hp: 290, armor: 0.06, speed: 12, regen: 2.2, color: 0x9b6b35, model: "knarr" },
+  { id: "lugger", name: "Channel Lugger", price: 1720, hp: 245, armor: 0.04, speed: 22, regen: 2.0, color: 0x4f9a9a, model: "lugger" },
+  { id: "tartane", name: "Mediterranean Tartane", price: 1880, hp: 250, armor: 0.04, speed: 24, regen: 2.0, color: 0xc96446, model: "xebec" },
+  { id: "pink", name: "Atlantic Pink", price: 2050, hp: 300, armor: 0.06, speed: 15, regen: 2.3, color: 0xc88b58, model: "caravel" },
+  { id: "cat", name: "Polynesian Catamaran", price: 2180, hp: 210, armor: 0.02, speed: 28, regen: 1.8, color: 0xef6f4f, model: "cat" },
+  { id: "dart", name: "Corsair Cutter", price: 2350, hp: 230, armor: 0.04, speed: 30, regen: 1.7, color: 0x35a9b5, model: "dart" },
+  { id: "junk", name: "Ming Junk", price: 2520, hp: 330, armor: 0.07, speed: 15, regen: 2.8, color: 0x4aa66b, model: "junk" },
+  { id: "ketch", name: "Harbor Ketch", price: 2720, hp: 340, armor: 0.06, speed: 16, regen: 2.5, color: 0xc58e45, model: "caravel" },
+  { id: "schooner", name: "Baltimore Schooner", price: 2920, hp: 300, armor: 0.05, speed: 26, regen: 2.1, color: 0x58c6f2, model: "schooner" },
+  { id: "galley", name: "Venetian Galley", price: 3150, hp: 310, armor: 0.04, speed: 23, regen: 2.2, color: 0xd7b44a, model: "galley" },
+  { id: "xebec", name: "Mediterranean Xebec", price: 3380, hp: 320, armor: 0.05, speed: 29, regen: 2.1, color: 0xd45f3f, model: "xebec" },
+  { id: "brigantine", name: "Privateer Brigantine", price: 3650, hp: 360, armor: 0.07, speed: 22, regen: 2.3, color: 0x3f87a6, model: "brig" },
+  { id: "caravel", name: "Explorer Caravel", price: 3920, hp: 390, armor: 0.08, speed: 16, regen: 2.6, color: 0xd2a94b, model: "caravel" },
+  { id: "snow", name: "Baltic Snow", price: 4250, hp: 430, armor: 0.09, speed: 19, regen: 2.5, color: 0xa4c9e8, model: "snow" },
+  { id: "packet", name: "Fast Packet Ship", price: 4550, hp: 350, armor: 0.05, speed: 27, regen: 2.0, color: 0x67bdd8, model: "schooner" },
+  { id: "barquentine", name: "Trade Barquentine", price: 4850, hp: 400, armor: 0.07, speed: 24, regen: 2.2, color: 0x82b26a, model: "snow" },
+  { id: "clipper", name: "Tea Clipper", price: 5050, hp: 360, armor: 0.04, speed: 33, regen: 1.9, color: 0xe2aa32, model: "clipper" },
+  { id: "fluyt", name: "Dutch Fluyt", price: 5200, hp: 500, armor: 0.08, speed: 13, regen: 2.8, color: 0xd18b45, model: "fluyt" },
+  { id: "bombketch", name: "Royal Bomb Ketch", price: 5600, hp: 560, armor: 0.11, speed: 10, regen: 2.7, color: 0x75856f, model: "turtle" },
+  { id: "barque", name: "Ocean Barque", price: 6050, hp: 470, armor: 0.08, speed: 21, regen: 2.4, color: 0x7e9bc9, model: "snow" },
+  { id: "corvette", name: "Post Ship Corvette", price: 6650, hp: 510, armor: 0.1, speed: 25, regen: 2.4, color: 0x4c64a6, model: "frigate" },
+  { id: "frigate", name: "Fifth-Rate Frigate", price: 7300, hp: 580, armor: 0.12, speed: 24, regen: 2.5, color: 0x4051a8, model: "frigate" },
+  { id: "storm", name: "Royal Cutter", price: 7800, hp: 380, armor: 0.07, speed: 31, regen: 2.0, color: 0x3556b8, model: "storm" },
+  { id: "galleon", name: "Spanish Galleon", price: 8500, hp: 680, armor: 0.14, speed: 12, regen: 2.9, color: 0x7e4c9d, model: "galleon" },
+  { id: "merchantman", name: "Armed Merchantman", price: 9100, hp: 760, armor: 0.12, speed: 11, regen: 3.0, color: 0xb5773c, model: "fluyt" },
+  { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
+  { id: "carrack", name: "Great Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
+  { id: "treasure", name: "Treasure Junk", price: 11800, hp: 900, armor: 0.14, speed: 9, regen: 3.5, color: 0xd6a83c, model: "treasure" },
+  { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
+  { id: "fourthrate", name: "Fourth-Rate Ship", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
+  { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
+  { id: "firstrate", name: "First-Rate Ship", price: 20500, hp: 1320, armor: 0.22, speed: 9, regen: 4.0, color: 0xc9b05a, model: "manowar" },
 ];
 
 const captainId = localStorage.islandwakeId || crypto.randomUUID();
@@ -96,7 +118,7 @@ const state = {
   dockedAt: null,
   shopTab: "goods",
   shipType: "skiff",
-  hp: 90,
+  hp: 145,
   cargo: {},
   upgrades: { damage: 0, fireRate: 0, range: 0 },
   cooldown: 0,
@@ -169,10 +191,14 @@ function toast(message) {
   toast.timer = setTimeout(() => (ui.toast.textContent = ""), 1800);
 }
 
+function xpForLevel(level) {
+  return Math.round(65 + level * 35);
+}
+
 function addXP(amount) {
   state.xp += amount;
-  while (state.xp >= state.level * 100) {
-    state.xp -= state.level * 100;
+  while (state.xp >= xpForLevel(state.level)) {
+    state.xp -= xpForLevel(state.level);
     state.level++;
     state.points++;
     toast(`Level ${state.level}! Upgrade point earned.`);
@@ -185,6 +211,23 @@ function getShipStats(type = state.shipType) {
 
 function maxHp() {
   return getShipStats().hp;
+}
+
+function shipTier(type) {
+  const price = getShipStats(type).price;
+  if (price >= 16000) return 6;
+  if (price >= 11000) return 5;
+  if (price >= 7000) return 4;
+  if (price >= 4000) return 3;
+  if (price >= 1800) return 2;
+  if (price >= 700) return 1;
+  return 0;
+}
+
+function crateDropCount(target) {
+  const level = target.level || 1;
+  const tier = target.isBot ? shipTier(target.shipType) : shipTier(state.shipType);
+  return 2 + Math.floor(level / 2) + tier;
 }
 
 function setSize() {
@@ -884,7 +927,7 @@ function addBowspritAndRudder(group, length, width, scale, tier) {
 }
 
 function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec) {
-  const tier = spec.price > 2200 ? 4 : spec.price > 1500 ? 3 : spec.price > 900 ? 2 : spec.price > 400 ? 1 : 0;
+  const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   addHullDetailLines(group, hullLength, hullWidth, scale, tier);
   addDeckFittings(group, hullLength, hullWidth, scale, tier, spec.color);
   addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
@@ -906,33 +949,83 @@ function makeShip(type = "skiff", remote = false) {
   const spec = getShipStats(type);
   const group = new THREE.Group();
   group.userData.shipType = type;
-  const scale = type === "ironclad" ? 1.48 : type === "treasure" ? 1.48 : type === "manowar" ? 1.42 : type === "carrack" ? 1.34 : type === "galleon" ? 1.28 : type === "dart" ? 0.82 : type === "brig" ? 1.12 : type === "turtle" ? 1.22 : type === "longship" ? 0.92 : 1;
+  const scale = {
+    shallop: 0.86,
+    pinnace: 0.88,
+    dart: 0.82,
+    cat: 0.92,
+    longship: 0.92,
+    dogger: 0.96,
+    sloop: 0.94,
+    tartane: 0.96,
+    storm: 0.92,
+    brig: 1.12,
+    brigantine: 1.1,
+    packet: 1.05,
+    barquentine: 1.12,
+    barque: 1.15,
+    bombketch: 1.22,
+    turtle: 1.22,
+    corvette: 1.16,
+    frigate: 1.22,
+    razee: 1.28,
+    galleon: 1.28,
+    merchantman: 1.28,
+    eastindiaman: 1.34,
+    carrack: 1.34,
+    treasure: 1.48,
+    fourthrate: 1.38,
+    manowar: 1.42,
+    firstrate: 1.5,
+    ironclad: 1.48,
+  }[type] || 1;
   const hullSize = {
+    shallop: [5.6, 1.85],
+    pinnace: [6.5, 1.75],
+    hoy: [5.7, 2.75],
     dart: [7.7, 1.75],
     clipper: [7.4, 2.35],
     galleon: [7.2, 3.25],
     brig: [6.9, 3.05],
+    brigantine: [7.2, 2.75],
     cat: [5.8, 1.45],
     turtle: [6.2, 3.55],
+    bombketch: [6.4, 3.4],
     storm: [8.1, 2.25],
+    sloop: [7.4, 2.0],
     dhow: [7.1, 2.25],
     cog: [6.2, 3.05],
+    hoy: [5.9, 2.85],
+    dogger: [6.6, 2.2],
     xebec: [8.3, 2.4],
+    tartane: [7.2, 2.15],
     caravel: [6.9, 2.65],
+    pink: [6.6, 2.55],
+    ketch: [6.9, 2.5],
     frigate: [8.2, 2.9],
+    corvette: [7.8, 2.65],
+    razee: [8.5, 3.0],
     carrack: [7.4, 3.5],
     manowar: [8.4, 3.8],
+    fourthrate: [8.3, 3.65],
+    firstrate: [9.0, 4.0],
     longship: [8.7, 1.7],
     knarr: [6.5, 2.6],
     lugger: [7.0, 2.15],
     galley: [8.8, 2.2],
     snow: [7.5, 2.8],
+    packet: [7.8, 2.45],
+    barquentine: [7.7, 2.55],
+    barque: [8.0, 2.8],
     fluyt: [7.0, 3.4],
+    merchantman: [7.4, 3.45],
+    eastindiaman: [7.8, 3.55],
     treasure: [8.0, 4.15],
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
-  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, type === "brig" || type === "galleon" || type === "carrack" || type === "manowar" || type === "ironclad" ? mats.hullDark : mats.hull, profile));
+  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "razee", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
+  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, darkHulled ? mats.hullDark : mats.hull, profile));
   [-1, 1].forEach((side) => {
     const accent = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.055 * scale, 4.7 * scale, 8), mat(spec.color));
     accent.rotation.x = Math.PI / 2;
@@ -979,18 +1072,16 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.rotation.x = Math.PI / 2;
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
-  const pennant = new THREE.Mesh(new THREE.ConeGeometry(0.42 * scale, 1.35 * scale, 3), mat(spec.color));
-  pennant.position.set(0.42 * scale, 5.15 * scale, -0.2 * scale);
-  pennant.rotation.z = -Math.PI / 2;
-  pennant.rotation.y = Math.PI / 2;
-  pennant.castShadow = true;
+  const pennant = lateenPanel(0.9 * scale, 0.42 * scale, spec.color, 0.035 * scale);
+  pennant.position.set(0.42 * scale, 5.25 * scale, -0.2 * scale);
   group.add(pennant);
   if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
-  } else if (type === "brig") {
+  } else if (type === "brig" || type === "brigantine") {
     addSquareSail(group, -0.45, -1.1, 0.9, 0xf2ead5, 2);
-    addSquareSail(group, 0.55, 1.15, 0.86, 0xf8efd8, 2);
+    if (type === "brigantine") addSail(group, 0.55, 1.15, 0.86, 0xf8efd8);
+    else addSquareSail(group, 0.55, 1.15, 0.86, 0xf8efd8, 2);
     const armor = hullMesh(5.2 * scale, 3.0 * scale, 0.16 * scale, mat(0x65717b), "brig");
     armor.position.y = 1.02 * scale;
     group.add(armor);
@@ -1005,18 +1096,32 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, 0.7, 0.15, 1.08, 0xf8df88, 3);
     addSquareSail(group, 0, 2.15, 0.82, 0xf6ead0, 2);
     addCabin(group, 0, 2.45, 2.65, 1.8, scale, 0x563a48);
+  } else if (type === "merchantman" || type === "eastindiaman") {
+    addSquareSail(group, -0.8, -1.75, 0.92, 0xf3e5c8, 2);
+    addSquareSail(group, 0.25, 0.15, 1.02, 0xf7edcf, 2);
+    addSquareSail(group, 0.9, 1.95, 0.74, 0xf3e5c8, 1);
+    addCabin(group, 0, 2.45, 2.8, 1.85, scale, type === "eastindiaman" ? 0x6a4636 : 0x7a5030);
+    addDeckFittings(group, hullSize[0], hullSize[1], scale, 3, spec.color);
+  } else if (type === "shallop") {
+    addSail(group, 0, -0.1, 0.72, 0xf6ead0);
+    addOars(group, 3, hullSize[1], hullSize[0], scale);
+  } else if (type === "pinnace") {
+    addSail(group, -0.22, -0.9, 0.72, 0xd9f8ff);
+    addSail(group, 0.28, 0.75, 0.62, 0xf7f0df);
+    addCabin(group, 0, 1.55, 1.35, 0.85, scale * 0.75, 0x76523d);
   } else if (type === "dart") {
     addSail(group, 0, 0, 0.75, 0xc8fbff);
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.65, 2.2, 8), mat(0xf2f8ef));
     nose.position.set(0, 0.9, -3.55);
     nose.rotation.x = Math.PI / 2;
     group.add(nose);
-  } else if (type === "schooner") {
+  } else if (type === "schooner" || type === "packet") {
     addSail(group, -0.35, -1.4, 0.82, 0xd8f5ff);
     addSail(group, 0.35, 0.9, 1.08, 0xbfefff);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.55, 1.1), mat(0x9ee8ff));
     glass.position.set(0, 2, 1.9);
     group.add(glass);
+    if (type === "packet") addSquareSail(group, -0.65, -2.0, 0.62, 0xf8efd8, 1);
   } else if (type === "cat") {
     const outriggerA = hullMesh(5.7 * scale, 0.85 * scale, 0.65 * scale, mats.hull, "dart");
     const outriggerB = hullMesh(5.7 * scale, 0.85 * scale, 0.65 * scale, mats.hull, "dart");
@@ -1030,12 +1135,27 @@ function makeShip(type = "skiff", remote = false) {
     prow.position.set(0, 1.5, -3.55);
     prow.rotation.x = Math.PI / 2;
     group.add(prow);
+  } else if (type === "bombketch") {
+    addSquareSail(group, -0.4, -1.4, 0.74, 0xe7dcc4, 1);
+    addSail(group, 0.45, 1.0, 0.7, 0xf4ead8);
+    const mortarBed = new THREE.Mesh(new THREE.CylinderGeometry(0.62 * scale, 0.7 * scale, 0.36 * scale, 12), mat(0x3f3b35));
+    mortarBed.position.set(0, 1.72 * scale, -0.15 * scale);
+    group.add(mortarBed);
+    const mortar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.32 * scale, 0.7 * scale, 12), mats.dark);
+    mortar.rotation.x = -0.75;
+    mortar.position.set(0, 2.0 * scale, -0.25 * scale);
+    group.add(mortar);
+    addCabin(group, 0, 2.05, 1.9, 1.2, scale * 0.9, 0x58463a);
   } else if (type === "turtle") {
     const shell = new THREE.Mesh(new THREE.SphereGeometry(1.85 * scale, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x456b4b));
     shell.position.y = 1.45 * scale;
     shell.scale.z = 1.55;
     group.add(shell);
     addSail(group, 0, 0.5, 0.72, 0xd8f0c8);
+  } else if (type === "sloop") {
+    addSail(group, -0.05, -0.9, 1.08, 0xd8f8ff);
+    addSail(group, 0.35, 1.45, 0.68, 0xf8f4e5);
+    addCabin(group, 0, 1.9, 1.35, 0.85, scale * 0.82, 0x624534);
   } else if (type === "storm") {
     addSail(group, -0.15, -1.05, 1.05, 0xc8cdfd);
     addSail(group, 0.2, 1.35, 0.82, 0xf4f4ff);
@@ -1043,7 +1163,7 @@ function makeShip(type = "skiff", remote = false) {
     blade.position.set(0, 1.15, -3.8);
     blade.rotation.x = Math.PI / 2;
     group.add(blade);
-  } else if (type === "cog") {
+  } else if (type === "cog" || type === "hoy") {
     addSquareSail(group, 0, -0.2, 0.92, 0xf1e5c4, 1);
     addCabin(group, 0, 2.0, 2.0, 1.0, scale * 0.85, 0x7a5030);
     const highStern = new THREE.Mesh(new THREE.BoxGeometry(2.3 * scale, 0.85 * scale, 0.9 * scale), mat(0x7a5030));
@@ -1063,18 +1183,18 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, 0, -0.25, 0.86, 0xead7a8, 1);
     addCabin(group, 0, 1.85, 1.7, 1.0, scale * 0.8, 0x8b5a32);
     addDeckFittings(group, hullSize[0], hullSize[1], scale, 2, spec.color);
-  } else if (type === "lugger") {
+  } else if (type === "lugger" || type === "dogger") {
     addSail(group, -0.25, -1.2, 0.82, 0xe9f0dc);
     addSail(group, 0.35, 1.05, 0.78, 0xdfe8cf);
     const net = new THREE.Mesh(new THREE.TorusGeometry(0.42 * scale, 0.035 * scale, 8, 18), mats.rope);
     net.rotation.x = Math.PI / 2;
     net.position.set(-0.72 * scale, 1.6 * scale, 0.7 * scale);
     group.add(net);
-  } else if (type === "xebec") {
+  } else if (type === "xebec" || type === "tartane") {
     addSail(group, -0.65, -1.65, 0.88, 0xffead6);
     addSail(group, 0.15, 0.05, 1.08, 0xfff4df);
-    addSail(group, 0.75, 1.75, 0.78, 0xffead6);
-    addOars(group, 5, hullSize[1], hullSize[0], scale);
+    if (type === "xebec") addSail(group, 0.75, 1.75, 0.78, 0xffead6);
+    addOars(group, type === "xebec" ? 5 : 3, hullSize[1], hullSize[0], scale);
   } else if (type === "galley") {
     addSail(group, -0.2, -0.65, 1.0, 0xf8e8bc);
     addOars(group, 9, hullSize[1], hullSize[0], scale);
@@ -1082,13 +1202,15 @@ function makeShip(type = "skiff", remote = false) {
     ram.rotation.x = Math.PI / 2;
     ram.position.set(0, 0.75 * scale, -4.35 * scale);
     group.add(ram);
-  } else if (type === "caravel") {
+  } else if (type === "caravel" || type === "pink" || type === "ketch") {
     addSquareSail(group, -0.45, -1.2, 0.85, 0xf5ead3, 1);
     addSail(group, 0.45, 0.8, 0.95, 0xf8efd8);
+    if (type === "ketch") addSail(group, 0.9, 2.05, 0.62, 0xf5ead3);
     addCabin(group, 0, 2.05, 2.0, 1.15, scale * 0.9, 0x77513a);
-  } else if (type === "snow") {
+  } else if (type === "snow" || type === "barque" || type === "barquentine") {
     addSquareSail(group, -0.45, -1.35, 0.9, 0xf4f0dd, 2);
-    addSquareSail(group, 0.45, 0.8, 0.84, 0xe4edf7, 2);
+    if (type === "barquentine") addSail(group, 0.45, 0.8, 0.86, 0xe4edf7);
+    else addSquareSail(group, 0.45, 0.8, 0.84, 0xe4edf7, 2);
     addSail(group, 0.75, 2.1, 0.62, 0xf4f0dd);
   } else if (type === "fluyt") {
     addSquareSail(group, -0.55, -1.35, 0.85, 0xf3e2c4, 2);
@@ -1097,10 +1219,11 @@ function makeShip(type = "skiff", remote = false) {
     const cargoHouse = hullMesh(2.0 * scale, 2.1 * scale, 0.35 * scale, mats.plank, "fluyt");
     cargoHouse.position.y = 1.55 * scale;
     group.add(cargoHouse);
-  } else if (type === "frigate") {
+  } else if (type === "frigate" || type === "corvette" || type === "razee") {
     addSquareSail(group, -0.8, -1.8, 0.9, 0xf2ead5, 2);
     addSquareSail(group, 0, 0, 1.02, 0xf8efd8, 3);
-    addSquareSail(group, 0.78, 1.85, 0.78, 0xf2ead5, 2);
+    addSquareSail(group, 0.78, 1.85, type === "corvette" ? 0.68 : 0.78, 0xf2ead5, type === "corvette" ? 1 : 2);
+    if (type === "razee") addCabin(group, 0, 2.65, 2.65, 1.65, scale, 0x4f3a35);
   } else if (type === "carrack") {
     addSquareSail(group, -0.55, -1.6, 0.95, 0xf6ead0, 2);
     addSquareSail(group, 0.55, 0.25, 1.04, 0xf8e7bb, 2);
@@ -1109,11 +1232,12 @@ function makeShip(type = "skiff", remote = false) {
     const forecastle = new THREE.Mesh(new THREE.BoxGeometry(2.15 * scale, 1.05 * scale, 1.15 * scale), mat(0x694432));
     forecastle.position.set(0, 2.25 * scale, -2.75 * scale);
     group.add(forecastle);
-  } else if (type === "manowar") {
-    addSquareSail(group, -0.9, -2.1, 1.0, 0xf6ead0, 3);
-    addSquareSail(group, 0, -0.1, 1.08, 0xf8e7bb, 3);
-    addSquareSail(group, 0.9, 2.0, 0.95, 0xf6ead0, 3);
-    addCabin(group, 0, 2.75, 3.2, 2.2, scale, 0x503b34);
+  } else if (type === "manowar" || type === "fourthrate" || type === "firstrate") {
+    const sailBoost = type === "firstrate" ? 1.08 : type === "fourthrate" ? 0.96 : 1;
+    addSquareSail(group, -0.9, -2.1, 1.0 * sailBoost, 0xf6ead0, type === "fourthrate" ? 2 : 3);
+    addSquareSail(group, 0, -0.1, 1.08 * sailBoost, 0xf8e7bb, 3);
+    addSquareSail(group, 0.9, 2.0, 0.95 * sailBoost, 0xf6ead0, type === "firstrate" ? 3 : 2);
+    addCabin(group, 0, 2.75, type === "firstrate" ? 3.55 : 3.2, 2.2, scale, 0x503b34);
     const gunDeck = hullMesh(5.9 * scale, 3.35 * scale, 0.14 * scale, mat(0x252833), "manowar");
     gunDeck.position.y = 1.7 * scale;
     group.add(gunDeck);
@@ -1148,6 +1272,10 @@ function makeShip(type = "skiff", remote = false) {
   cannon.rotation.z = Math.PI / 2;
   cannon.position.set(0, 1.7 * scale, -1.65 * scale);
   group.add(cannon);
+  const visual = new THREE.Group();
+  while (group.children.length) visual.add(group.children[0]);
+  visual.rotation.y = Math.PI;
+  group.add(visual);
   group.traverse((obj) => {
     obj.castShadow = obj.castShadow || obj.isMesh;
     obj.receiveShadow = obj.receiveShadow || obj.isMesh;
@@ -1190,7 +1318,7 @@ function makeFish() {
   fin.position.y = 0.22;
   fin.rotation.x = Math.PI / 2;
   group.add(fin);
-  group.position.set((Math.random() - 0.5) * 180, 0.15, (Math.random() - 0.5) * 180);
+  group.position.set((Math.random() - 0.5) * 250, 0.15, (Math.random() - 0.5) * 250);
   group.userData.phase = Math.random() * 20;
   scene.add(group);
   fish.push(group);
@@ -1296,7 +1424,7 @@ function damageTarget(target, amount) {
   if (target.hp <= 0) {
     const level = target.level || 1;
     const deathPos = target.isBot ? target.group.position : playerShip.position;
-    dropCrates(deathPos, 2 + Math.floor(level / 2));
+    dropCrates(deathPos, crateDropCount(target));
     if (target.isBot) {
       target.hp = getShipStats(target.shipType).hp;
       target.group.position.set((Math.random() - 0.5) * 170, SHIP_WATERLINE_Y, (Math.random() - 0.5) * 170);
@@ -1330,12 +1458,12 @@ function initWorld() {
   scene.add(playerShip);
   character = makeCharacter();
   for (let i = 0; i < 12; i++) makeFish();
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 12; i++) {
     const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
     const group = makeShip(spec.id, true);
     const spawn = new THREE.Vector3();
     do {
-      spawn.set((Math.random() - 0.5) * 175, SHIP_WATERLINE_Y, (Math.random() - 0.5) * 175);
+      spawn.set((Math.random() - 0.5) * 250, SHIP_WATERLINE_Y, (Math.random() - 0.5) * 250);
     } while (dist2(spawn, state.position) < 58);
     group.position.copy(spawn);
     group.rotation.y = Math.random() * Math.PI * 2;
@@ -1572,7 +1700,7 @@ function inspectWithSpyglass(dir = null) {
     updateSpyPanel();
     return;
   }
-  const crateEstimate = 2 + Math.floor(target.level / 2);
+  const crateEstimate = crateDropCount({ isBot: true, shipType: target.shipType, level: target.level });
   const threat = target.level > state.level + 2 ? "Dangerous" : target.hp < target.max * 0.4 ? "Wounded" : "Manageable";
   state.spyTarget = { ...target, crateEstimate, threat, expires: clock.elapsedTime + 8 };
   toast(`Spyglass locked: ${target.name}.`);
@@ -1719,7 +1847,7 @@ function updateBots(dt) {
       bot.target = playerShip.position.clone();
     } else if (bot.turn < 0) {
       bot.turn = 2.4 + Math.random() * 4.5;
-      bot.target = new THREE.Vector3((Math.random() - 0.5) * 150, 0, (Math.random() - 0.5) * 150);
+      bot.target = new THREE.Vector3((Math.random() - 0.5) * 240, 0, (Math.random() - 0.5) * 240);
     }
     const target = bot.target || playerShip.position;
     const toTarget = target.clone().sub(bot.group.position);
@@ -1739,7 +1867,7 @@ function updateBots(dt) {
       else {
         bot.velocity.multiplyScalar(0.25);
         bot.rotation += 1.4 * dt;
-        bot.target = new THREE.Vector3((Math.random() - 0.5) * 150, 0, (Math.random() - 0.5) * 150);
+        bot.target = new THREE.Vector3((Math.random() - 0.5) * 240, 0, (Math.random() - 0.5) * 240);
       }
       bot.group.rotation.y = bot.rotation;
     }
@@ -1773,6 +1901,13 @@ function updateProjectiles(dt) {
       bots.forEach((bot) => {
         if (!hit && dist2(shot.mesh.position, bot.group.position) < 3) {
           damageTarget(bot, shot.damage);
+          addXP(3 + Math.floor(shot.damage / 9));
+          hit = true;
+        }
+      });
+      remotePlayers.forEach((remote) => {
+        if (!hit && dist2(shot.mesh.position, remote.group.position) < 3) {
+          addXP(5 + Math.floor(shot.damage / 8));
           hit = true;
         }
       });
@@ -1845,7 +1980,7 @@ function updateHud() {
   ui.playerName.textContent = state.name;
   ui.modeLabel.textContent = state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
-  ui.xpBar.style.width = `${clamp((state.xp / (state.level * 100)) * 100, 0, 100)}%`;
+  ui.xpBar.style.width = `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   ui.statsLine.textContent = `Lv.${state.level} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
