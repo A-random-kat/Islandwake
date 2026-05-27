@@ -121,6 +121,9 @@ let multiplayer = {
   networkId: null,
   mode: "offline",
   lastSent: 0,
+  hasConnected: false,
+  reconnectAttempts: 0,
+  reconnectTimer: null,
 };
 const islands = [];
 const bots = [];
@@ -620,8 +623,15 @@ function hullMesh(length, width, height, material = mats.hull, profile = "skiff"
     ],
   };
   const points = profiles[profile] || profiles.skiff;
-  const top = points.map(([x, z]) => new THREE.Vector3(x * width, height, z * length));
-  const chine = points.map(([x, z]) => new THREE.Vector3(x * width * 0.82, height * 0.48, z * length * 0.95));
+  const top = points.map(([x, z]) => {
+    const endLift = Math.pow(Math.abs(z), 1.75) * height * 0.28;
+    const sternLift = z > 0.32 ? height * 0.14 : 0;
+    return new THREE.Vector3(x * width, height + endLift + sternLift, z * length);
+  });
+  const chine = points.map(([x, z]) => {
+    const endLift = Math.pow(Math.abs(z), 1.5) * height * 0.08;
+    return new THREE.Vector3(x * width * 0.82, height * 0.46 + endLift, z * length * 0.95);
+  });
   const keel = points.map(([x, z]) => {
     const pointedEnd = Math.abs(z) > 0.5 ? 0.35 : 0.48;
     return new THREE.Vector3(x * width * pointedEnd, 0, z * length * 0.82);
@@ -658,38 +668,52 @@ function hullMesh(length, width, height, material = mats.hull, profile = "skiff"
 }
 
 function addSail(group, x, z, scale, color = 0xfff4da) {
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.11 * scale, 0.15 * scale, 5.4 * scale, 6), mats.dark);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale, 0.14 * scale, 5.5 * scale, 7), mats.dark);
   mast.position.set(x, 3.2 * scale, z);
   mast.castShadow = true;
   group.add(mast);
-  const sail = new THREE.Mesh(new THREE.ConeGeometry(1.7 * scale, 3.4 * scale, 3), mat(color));
-  sail.position.set(x + 0.6 * scale, 3.45 * scale, z);
-  sail.rotation.z = -Math.PI / 2;
-  sail.rotation.y = Math.PI / 2;
-  sail.castShadow = true;
+  const sail = lateenPanel(2.35 * scale, 3.55 * scale, color, 0.18 * scale);
+  sail.position.set(x + 0.35 * scale, 3.5 * scale, z - 0.08 * scale);
+  sail.rotation.z = -0.1;
   group.add(sail);
-  addRope(group, new THREE.Vector3(x, 5.8 * scale, z), new THREE.Vector3(x - 1.05 * scale, 2.15 * scale, z - 1.45 * scale), scale);
-  addRope(group, new THREE.Vector3(x, 5.8 * scale, z), new THREE.Vector3(x + 1.3 * scale, 2.2 * scale, z + 1.35 * scale), scale);
+  const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.055 * scale, 3.95 * scale, 7), mats.wood);
+  yard.rotation.z = Math.PI / 2.45;
+  yard.position.set(x + 0.1 * scale, 4.0 * scale, z - 0.1 * scale);
+  yard.castShadow = true;
+  group.add(yard);
+  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.048 * scale, 2.55 * scale, 7), mats.wood);
+  boom.rotation.z = Math.PI / 2.05;
+  boom.position.set(x + 0.28 * scale, 2.35 * scale, z - 0.08 * scale);
+  group.add(boom);
+  addRope(group, new THREE.Vector3(x, 5.85 * scale, z), new THREE.Vector3(x - 1.05 * scale, 2.15 * scale, z - 1.45 * scale), scale);
+  addRope(group, new THREE.Vector3(x, 5.85 * scale, z), new THREE.Vector3(x + 1.3 * scale, 2.2 * scale, z + 1.35 * scale), scale);
 }
 
 function addSquareSail(group, x, z, scale, color = 0xfff4da, tiers = 1) {
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, (5.2 + tiers) * scale, 6), mats.dark);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, (5.2 + tiers) * scale, 7), mats.dark);
   mast.position.set(x, 3.25 * scale, z);
   mast.castShadow = true;
   group.add(mast);
   for (let i = 0; i < tiers; i++) {
     const y = (3.15 + i * 1.15) * scale;
-    const sail = new THREE.Mesh(new THREE.BoxGeometry((2.2 - i * 0.28) * scale, 1.0 * scale, 0.08 * scale), mat(color));
+    const sailWidth = (2.35 - i * 0.28) * scale;
+    const sailHeight = (1.08 - i * 0.06) * scale;
+    const sail = clothPanel(sailWidth, sailHeight, color, 0.16 * scale);
     sail.position.set(x, y, z - 0.05 * scale);
-    sail.castShadow = true;
     group.add(sail);
     const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, (2.55 - i * 0.2) * scale, 6), mats.dark);
     yard.rotation.z = Math.PI / 2;
     yard.position.set(x, y + 0.5 * scale, z - 0.08 * scale);
     group.add(yard);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry((2.0 - i * 0.22) * scale, 0.055 * scale, 0.1 * scale), mats.rope);
-    stripe.position.set(x, y, z - 0.13 * scale);
-    group.add(stripe);
+    for (let seam = -1; seam <= 1; seam += 2) {
+      addRope(
+        group,
+        new THREE.Vector3(x - sailWidth * 0.45, y + seam * sailHeight * 0.18, z - 0.11 * scale),
+        new THREE.Vector3(x + sailWidth * 0.45, y + seam * sailHeight * 0.18, z - 0.11 * scale),
+        scale,
+        0.014,
+      );
+    }
     addRope(group, new THREE.Vector3(x, (5.75 + tiers * 0.35) * scale, z), new THREE.Vector3(x - (1.25 - i * 0.1) * scale, y + 0.45 * scale, z), scale * 0.82);
     addRope(group, new THREE.Vector3(x, (5.75 + tiers * 0.35) * scale, z), new THREE.Vector3(x + (1.25 - i * 0.1) * scale, y + 0.45 * scale, z), scale * 0.82);
   }
@@ -700,6 +724,51 @@ function addRope(group, start, end, scale = 1, radius = 0.022) {
   setCylinderBetween(rope, start, end);
   group.add(rope);
   return rope;
+}
+
+function sailMaterial(color) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.96, metalness: 0, side: THREE.DoubleSide });
+}
+
+function clothPanel(width, height, color, belly = 0.16) {
+  const vertices = [];
+  const indices = [];
+  for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 3; x++) {
+      const u = x / 2;
+      const v = y / 2;
+      const curve = Math.sin(u * Math.PI) * Math.sin(v * Math.PI) * belly;
+      vertices.push((u - 0.5) * width, (v - 0.5) * height, curve);
+    }
+  }
+  for (let y = 0; y < 2; y++) {
+    for (let x = 0; x < 2; x++) {
+      const a = y * 3 + x;
+      indices.push(a, a + 1, a + 3, a + 1, a + 4, a + 3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const sail = new THREE.Mesh(geo, sailMaterial(color));
+  sail.castShadow = true;
+  return sail;
+}
+
+function lateenPanel(width, height, color, belly = 0.14) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([
+    width * 0.38, height * 0.52, 0,
+    -width * 0.55, -height * 0.44, 0,
+    width * 0.5, -height * 0.34, 0,
+    width * 0.06, -height * 0.06, belly,
+  ], 3));
+  geo.setIndex([0, 1, 3, 0, 3, 2, 1, 2, 3]);
+  geo.computeVertexNormals();
+  const sail = new THREE.Mesh(geo, sailMaterial(color));
+  sail.castShadow = true;
+  return sail;
 }
 
 function addCabin(group, x, z, width, depth, scale, color = 0x6b432b) {
@@ -896,11 +965,16 @@ function makeShip(type = "skiff", remote = false) {
       group.add(rail);
     }
   });
-  const bowCap = new THREE.Mesh(new THREE.ConeGeometry(0.42 * scale, 1.2 * scale, 7), mat(spec.color));
-  bowCap.position.set(0, 1.15 * scale, (-hullSize[0] * 0.52) * scale);
-  bowCap.rotation.x = Math.PI / 2;
-  bowCap.castShadow = true;
-  group.add(bowCap);
+  const stemPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.13 * scale, 1.25 * scale, 7), mat(spec.color));
+  stemPost.position.set(0, 1.2 * scale, (-hullSize[0] * 0.51) * scale);
+  stemPost.rotation.x = -0.28;
+  stemPost.castShadow = true;
+  group.add(stemPost);
+  const sternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.11 * scale, 1.05 * scale, 7), mats.hullDark);
+  sternPost.position.set(0, 1.14 * scale, (hullSize[0] * 0.48) * scale);
+  sternPost.rotation.x = 0.2;
+  sternPost.castShadow = true;
+  group.add(sternPost);
   const keelLine = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, hullSize[0] * 0.78 * scale, 6), mats.dark);
   keelLine.rotation.x = Math.PI / 2;
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
@@ -1208,9 +1282,17 @@ function finishFishing() {
   makeFish();
 }
 
+function alertBot(bot, seconds = 24) {
+  bot.agroUntil = Math.max(bot.agroUntil || 0, clock.elapsedTime + seconds + bot.level * 0.8);
+  bot.target = playerShip.position.clone();
+  bot.turn = Math.min(bot.turn || 0, 0.2);
+  bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 0.7);
+}
+
 function damageTarget(target, amount) {
   const armor = target.isBot ? getShipStats(target.shipType).armor : getShipStats().armor;
   target.hp -= amount * (1 - armor);
+  if (target.isBot && target.hp > 0) alertBot(target);
   if (target.hp <= 0) {
     const level = target.level || 1;
     const deathPos = target.isBot ? target.group.position : playerShip.position;
@@ -1219,6 +1301,8 @@ function damageTarget(target, amount) {
       target.hp = getShipStats(target.shipType).hp;
       target.group.position.set((Math.random() - 0.5) * 170, SHIP_WATERLINE_Y, (Math.random() - 0.5) * 170);
       target.level = Math.max(1, target.level + (Math.random() > 0.55 ? 1 : 0));
+      target.agroUntil = 0;
+      target.fireCooldown = 1.8 + Math.random() * 2;
       state.gold += 45 + level * 12;
       addXP(40 + level * 22);
       toast(`Sank a level ${level} ship. Crates overboard!`);
@@ -1256,7 +1340,18 @@ function initWorld() {
     group.position.copy(spawn);
     group.rotation.y = Math.random() * Math.PI * 2;
     scene.add(group);
-    bots.push({ isBot: true, group, shipType: spec.id, hp: spec.hp, level: 1 + Math.floor(Math.random() * 7), turn: Math.random() * 10, velocity: new THREE.Vector3(), rotation: group.rotation.y });
+    bots.push({
+      isBot: true,
+      group,
+      shipType: spec.id,
+      hp: spec.hp,
+      level: 1 + Math.floor(Math.random() * 7),
+      turn: Math.random() * 10,
+      velocity: new THREE.Vector3(),
+      rotation: group.rotation.y,
+      agroUntil: 0,
+      fireCooldown: 1.6 + Math.random() * 2.4,
+    });
   }
 }
 
@@ -1617,8 +1712,12 @@ function updateWalker(dt) {
 function updateBots(dt) {
   bots.forEach((bot, i) => {
     const spec = getShipStats(bot.shipType);
+    const aggressive = state.mode === "ship" && (bot.agroUntil || 0) > clock.elapsedTime;
     bot.turn -= dt;
-    if (bot.turn < 0) {
+    bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
+    if (aggressive) {
+      bot.target = playerShip.position.clone();
+    } else if (bot.turn < 0) {
       bot.turn = 2.4 + Math.random() * 4.5;
       bot.target = new THREE.Vector3((Math.random() - 0.5) * 150, 0, (Math.random() - 0.5) * 150);
     }
@@ -1627,11 +1726,13 @@ function updateBots(dt) {
     toTarget.y = 0;
     if (toTarget.lengthSq() > 8) {
       const desired = Math.atan2(toTarget.x, toTarget.z);
-      const turnStep = clamp(angleDelta(desired, bot.rotation), -dt * (1.05 + spec.speed / 36), dt * (1.05 + spec.speed / 36));
+      const turnRate = aggressive ? 1.35 + spec.speed / 32 : 1.05 + spec.speed / 36;
+      const turnStep = clamp(angleDelta(desired, bot.rotation), -dt * turnRate, dt * turnRate);
       bot.rotation += turnStep;
       const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
-      bot.velocity.add(forward.multiplyScalar(spec.speed * 0.58 * dt));
-      bot.velocity.multiplyScalar(Math.pow(0.88, dt * 9));
+      const sailPower = aggressive ? 0.68 : 0.52;
+      bot.velocity.add(forward.multiplyScalar(spec.speed * sailPower * dt));
+      bot.velocity.multiplyScalar(Math.pow(aggressive ? 0.9 : 0.88, dt * 9));
       const next = bot.group.position.clone().add(bot.velocity.clone().multiplyScalar(dt));
       const blocked = islands.some((island) => dist2(next, island.group.position) < island.radius + 3);
       if (!blocked) bot.group.position.copy(next);
@@ -1643,9 +1744,21 @@ function updateBots(dt) {
       bot.group.rotation.y = bot.rotation;
     }
     bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
-    if (dist2(bot.group.position, playerShip.position) < 18 && Math.random() < dt * 0.025 && state.mode === "ship") {
-      const shot = playerShip.position.clone().sub(bot.group.position).normalize();
-      makeProjectile(`bot-${i}`, bot.group.position.clone().add(shot.multiplyScalar(3.4)), shot, 5 + bot.level * 1.1, 24);
+    const playerDistance = dist2(bot.group.position, playerShip.position);
+    const shotDir = playerShip.position.clone().sub(bot.group.position);
+    shotDir.y = 0;
+    const facing = shotDir.lengthSq()
+      ? new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation)).dot(shotDir.clone().normalize())
+      : 0;
+    const canFire = state.mode === "ship" && bot.fireCooldown <= 0 && facing > 0.45;
+    if (aggressive && playerDistance < 48 && canFire) {
+      const shot = shotDir.normalize();
+      makeProjectile(`bot-${i}`, bot.group.position.clone().add(shot.clone().multiplyScalar(3.4)), shot, 7 + bot.level * 1.25, 34);
+      bot.fireCooldown = Math.max(1.1, 2.8 - Math.min(1.4, bot.level * 0.12));
+    } else if (!aggressive && playerDistance < 15 && Math.random() < dt * 0.01 && canFire) {
+      const shot = shotDir.normalize();
+      makeProjectile(`bot-${i}`, bot.group.position.clone().add(shot.clone().multiplyScalar(3.4)), shot, 4 + bot.level, 22);
+      bot.fireCooldown = 3.2 + Math.random() * 1.8;
     }
   });
 }
@@ -1901,12 +2014,24 @@ function startLocalMultiplayer(message) {
   }
 }
 
-function setupMultiplayer() {
+function scheduleMultiplayerReconnect() {
+  if (multiplayer.reconnectTimer || !location.protocol.startsWith("http")) return;
+  multiplayer.mode = "reconnecting";
+  const delay = clamp(1 + multiplayer.reconnectAttempts * 0.75, 1, 6);
+  multiplayer.reconnectAttempts += 1;
+  multiplayer.reconnectTimer = setTimeout(() => {
+    multiplayer.reconnectTimer = null;
+    setupMultiplayer(true);
+  }, delay * 1000);
+}
+
+function setupMultiplayer(reconnecting = false) {
   const canUseSocket = typeof WebSocket !== "undefined" && location.protocol.startsWith("http");
   if (!canUseSocket) {
     startLocalMultiplayer("Local tab multiplayer is active.");
     return;
   }
+  if (multiplayer.socket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(multiplayer.socket.readyState)) return;
 
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(`${protocol}//${location.host}`);
@@ -1915,13 +2040,15 @@ function setupMultiplayer() {
 
   socket.addEventListener("open", () => {
     opened = true;
+    multiplayer.hasConnected = true;
+    multiplayer.reconnectAttempts = 0;
     multiplayer.mode = "online";
     if (multiplayer.channel) {
       multiplayer.channel.close();
       multiplayer.channel = null;
     }
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
-    toast("Connected to multiplayer waters.");
+    toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
   });
 
   socket.addEventListener("message", (event) => {
@@ -1933,13 +2060,17 @@ function setupMultiplayer() {
   });
 
   socket.addEventListener("error", () => {
-    if (!opened) startLocalMultiplayer("Multiplayer server unavailable. Local tab multiplayer is active.");
+    if (!opened && !multiplayer.hasConnected) startLocalMultiplayer("Multiplayer server unavailable. Local tab multiplayer is active.");
   });
 
   socket.addEventListener("close", () => {
     if (multiplayer.socket === socket) multiplayer.socket = null;
-    if (opened) toast("Multiplayer server disconnected. Local tab multiplayer is active.");
-    startLocalMultiplayer();
+    if (opened || multiplayer.hasConnected) {
+      if (multiplayer.mode !== "reconnecting") toast("Multiplayer disconnected. Reconnecting...");
+      scheduleMultiplayerReconnect();
+    } else {
+      startLocalMultiplayer("Multiplayer server unavailable. Local tab multiplayer is active.");
+    }
   });
 }
 
