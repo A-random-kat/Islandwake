@@ -9,6 +9,14 @@
 <body>
   <canvas id="game"></canvas>
 
+  <div id="nameGate" class="name-gate">
+    <form id="nameForm" class="name-card">
+      <span>Captain name</span>
+      <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" />
+      <button type="submit">Set sail</button>
+    </form>
+  </div>
+
   <div id="hud">
     <section class="panel captain">
       <div>
@@ -62,6 +70,6 @@
     <b>WASD</b> sail/walk <b>Space</b> jump <b>Arrows</b> camera <b>T</b> dock <b>C</b> sail <b>R</b> shop <b>1-3</b> tools
   </div>
 
-  <script type="module" src="game.js?v=21"></script>
+  <script type="module" src="game.js?v=28"></script>
 </body>
 </html>
