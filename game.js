@@ -648,347 +648,186 @@ function collidesWithShipAt(point, ownType = state.shipType) {
   return false;
 }
 
+const DEFAULT_HULL_TUNING = { stern: 0.46, bow: 0.05, mid: 0.96, fullness: 0.72, bowLift: 0.18, sternLift: 0.09, keel: 0.6 };
+const HULL_TUNING = {
+  skiff: { stern: 0.42, bow: 0.04, mid: 0.92, fullness: 0.72, bowLift: 0.2, sternLift: 0.1, keel: 0.55 },
+  dart: { stern: 0.22, bow: 0.025, mid: 0.78, fullness: 0.58, bowLift: 0.28, sternLift: 0.06, keel: 0.5 },
+  storm: { stern: 0.28, bow: 0.025, mid: 0.82, fullness: 0.6, bowLift: 0.26, sternLift: 0.06, keel: 0.5 },
+  clipper: { stern: 0.22, bow: 0.02, mid: 0.84, fullness: 0.55, bowLift: 0.24, sternLift: 0.05, keel: 0.55 },
+  schooner: { stern: 0.28, bow: 0.03, mid: 0.86, fullness: 0.6, bowLift: 0.22, sternLift: 0.06, keel: 0.52 },
+  dhow: { stern: 0.2, bow: 0.02, mid: 0.78, fullness: 0.56, bowLift: 0.34, sternLift: 0.04, keel: 0.52 },
+  xebec: { stern: 0.2, bow: 0.02, mid: 0.82, fullness: 0.55, bowLift: 0.32, sternLift: 0.06, keel: 0.52 },
+  lugger: { stern: 0.3, bow: 0.04, mid: 0.84, fullness: 0.62, bowLift: 0.2, sternLift: 0.08, keel: 0.52 },
+  brig: { stern: 0.55, bow: 0.05, mid: 0.98, fullness: 0.72, bowLift: 0.16, sternLift: 0.1, keel: 0.62 },
+  cog: { stern: 0.72, bow: 0.08, mid: 1.02, fullness: 0.88, bowLift: 0.14, sternLift: 0.16, keel: 0.58 },
+  junk: { stern: 0.66, bow: 0.1, mid: 1.0, fullness: 0.85, bowLift: 0.12, sternLift: 0.12, keel: 0.52 },
+  fluyt: { stern: 0.78, bow: 0.08, mid: 1.08, fullness: 0.95, bowLift: 0.12, sternLift: 0.1, keel: 0.66 },
+  galleon: { stern: 0.72, bow: 0.06, mid: 1.08, fullness: 0.9, bowLift: 0.18, sternLift: 0.15, keel: 0.76 },
+  carrack: { stern: 0.78, bow: 0.08, mid: 1.1, fullness: 0.95, bowLift: 0.16, sternLift: 0.2, keel: 0.72 },
+  manowar: { stern: 0.72, bow: 0.06, mid: 1.12, fullness: 0.92, bowLift: 0.15, sternLift: 0.12, keel: 0.82 },
+  frigate: { stern: 0.52, bow: 0.04, mid: 1.0, fullness: 0.72, bowLift: 0.18, sternLift: 0.08, keel: 0.7 },
+  turtle: { stern: 0.82, bow: 0.12, mid: 1.12, fullness: 1.05, bowLift: 0.08, sternLift: 0.08, keel: 0.6 },
+  treasure: { stern: 0.82, bow: 0.1, mid: 1.14, fullness: 1.0, bowLift: 0.12, sternLift: 0.16, keel: 0.72 },
+  longship: { stern: 0.05, bow: 0.04, mid: 0.68, fullness: 0.55, bowLift: 0.3, sternLift: 0.24, keel: 0.45 },
+  galley: { stern: 0.08, bow: 0.03, mid: 0.72, fullness: 0.52, bowLift: 0.26, sternLift: 0.16, keel: 0.44 },
+  cat: { stern: 0.18, bow: 0.04, mid: 0.65, fullness: 0.55, bowLift: 0.18, sternLift: 0.08, keel: 0.34 },
+  ironclad: { stern: 0.76, bow: 0.14, mid: 1.08, fullness: 1.05, bowLift: 0.05, sternLift: 0.05, keel: 0.48 },
+};
+
+function hullProfile(profile = "skiff") {
+  return { ...DEFAULT_HULL_TUNING, ...(HULL_TUNING[profile] || {}) };
+}
+
 function hullMesh(length, width, height, material = mats.hull, profile = "skiff") {
-  const profiles = {
-    skiff: [
-      [0, 0.52],
-      [0.44, 0.16],
-      [0.3, -0.52],
-      [-0.3, -0.52],
-      [-0.44, 0.16],
-    ],
-    clipper: [
-      [0, 0.62],
-      [0.34, 0.28],
-      [0.48, -0.08],
-      [0.24, -0.58],
-      [-0.24, -0.58],
-      [-0.48, -0.08],
-      [-0.34, 0.28],
-    ],
-    brig: [
-      [0, 0.48],
-      [0.52, 0.18],
-      [0.54, -0.18],
-      [0.36, -0.56],
-      [-0.36, -0.56],
-      [-0.54, -0.18],
-      [-0.52, 0.18],
-    ],
-    dart: [
-      [0, 0.74],
-      [0.24, 0.28],
-      [0.18, -0.2],
-      [0.12, -0.66],
-      [-0.12, -0.66],
-      [-0.18, -0.2],
-      [-0.24, 0.28],
-    ],
-    junk: [
-      [0, 0.42],
-      [0.56, 0.14],
-      [0.48, -0.36],
-      [0.22, -0.6],
-      [-0.22, -0.6],
-      [-0.48, -0.36],
-      [-0.56, 0.14],
-    ],
-    dhow: [
-      [0, 0.68],
-      [0.28, 0.34],
-      [0.34, -0.12],
-      [0.2, -0.68],
-      [-0.2, -0.68],
-      [-0.34, -0.12],
-      [-0.28, 0.34],
-    ],
-    galleon: [
-      [0, 0.38],
-      [0.62, 0.16],
-      [0.66, -0.1],
-      [0.56, -0.42],
-      [0.3, -0.7],
-      [-0.3, -0.7],
-      [-0.56, -0.42],
-      [-0.66, -0.1],
-      [-0.62, 0.16],
-    ],
-    cat: [
-      [0, 0.54],
-      [0.3, 0.16],
-      [0.24, -0.58],
-      [-0.24, -0.58],
-      [-0.3, 0.16],
-    ],
-    turtle: [
-      [0, 0.36],
-      [0.68, 0.08],
-      [0.62, -0.28],
-      [0.42, -0.56],
-      [0.14, -0.72],
-      [-0.14, -0.72],
-      [-0.42, -0.56],
-      [-0.62, -0.28],
-      [-0.68, 0.08],
-    ],
-    schooner: [
-      [0, 0.58],
-      [0.38, 0.26],
-      [0.46, -0.12],
-      [0.26, -0.64],
-      [-0.26, -0.64],
-      [-0.46, -0.12],
-      [-0.38, 0.26],
-    ],
-    storm: [
-      [0, 0.7],
-      [0.22, 0.34],
-      [0.44, 0.06],
-      [0.3, -0.54],
-      [-0.3, -0.54],
-      [-0.44, 0.06],
-      [-0.22, 0.34],
-    ],
-    cog: [
-      [0, 0.38],
-      [0.58, 0.12],
-      [0.58, -0.42],
-      [0.36, -0.64],
-      [-0.36, -0.64],
-      [-0.58, -0.42],
-      [-0.58, 0.12],
-    ],
-    xebec: [
-      [0, 0.76],
-      [0.24, 0.42],
-      [0.54, 0.02],
-      [0.3, -0.64],
-      [-0.3, -0.64],
-      [-0.54, 0.02],
-      [-0.24, 0.42],
-    ],
-    caravel: [
-      [0, 0.52],
-      [0.45, 0.22],
-      [0.56, -0.18],
-      [0.32, -0.66],
-      [-0.32, -0.66],
-      [-0.56, -0.18],
-      [-0.45, 0.22],
-    ],
-    frigate: [
-      [0, 0.58],
-      [0.4, 0.28],
-      [0.56, -0.06],
-      [0.42, -0.56],
-      [0.16, -0.74],
-      [-0.16, -0.74],
-      [-0.42, -0.56],
-      [-0.56, -0.06],
-      [-0.4, 0.28],
-    ],
-    carrack: [
-      [0, 0.36],
-      [0.68, 0.12],
-      [0.7, -0.18],
-      [0.5, -0.58],
-      [0.22, -0.78],
-      [-0.22, -0.78],
-      [-0.5, -0.58],
-      [-0.7, -0.18],
-      [-0.68, 0.12],
-    ],
-    manowar: [
-      [0, 0.42],
-      [0.72, 0.18],
-      [0.78, -0.1],
-      [0.68, -0.48],
-      [0.42, -0.76],
-      [0.14, -0.86],
-      [-0.14, -0.86],
-      [-0.42, -0.76],
-      [-0.68, -0.48],
-      [-0.78, -0.1],
-      [-0.72, 0.18],
-    ],
-    longship: [
-      [0, 0.82],
-      [0.22, 0.45],
-      [0.34, 0],
-      [0.22, -0.62],
-      [0, -0.82],
-      [-0.22, -0.62],
-      [-0.34, 0],
-      [-0.22, 0.45],
-    ],
-    knarr: [
-      [0, 0.5],
-      [0.52, 0.15],
-      [0.46, -0.38],
-      [0.22, -0.66],
-      [-0.22, -0.66],
-      [-0.46, -0.38],
-      [-0.52, 0.15],
-    ],
-    lugger: [
-      [0, 0.64],
-      [0.34, 0.32],
-      [0.46, -0.08],
-      [0.26, -0.58],
-      [-0.26, -0.58],
-      [-0.46, -0.08],
-      [-0.34, 0.32],
-    ],
-    galley: [
-      [0, 0.78],
-      [0.3, 0.36],
-      [0.42, -0.06],
-      [0.22, -0.68],
-      [0, -0.82],
-      [-0.22, -0.68],
-      [-0.42, -0.06],
-      [-0.3, 0.36],
-    ],
-    snow: [
-      [0, 0.56],
-      [0.42, 0.24],
-      [0.54, -0.08],
-      [0.34, -0.62],
-      [-0.34, -0.62],
-      [-0.54, -0.08],
-      [-0.42, 0.24],
-    ],
-    fluyt: [
-      [0, 0.42],
-      [0.5, 0.16],
-      [0.74, -0.16],
-      [0.48, -0.56],
-      [0.18, -0.7],
-      [-0.18, -0.7],
-      [-0.48, -0.56],
-      [-0.74, -0.16],
-      [-0.5, 0.16],
-    ],
-    treasure: [
-      [0, 0.38],
-      [0.78, 0.1],
-      [0.76, -0.28],
-      [0.48, -0.66],
-      [0.18, -0.8],
-      [-0.18, -0.8],
-      [-0.48, -0.66],
-      [-0.76, -0.28],
-      [-0.78, 0.1],
-    ],
-    ironclad: [
-      [0, 0.5],
-      [0.7, 0.24],
-      [0.72, -0.34],
-      [0.42, -0.68],
-      [-0.42, -0.68],
-      [-0.72, -0.34],
-      [-0.7, 0.24],
-    ],
-  };
-  const points = profiles[profile] || profiles.skiff;
-  const top = points.map(([x, z]) => {
-    const endLift = Math.pow(Math.abs(z), 1.75) * height * 0.28;
-    const sternLift = z > 0.32 ? height * 0.14 : 0;
-    return new THREE.Vector3(x * width, height + endLift + sternLift, z * length);
-  });
-  const chine = points.map(([x, z]) => {
-    const endLift = Math.pow(Math.abs(z), 1.5) * height * 0.08;
-    return new THREE.Vector3(x * width * 0.82, height * 0.46 + endLift, z * length * 0.95);
-  });
-  const keel = points.map(([x, z]) => {
-    const pointedEnd = Math.abs(z) > 0.5 ? 0.35 : 0.48;
-    return new THREE.Vector3(x * width * pointedEnd, 0, z * length * 0.82);
-  });
+  const tuning = hullProfile(profile);
   const vertices = [];
   const indices = [];
-  [...top, ...chine, ...keel].forEach((p) => vertices.push(p.x, p.y, p.z));
-  const n = points.length;
-  const topCenter = vertices.length / 3;
-  vertices.push(0, height * 1.04, -length * 0.06);
-  const keelCenter = vertices.length / 3;
-  vertices.push(0, -height * 0.12, -length * 0.02);
-  for (let i = 0; i < n; i++) {
-    const next = (i + 1) % n;
-    const topA = i;
-    const topB = next;
-    const chineA = n + i;
-    const chineB = n + next;
-    const keelA = n * 2 + i;
-    const keelB = n * 2 + next;
-    indices.push(topCenter, topA, topB);
-    indices.push(topA, chineA, chineB, topA, chineB, topB);
-    indices.push(chineA, keelA, keelB, chineA, keelB, chineB);
-    indices.push(keelCenter, keelB, keelA);
+  const stationCount = 10;
+  const sectionCount = 7;
+  const addVertex = (x, y, z) => {
+    vertices.push(x, y, z);
+    return vertices.length / 3 - 1;
+  };
+  for (let i = 0; i < stationCount; i++) {
+    const t = i / (stationCount - 1);
+    const z = length * (0.52 - t * 1.1);
+    const midCurve = Math.pow(Math.sin(t * Math.PI), tuning.fullness);
+    const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
+    const beam = width * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
+    const topHalf = beam * 0.48;
+    const chineHalf = beam * (0.38 + 0.08 * midCurve);
+    const bilgeHalf = beam * (0.18 + 0.04 * midCurve);
+    const bowLift = Math.pow(t, 2.2) * tuning.bowLift * height;
+    const sternLift = Math.pow(1 - t, 2.4) * tuning.sternLift * height;
+    const deckY = height * (0.92 + 0.08 * Math.sin(t * Math.PI)) + bowLift + sternLift;
+    const chineY = height * (0.35 + 0.06 * midCurve);
+    const bilgeY = height * (0.08 + 0.04 * midCurve);
+    const keelY = -height * (0.08 + tuning.keel * (0.18 + 0.82 * midCurve));
+    [
+      [-topHalf, deckY, z],
+      [-chineHalf, chineY, z],
+      [-bilgeHalf, bilgeY, z],
+      [0, keelY, z],
+      [bilgeHalf, bilgeY, z],
+      [chineHalf, chineY, z],
+      [topHalf, deckY, z],
+    ].forEach((point) => addVertex(...point));
+  }
+  for (let i = 0; i < stationCount - 1; i++) {
+    for (let j = 0; j < sectionCount - 1; j++) {
+      const a = i * sectionCount + j;
+      const b = i * sectionCount + j + 1;
+      const c = (i + 1) * sectionCount + j;
+      const d = (i + 1) * sectionCount + j + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+    const leftTop = i * sectionCount;
+    const rightTop = i * sectionCount + sectionCount - 1;
+    const nextLeftTop = (i + 1) * sectionCount;
+    const nextRightTop = (i + 1) * sectionCount + sectionCount - 1;
+    indices.push(leftTop, rightTop, nextLeftTop, rightTop, nextRightTop, nextLeftTop);
+  }
+  const sternCenter = addVertex(0, height * 0.34, length * 0.52);
+  const bowCenter = addVertex(0, height * (0.42 + tuning.bowLift), -length * 0.58);
+  for (let j = 0; j < sectionCount - 1; j++) {
+    indices.push(sternCenter, j + 1, j);
+    const bowStart = (stationCount - 1) * sectionCount;
+    indices.push(bowCenter, bowStart + j, bowStart + j + 1);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, material);
+  const renderMaterial = material.clone();
+  renderMaterial.side = THREE.DoubleSide;
+  renderMaterial.needsUpdate = true;
+  const mesh = new THREE.Mesh(geo, renderMaterial);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
+function addMastBase(group, z, scale) {
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.24 * scale, 0.12 * scale, 10), mats.hullDark);
+  collar.position.set(0, 1.34 * scale, z);
+  collar.castShadow = true;
+  group.add(collar);
+}
+
 function addSail(group, x, z, scale, color = 0xfff4da) {
+  const mastX = 0;
+  const mastZ = z;
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale, 0.14 * scale, 5.5 * scale, 7), mats.dark);
-  mast.position.set(x, 3.2 * scale, z);
+  mast.position.set(mastX, 3.2 * scale, mastZ);
   mast.castShadow = true;
   group.add(mast);
-  const sail = lateenPanel(2.35 * scale, 3.55 * scale, color, 0.18 * scale);
-  sail.position.set(x + 0.35 * scale, 3.5 * scale, z - 0.08 * scale);
-  sail.rotation.z = -0.1;
+  addMastBase(group, mastZ, scale);
+  const sail = foreAftLateenPanel(2.8 * scale, 3.45 * scale, color, 0.12 * scale);
+  sail.position.set(0.04 * scale, 3.45 * scale, mastZ + 0.08 * scale);
   group.add(sail);
-  const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.055 * scale, 3.95 * scale, 7), mats.wood);
-  yard.rotation.z = Math.PI / 2.45;
-  yard.position.set(x + 0.1 * scale, 4.0 * scale, z - 0.1 * scale);
-  yard.castShadow = true;
-  group.add(yard);
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.048 * scale, 2.55 * scale, 7), mats.wood);
-  boom.rotation.z = Math.PI / 2.05;
-  boom.position.set(x + 0.28 * scale, 2.35 * scale, z - 0.08 * scale);
-  group.add(boom);
-  addRope(group, new THREE.Vector3(x, 5.85 * scale, z), new THREE.Vector3(x - 1.05 * scale, 2.15 * scale, z - 1.45 * scale), scale);
-  addRope(group, new THREE.Vector3(x, 5.85 * scale, z), new THREE.Vector3(x + 1.3 * scale, 2.2 * scale, z + 1.35 * scale), scale);
+  addRope(
+    group,
+    new THREE.Vector3(mastX, 5.25 * scale, mastZ + 1.25 * scale),
+    new THREE.Vector3(mastX, 2.3 * scale, mastZ - 1.25 * scale),
+    scale,
+    0.045,
+  );
+  addRope(
+    group,
+    new THREE.Vector3(mastX, 2.28 * scale, mastZ + 1.1 * scale),
+    new THREE.Vector3(mastX, 2.12 * scale, mastZ - 1.2 * scale),
+    scale,
+    0.036,
+  );
+  addRope(group, new THREE.Vector3(mastX, 5.85 * scale, mastZ), new THREE.Vector3(-1.05 * scale, 1.55 * scale, mastZ + 1.25 * scale), scale, 0.015);
+  addRope(group, new THREE.Vector3(mastX, 5.85 * scale, mastZ), new THREE.Vector3(1.05 * scale, 1.55 * scale, mastZ + 1.25 * scale), scale, 0.015);
+  addRope(group, new THREE.Vector3(mastX, 5.85 * scale, mastZ), new THREE.Vector3(0, 1.5 * scale, mastZ - 1.7 * scale), scale, 0.014);
 }
 
 function addSquareSail(group, x, z, scale, color = 0xfff4da, tiers = 1) {
+  const mastX = 0;
+  const mastZ = z;
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, (5.2 + tiers) * scale, 7), mats.dark);
-  mast.position.set(x, 3.25 * scale, z);
+  mast.position.set(mastX, 3.25 * scale, mastZ);
   mast.castShadow = true;
   group.add(mast);
+  addMastBase(group, mastZ, scale);
   for (let i = 0; i < tiers; i++) {
     const y = (3.15 + i * 1.15) * scale;
     const sailWidth = (2.35 - i * 0.28) * scale;
     const sailHeight = (1.08 - i * 0.06) * scale;
     const sail = clothPanel(sailWidth, sailHeight, color, 0.16 * scale);
-    sail.position.set(x, y, z - 0.05 * scale);
+    sail.position.set(mastX, y, mastZ - 0.05 * scale);
     group.add(sail);
     const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, (2.55 - i * 0.2) * scale, 6), mats.dark);
     yard.rotation.z = Math.PI / 2;
-    yard.position.set(x, y + 0.5 * scale, z - 0.08 * scale);
+    yard.position.set(mastX, y + 0.5 * scale, mastZ - 0.08 * scale);
     group.add(yard);
     for (let seam = -1; seam <= 1; seam += 2) {
       addRope(
         group,
-        new THREE.Vector3(x - sailWidth * 0.45, y + seam * sailHeight * 0.18, z - 0.11 * scale),
-        new THREE.Vector3(x + sailWidth * 0.45, y + seam * sailHeight * 0.18, z - 0.11 * scale),
+        new THREE.Vector3(mastX - sailWidth * 0.45, y + seam * sailHeight * 0.18, mastZ - 0.11 * scale),
+        new THREE.Vector3(mastX + sailWidth * 0.45, y + seam * sailHeight * 0.18, mastZ - 0.11 * scale),
         scale,
         0.014,
       );
     }
-    addRope(group, new THREE.Vector3(x, (5.75 + tiers * 0.35) * scale, z), new THREE.Vector3(x - (1.25 - i * 0.1) * scale, y + 0.45 * scale, z), scale * 0.82);
-    addRope(group, new THREE.Vector3(x, (5.75 + tiers * 0.35) * scale, z), new THREE.Vector3(x + (1.25 - i * 0.1) * scale, y + 0.45 * scale, z), scale * 0.82);
+    for (let seam = -1; seam <= 1; seam += 2) {
+      addRope(
+        group,
+        new THREE.Vector3(mastX + seam * sailWidth * 0.18, y - sailHeight * 0.43, mastZ - 0.12 * scale),
+        new THREE.Vector3(mastX + seam * sailWidth * 0.18, y + sailHeight * 0.43, mastZ - 0.12 * scale),
+        scale,
+        0.011,
+      );
+    }
+    addRope(group, new THREE.Vector3(mastX, (5.75 + tiers * 0.35) * scale, mastZ), new THREE.Vector3(mastX - (1.25 - i * 0.1) * scale, y + 0.45 * scale, mastZ), scale * 0.82, 0.014);
+    addRope(group, new THREE.Vector3(mastX, (5.75 + tiers * 0.35) * scale, mastZ), new THREE.Vector3(mastX + (1.25 - i * 0.1) * scale, y + 0.45 * scale, mastZ), scale * 0.82, 0.014);
   }
 }
 
-function addRope(group, start, end, scale = 1, radius = 0.022) {
-  const rope = new THREE.Mesh(new THREE.CylinderGeometry(radius * scale, radius * scale, 1, 6), mats.rope);
+function addRope(group, start, end, scale = 1, radius = 0.022, material = mats.rope) {
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(radius * scale, radius * scale, 1, 6), material);
   setCylinderBetween(rope, start, end);
   group.add(rope);
   return rope;
@@ -1039,10 +878,24 @@ function lateenPanel(width, height, color, belly = 0.14) {
   return sail;
 }
 
+function foreAftLateenPanel(length, height, color, belly = 0.12) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([
+    belly, height * 0.52, length * 0.48,
+    -belly * 0.45, -height * 0.42, -length * 0.55,
+    -belly * 0.25, -height * 0.34, length * 0.34,
+    belly, -height * 0.05, -length * 0.04,
+  ], 3));
+  geo.setIndex([0, 1, 3, 0, 3, 2, 1, 2, 3]);
+  geo.computeVertexNormals();
+  const sail = new THREE.Mesh(geo, sailMaterial(color));
+  sail.castShadow = true;
+  return sail;
+}
+
 function addCabin(group, x, z, width, depth, scale, color = 0x6b432b) {
-  const positionScale = Math.max(1, scale);
-  const px = x * positionScale;
-  const pz = z * positionScale;
+  const px = x;
+  const pz = z;
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(width * scale, 1.0 * scale, depth * scale), mat(color));
   cabin.position.set(px, 1.82 * scale, pz);
   cabin.castShadow = true;
@@ -1060,72 +913,87 @@ function addCabin(group, x, z, width, depth, scale, color = 0x6b432b) {
 
 function addSternGallery(group, length, width, scale, color) {
   const gallery = new THREE.Mesh(new THREE.BoxGeometry(width * 0.64 * scale, 0.72 * scale, 0.28 * scale), mat(color));
-  gallery.position.set(0, 1.78 * scale, length * 0.47 * scale);
+  gallery.position.set(0, 1.55 * scale, length * 0.41 * scale);
   gallery.castShadow = true;
   group.add(gallery);
   for (let i = -1; i <= 1; i++) {
     const window = new THREE.Mesh(new THREE.BoxGeometry(0.34 * scale, 0.26 * scale, 0.05 * scale), mats.gold);
-    window.position.set(i * width * 0.18 * scale, 1.82 * scale, length * 0.615 * scale);
+    window.position.set(i * width * 0.18 * scale, 1.58 * scale, length * 0.49 * scale);
     group.add(window);
   }
   const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035 * scale, 0.035 * scale, width * 0.72 * scale, 7), mats.wood);
   rail.rotation.z = Math.PI / 2;
-  rail.position.set(0, 2.18 * scale, length * 0.62 * scale);
+  rail.position.set(0, 1.92 * scale, length * 0.5 * scale);
   group.add(rail);
 }
 
-function addCannonPorts(group, count, width, length, scale) {
+function addCannonPorts(group, count, width, length, scale, profile = "skiff") {
   for (let i = 0; i < count; i++) {
     const z = (-length * 0.28 + (i / Math.max(1, count - 1)) * length * 0.55) * scale;
     for (let side of [-1, 1]) {
       const port = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.28 * scale, 0.32 * scale), mats.dark);
-      port.position.set(side * width * 0.43 * scale, 1.28 * scale, z);
+      const sideX = side * hullSideXAt(length, width, scale, z, 0.98, profile);
+      port.position.set(sideX, 1.25 * scale, z);
       group.add(port);
       const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.08 * scale, 0.5 * scale, 8), mats.dark);
       muzzle.rotation.z = Math.PI / 2;
-      muzzle.position.set(side * width * 0.5 * scale, 1.28 * scale, z);
+      muzzle.position.set(sideX + side * 0.18 * scale, 1.25 * scale, z);
       group.add(muzzle);
     }
   }
 }
 
-function addOars(group, count, width, length, scale) {
+function addOars(group, count, width, length, scale, profile = "skiff") {
   for (let i = 0; i < count; i++) {
     const z = (-length * 0.28 + i * length * 0.56 / Math.max(1, count - 1)) * scale;
     for (let side of [-1, 1]) {
-      const oar = new THREE.Mesh(new THREE.CylinderGeometry(0.035 * scale, 0.035 * scale, 2.4 * scale, 6), mats.wood);
-      oar.rotation.z = Math.PI / 2.7 * side;
-      oar.position.set(side * width * 0.64 * scale, 1.1 * scale, z);
-      group.add(oar);
+      const rowlockX = side * hullSideXAt(length, width, scale, z, 1.02, profile);
+      const rowlock = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.08 * scale, 0.16 * scale), mats.hullDark);
+      rowlock.position.set(rowlockX, 1.22 * scale, z);
+      group.add(rowlock);
+      const grip = new THREE.Vector3(rowlockX, 1.18 * scale, z);
+      const bladePoint = new THREE.Vector3(rowlockX + side * 1.65 * scale, 0.82 * scale, z);
+      addRope(group, grip, bladePoint, scale, 0.035, mats.wood);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.38 * scale, 0.05 * scale, 0.18 * scale), mats.wood);
+      blade.position.copy(bladePoint);
+      blade.rotation.z = -0.22 * side;
+      group.add(blade);
     }
   }
 }
 
-function addHullDetailLines(group, length, width, scale, tier) {
+function addHullDetailLines(group, length, width, scale, tier, profile = "skiff") {
   const rows = 2 + Math.min(3, tier);
   for (let side of [-1, 1]) {
     for (let row = 0; row < rows; row++) {
       const y = (0.55 + row * 0.23) * scale;
-      const inset = row * 0.035;
-      const x = side * width * (0.34 - inset) * scale;
-      const front = new THREE.Vector3(x * 0.62, y, -length * 0.37 * scale);
-      const mid = new THREE.Vector3(x, y + 0.04 * scale, -length * 0.03 * scale);
-      const back = new THREE.Vector3(x * 0.7, y, length * 0.34 * scale);
-      addRope(group, front, mid, scale, 0.018);
-      addRope(group, mid, back, scale, 0.018);
+      addHullSideLine(
+        group,
+        length,
+        width,
+        scale,
+        side,
+        y,
+        -length * 0.34 * scale,
+        length * 0.34 * scale,
+        mats.rope,
+        0.014,
+        0.72 - row * 0.035,
+        profile,
+      );
     }
     const ribCount = 4 + tier;
     for (let i = 0; i < ribCount; i++) {
       const t = i / Math.max(1, ribCount - 1);
       const z = (-length * 0.33 + t * length * 0.66) * scale;
-      const curve = 0.72 + Math.sin(t * Math.PI) * 0.28;
-      const x = side * width * 0.38 * curve * scale;
-      addRope(group, new THREE.Vector3(x, 0.38 * scale, z), new THREE.Vector3(x * 0.92, 1.34 * scale, z), scale, 0.026);
+      const lowerX = side * hullSideXAt(length, width, scale, z, 0.68, profile);
+      const upperX = side * hullSideXAt(length, width, scale, z, 0.94, profile);
+      addRope(group, new THREE.Vector3(lowerX, 0.36 * scale, z), new THREE.Vector3(upperX, 1.26 * scale, z), scale, 0.022);
     }
   }
 }
 
-function addDeckFittings(group, length, width, scale, tier, color) {
+function addDeckFittings(group, length, width, scale, tier, color, profile = "skiff") {
   const hatch = hullMesh(1.0 * scale, 0.72 * scale, 0.12 * scale, mats.hullDark, "skiff");
   hatch.position.set(0, 1.28 * scale, -0.35 * scale);
   hatch.scale.z = 0.72;
@@ -1142,20 +1010,24 @@ function addDeckFittings(group, length, width, scale, tier, color) {
   coil.position.set(width * 0.17 * scale, 1.42 * scale, -length * 0.16 * scale);
   group.add(coil);
   const anchor = new THREE.Mesh(new THREE.TorusGeometry(0.22 * scale, 0.045 * scale, 8, 16, Math.PI * 1.3), mats.dark);
-  anchor.position.set(-width * 0.38 * scale, 1.15 * scale, -length * 0.42 * scale);
+  anchor.position.set(-hullSideXAt(length, width, scale, -length * 0.34 * scale, 0.96, profile), 1.12 * scale, -length * 0.34 * scale);
   anchor.rotation.set(Math.PI / 2, 0, 0.45);
   group.add(anchor);
   if (tier >= 2) {
     for (let side of [-1, 1]) {
+      const lanternX = side * hullSideXAt(length, width, scale, length * 0.3 * scale, 0.86, profile);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025 * scale, 0.03 * scale, 0.42 * scale, 6), mats.dark);
+      post.position.set(lanternX, 1.52 * scale, length * 0.3 * scale);
+      group.add(post);
       const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.14 * scale, 8, 6), mats.gold);
-      lantern.position.set(side * width * 0.36 * scale, 1.72 * scale, length * 0.36 * scale);
+      lantern.position.set(lanternX, 1.72 * scale, length * 0.3 * scale);
       group.add(lantern);
     }
   }
   if (tier >= 3) {
     const crest = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.22 * scale, 0.08 * scale, 16), mat(color));
     crest.rotation.x = Math.PI / 2;
-    crest.position.set(0, 1.86 * scale, length * 0.44 * scale);
+    crest.position.set(0, 1.72 * scale, length * 0.38 * scale);
     group.add(crest);
   }
 }
@@ -1163,14 +1035,196 @@ function addDeckFittings(group, length, width, scale, tier, color) {
 function addBowspritAndRudder(group, length, width, scale, tier) {
   const bowsprit = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.075 * scale, (1.5 + tier * 0.22) * scale, 7), mats.wood);
   bowsprit.rotation.x = Math.PI / 2.25;
-  bowsprit.position.set(0, 1.34 * scale, -length * 0.57 * scale);
+  bowsprit.position.set(0, 1.2 * scale, -length * 0.5 * scale);
   group.add(bowsprit);
   const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.62 * scale, 0.42 * scale), mats.hullDark);
   rudder.position.set(0, 0.64 * scale, length * 0.48 * scale);
   group.add(rudder);
 }
 
-function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec) {
+function deckWidthAt(length, width, scale, z, profile = "skiff") {
+  return hullSideXAt(length, width, scale, z, 0.72, profile) * 2;
+}
+
+function hullSideXAt(length, width, scale, z, inset = 1, profile = "skiff") {
+  const tuning = hullProfile(profile);
+  const localZ = z / scale;
+  const t = clamp((0.52 - localZ / length) / 1.1, 0, 1);
+  const midCurve = Math.pow(Math.max(0.001, Math.sin(t * Math.PI)), tuning.fullness);
+  const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
+  const beam = width * scale * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
+  return beam * 0.45 * inset;
+}
+
+function addHullSideLine(group, length, width, scale, side, y, zStart, zEnd, material, radius = 0.026, inset = 0.98, profile = "skiff") {
+  const points = [];
+  const segments = 7;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const z = zStart + (zEnd - zStart) * t;
+    points.push(new THREE.Vector3(side * hullSideXAt(length, width, scale, z, inset, profile), y, z));
+  }
+  for (let i = 1; i < points.length; i++) {
+    addRope(group, points[i - 1], points[i], scale, radius, material);
+  }
+}
+
+function addDeckPlanking(group, length, width, scale, tier, profile = "skiff") {
+  const deckLength = length * 0.62 * scale;
+  const deckY = 1.32 * scale;
+  const plankCount = 3 + Math.min(3, tier);
+  for (let i = 0; i < plankCount; i++) {
+    const x = (i - (plankCount - 1) / 2) * width * 0.12 * scale;
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.026 * scale, 0.025 * scale, deckLength), mats.hullDark);
+    plank.position.set(x, deckY, 0);
+    group.add(plank);
+  }
+  const beamCount = 4 + Math.min(4, tier);
+  for (let i = 0; i < beamCount; i++) {
+    const t = i / Math.max(1, beamCount - 1);
+    const z = (-deckLength * 0.42 + t * deckLength * 0.84);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(deckWidthAt(length, width, scale, z, profile), 0.025 * scale, 0.045 * scale), mats.hullDark);
+    beam.position.set(0, deckY + 0.015 * scale, z);
+    group.add(beam);
+  }
+}
+
+function addHullPaintBands(group, length, width, scale, spec, tier, profile = "skiff") {
+  const bandLength = length * (tier >= 3 ? 0.74 : 0.62) * scale;
+  const bandRows = tier >= 3 ? [0.78, 1.04] : [0.9];
+  for (let side of [-1, 1]) {
+    bandRows.forEach((row, index) => {
+      addHullSideLine(
+        group,
+        length,
+        width,
+        scale,
+        side,
+        row * scale,
+        -bandLength * 0.5,
+        bandLength * 0.5,
+        mat(index ? spec.color : 0x2f241e),
+        0.022,
+        index ? 0.94 : 0.9,
+        profile,
+      );
+    });
+  }
+}
+
+function mastPlan(type, length) {
+  if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
+  if (["sloop", "storm", "dart", "lugger", "dogger", "tartane"].includes(type)) return [-length * 0.16, length * 0.18];
+  if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee"].includes(type)) {
+    return [-length * 0.28, 0, length * 0.28];
+  }
+  return [-length * 0.22, length * 0.18];
+}
+
+function addStandingRigging(group, type, length, width, scale, tier) {
+  if (["cat"].includes(type)) return;
+  const topY = (4.25 + Math.min(1.2, tier * 0.22)) * scale;
+  const deckY = 1.42 * scale;
+  mastPlan(type, length).forEach((mastZ) => {
+    const z = mastZ * scale;
+    for (let side of [-1, 1]) {
+      const railX = side * width * 0.44 * scale;
+      addRope(group, new THREE.Vector3(0, topY, z), new THREE.Vector3(railX, deckY, z - length * 0.18 * scale), scale, 0.013);
+      addRope(group, new THREE.Vector3(0, topY, z), new THREE.Vector3(railX, deckY, z + length * 0.16 * scale), scale, 0.013);
+    }
+  });
+}
+
+function addAttachedPennant(group, length, scale, color, tier) {
+  const z = length * 0.38 * scale;
+  const poleHeight = (1.05 + Math.min(0.4, tier * 0.08)) * scale;
+  const deckY = 1.52 * scale;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028 * scale, 0.036 * scale, poleHeight, 6), mats.dark);
+  pole.position.set(0, deckY + poleHeight * 0.5, z);
+  group.add(pole);
+  const flag = clothPanel(0.72 * scale, 0.36 * scale, color, 0.025 * scale);
+  flag.position.set(0.32 * scale, deckY + poleHeight * 0.78, z);
+  flag.rotation.z = -0.08;
+  group.add(flag);
+}
+
+function addRailCaps(group, length, width, scale, tier, profile = "skiff") {
+  const actualLength = length * scale;
+  const railLength = actualLength * 0.66;
+  for (let side of [-1, 1]) {
+    addHullSideLine(group, length, width, scale, side, 1.58 * scale, -railLength * 0.5, railLength * 0.5, mats.wood, 0.04, 1.0, profile);
+  }
+  if (tier >= 3) {
+    const sternRail = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72 * scale, 0.08 * scale, 0.08 * scale), mats.wood);
+    sternRail.position.set(0, 1.62 * scale, actualLength * 0.42);
+    group.add(sternRail);
+  }
+}
+
+function addWindowRow(group, width, z, y, scale, color = 0xd99928, count = 5) {
+  const rowWidth = width * scale * 0.56;
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const window = new THREE.Mesh(new THREE.BoxGeometry(0.28 * scale, 0.2 * scale, 0.045 * scale), mat(color));
+    window.position.set((t - 0.5) * rowWidth, y, z);
+    group.add(window);
+  }
+}
+
+function addLargeShipArchitecture(group, type, length, width, scale, spec, tier, profile = "skiff") {
+  const actualLength = length * scale;
+  const actualWidth = width * scale;
+  const sternZ = actualLength * 0.34;
+  const bowZ = -actualLength * 0.34;
+  const castleColor = ["galleon", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
+  const sternDeck = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, 0.7 * scale, actualLength * 0.17), mat(castleColor));
+  sternDeck.position.set(0, 1.57 * scale, sternZ);
+  sternDeck.castShadow = true;
+  group.add(sternDeck);
+  const sternRoof = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.72, 0.16 * scale, actualLength * 0.19), mats.hullDark);
+  sternRoof.position.set(0, 2.01 * scale, sternZ);
+  sternRoof.castShadow = true;
+  group.add(sternRoof);
+  addWindowRow(group, width, sternZ + actualLength * 0.09, 1.68 * scale, scale, 0xd99928, type === "firstrate" ? 7 : 5);
+
+  const quarterDepth = actualLength * 0.12;
+  for (let side of [-1, 1]) {
+    const quarter = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.16, 0.46 * scale, quarterDepth), mat(castleColor));
+    quarter.position.set(side * hullSideXAt(length, width, scale, sternZ, 0.9, profile), 1.5 * scale, sternZ + actualLength * 0.02);
+    quarter.castShadow = true;
+    group.add(quarter);
+    const quarterWindow = new THREE.Mesh(new THREE.BoxGeometry(0.045 * scale, 0.2 * scale, quarterDepth * 0.52), mats.gold);
+    quarterWindow.position.set(side * hullSideXAt(length, width, scale, sternZ, 1.02, profile), 1.54 * scale, sternZ + actualLength * 0.02);
+    group.add(quarterWindow);
+  }
+
+  const forecastle = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.48, 0.42 * scale, actualLength * 0.12), mat(castleColor));
+  forecastle.position.set(0, 1.42 * scale, bowZ);
+  forecastle.castShadow = true;
+  group.add(forecastle);
+  const forecastleRail = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.52, 0.08 * scale, actualLength * 0.13), mats.wood);
+  forecastleRail.position.set(0, 1.69 * scale, bowZ);
+  group.add(forecastleRail);
+
+  const rows = tier >= 5 ? [0.98, 1.2] : [1.06];
+  rows.forEach((row, rowIndex) => {
+    for (let side of [-1, 1]) {
+      for (let i = 0; i < 7 + rowIndex * 2; i++) {
+        const t = i / (6 + rowIndex * 2);
+        const z = -actualLength * 0.27 + t * actualLength * 0.54;
+        const port = new THREE.Mesh(new THREE.BoxGeometry(0.055 * scale, 0.17 * scale, 0.18 * scale), mats.dark);
+        const sideX = side * hullSideXAt(length, width, scale, z, 0.98, profile);
+        port.position.set(sideX, row * scale, z);
+        group.add(port);
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.062 * scale, 0.02 * scale, 0.23 * scale), mat(spec.color));
+        trim.position.set(sideX + side * 0.01 * scale, (row + 0.12) * scale, z);
+        group.add(trim);
+      }
+    }
+  });
+}
+
+function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, profile = "skiff") {
   const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   const customCabinTypes = new Set([
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
@@ -1179,15 +1233,23 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec) {
     "xebec", "tartane", "firstrate",
   ]);
   const customDeckTypes = new Set(["eastindiaman", "knarr", "merchantman"]);
+  const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
   const gunDeckTypes = new Set([
     "bombketch", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
     "galleon", "manowar", "merchantman", "eastindiaman", "razee", "storm", "treasure",
     "firstrate", "snow",
   ]);
-  addHullDetailLines(group, hullLength, hullWidth, scale, tier);
-  if (!customDeckTypes.has(type)) addDeckFittings(group, hullLength, hullWidth, scale, tier, spec.color);
-  addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
-  if (gunDeckTypes.has(type) || tier >= 4) addCannonPorts(group, 1 + Math.min(5, tier), hullWidth, hullLength, scale);
+  addHullDetailLines(group, hullLength, hullWidth, scale, tier, profile);
+  addDeckPlanking(group, hullLength, hullWidth, scale, tier, profile);
+  addHullPaintBands(group, hullLength, hullWidth, scale, spec, tier, profile);
+  if (!customDeckTypes.has(type)) addDeckFittings(group, hullLength, hullWidth, scale, tier, spec.color, profile);
+  if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
+  addAttachedPennant(group, hullLength, scale, spec.color, tier);
+  addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
+  if (tier >= 4 || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee"].includes(type)) {
+    addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
+  }
+  if (gunDeckTypes.has(type) || tier >= 4) addCannonPorts(group, 1 + Math.min(5, tier), hullWidth, hullLength, scale, profile);
   if (!customCabinTypes.has(type)) {
     if (tier >= 2) addCabin(group, 0, hullLength * 0.22, Math.min(2.4, hullWidth * 0.68), 1.35 + tier * 0.18, scale, 0x7a5030);
     if (tier >= 3) {
@@ -1198,11 +1260,11 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec) {
   if (tier >= 3) {
     const figure = new THREE.Mesh(new THREE.ConeGeometry(0.2 * scale, 0.8 * scale, 8), mats.gold);
     figure.rotation.x = Math.PI / 2;
-    figure.position.set(0, 1.42 * scale, -hullLength * 0.55 * scale);
+    figure.position.set(0, 1.22 * scale, -hullLength * 0.5 * scale);
     group.add(figure);
   }
   if (type === "skiff" || type === "cat" || type === "longship") {
-    addOars(group, type === "longship" ? 7 : type === "cat" ? 4 : 3, hullWidth, hullLength, scale);
+    addOars(group, type === "longship" ? 7 : type === "cat" ? 4 : 3, hullWidth, hullLength, scale, profile);
   }
 }
 
@@ -1289,11 +1351,20 @@ function makeShip(type = "skiff", remote = false) {
   const darkHulled = ["brig", "brigantine", "corvette", "frigate", "razee", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
   group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, darkHulled ? mats.hullDark : mats.hull, profile));
   [-1, 1].forEach((side) => {
-    const accent = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.055 * scale, 4.7 * scale, 8), mat(spec.color));
-    accent.rotation.x = Math.PI / 2;
-    accent.position.set(side * (hullSize[1] * 0.36) * scale, 1.42 * scale, 0.15 * scale);
-    accent.castShadow = true;
-    group.add(accent);
+    addHullSideLine(
+      group,
+      hullSize[0],
+      hullSize[1],
+      scale,
+      side,
+      1.4 * scale,
+      -hullSize[0] * 0.31 * scale,
+      hullSize[0] * 0.31 * scale,
+      mat(spec.color),
+      0.035,
+      0.96,
+      profile,
+    );
   });
   const deck = hullMesh(hullSize[0] * 0.58 * scale, hullSize[1] * 0.62 * scale, 0.24 * scale, mats.wood, profile);
   deck.position.y = 1.08 * scale;
@@ -1305,13 +1376,12 @@ function makeShip(type = "skiff", remote = false) {
     for (let i = 0; i < 5; i++) {
       const t = i / 4;
       const z = (-hullSize[0] * 0.27 + t * hullSize[0] * 0.54) * scale;
-      const centerPull = 1 - Math.abs(t - 0.5) * 1.2;
-      const x = side * hullSize[1] * (0.23 + centerPull * 0.17) * scale;
+      const x = side * hullSideXAt(hullSize[0], hullSize[1], scale, z, 0.98, profile);
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.055 * scale, 0.52 * scale, 6), mats.wood);
-      post.position.set(x, 1.7 * scale, z);
+      post.position.set(x, 1.55 * scale, z);
       post.castShadow = true;
       group.add(post);
-      railPath.push(new THREE.Vector3(x, 1.96 * scale, z));
+      railPath.push(new THREE.Vector3(x, 1.81 * scale, z));
     }
     for (let i = 1; i < railPath.length; i++) {
       const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.04 * scale, 1, 6), mats.wood);
@@ -1321,12 +1391,12 @@ function makeShip(type = "skiff", remote = false) {
     }
   });
   const stemPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.13 * scale, 1.25 * scale, 7), mat(spec.color));
-  stemPost.position.set(0, 1.2 * scale, (-hullSize[0] * 0.51) * scale);
+  stemPost.position.set(0, 1.1 * scale, (-hullSize[0] * 0.5) * scale);
   stemPost.rotation.x = -0.28;
   stemPost.castShadow = true;
   group.add(stemPost);
   const sternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.11 * scale, 1.05 * scale, 7), mats.hullDark);
-  sternPost.position.set(0, 1.14 * scale, (hullSize[0] * 0.48) * scale);
+  sternPost.position.set(0, 1.06 * scale, (hullSize[0] * 0.47) * scale);
   sternPost.rotation.x = 0.2;
   sternPost.castShadow = true;
   group.add(sternPost);
@@ -1334,9 +1404,6 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.rotation.x = Math.PI / 2;
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
-  const pennant = lateenPanel(0.9 * scale, 0.42 * scale, spec.color, 0.035 * scale);
-  pennant.position.set(0.42 * scale, 5.25 * scale, -0.2 * scale);
-  group.add(pennant);
   if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -1350,8 +1417,12 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "junk") {
     addSquareSail(group, -0.3, -0.7, 0.9, 0xf4e1b4, 3);
     addSquareSail(group, 0.45, 1.25, 0.68, 0xf0dba2, 2);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.5), mat(0xb7493f));
-    roof.position.set(0, 2, 1.6);
+    const house = new THREE.Mesh(new THREE.BoxGeometry(1.8 * scale, 0.62 * scale, 1.18 * scale), mats.wood);
+    house.position.set(0, 1.55 * scale, 1.55 * scale);
+    house.castShadow = true;
+    group.add(house);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.25 * scale, 0.38 * scale, 1.45 * scale), mat(0xb7493f));
+    roof.position.set(0, 1.98 * scale, 1.55 * scale);
     group.add(roof);
   } else if (type === "galleon") {
     addSquareSail(group, -0.7, -1.8, 0.95, 0xf6ead0, 2);
@@ -1363,10 +1434,10 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, 0.25, 0.15, 1.02, 0xf7edcf, 2);
     addSquareSail(group, 0.9, 1.95, 0.74, 0xf3e5c8, 1);
     addCabin(group, 0, 2.45, 2.8, 1.85, scale, type === "eastindiaman" ? 0x6a4636 : 0x7a5030);
-    addDeckFittings(group, hullSize[0], hullSize[1], scale, 3, spec.color);
+    addDeckFittings(group, hullSize[0], hullSize[1], scale, 3, spec.color, profile);
   } else if (type === "shallop") {
     addSail(group, 0, -0.1, 0.72, 0xf6ead0);
-    addOars(group, 3, hullSize[1], hullSize[0], scale);
+    addOars(group, 3, hullSize[1], hullSize[0], scale, profile);
   } else if (type === "pinnace") {
     addSail(group, -0.22, -0.9, 0.72, 0xd9f8ff);
     addSail(group, 0.28, 0.75, 0.62, 0xf7f0df);
@@ -1377,8 +1448,8 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "schooner" || type === "packet") {
     addSail(group, -0.35, -1.4, 0.82, 0xd8f5ff);
     addSail(group, 0.35, 0.9, 1.08, 0xbfefff);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.55, 1.1), mat(0x9ee8ff));
-    glass.position.set(0, 2, 1.9);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.35 * scale, 0.48 * scale, 0.95 * scale), mat(0x9ee8ff));
+    glass.position.set(0, 1.62 * scale, 1.75 * scale);
     group.add(glass);
     if (type === "packet") addSquareSail(group, -0.65, -2.0, 0.62, 0xf8efd8, 1);
   } else if (type === "cat") {
@@ -1391,7 +1462,7 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "dhow") {
     addSail(group, 0.25, -0.25, 1.18, 0xffefbe);
     const prow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 6, 14, Math.PI), mat(0xf0d05a));
-    prow.position.set(0, 1.5, -3.55);
+    prow.position.set(0, 1.32 * scale, -hullSize[0] * 0.48 * scale);
     prow.rotation.x = Math.PI / 2;
     group.add(prow);
   } else if (type === "bombketch") {
@@ -1407,7 +1478,7 @@ function makeShip(type = "skiff", remote = false) {
     addCabin(group, 0, 2.05, 1.9, 1.2, scale * 0.9, 0x58463a);
   } else if (type === "turtle") {
     const shell = new THREE.Mesh(new THREE.SphereGeometry(1.85 * scale, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x456b4b));
-    shell.position.y = 1.45 * scale;
+    shell.position.y = 1.22 * scale;
     shell.scale.z = 1.55;
     group.add(shell);
     addSail(group, 0, 0.5, 0.72, 0xd8f0c8);
@@ -1423,22 +1494,22 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, 0, -0.2, 0.92, 0xf1e5c4, 1);
     addCabin(group, 0, 2.0, 2.0, 1.0, scale * 0.85, 0x7a5030);
     const highStern = new THREE.Mesh(new THREE.BoxGeometry(2.3 * scale, 0.85 * scale, 0.9 * scale), mat(0x7a5030));
-    highStern.position.set(0, 2.0 * scale, 2.65 * scale);
+    highStern.position.set(0, 1.72 * scale, 2.55 * scale);
     group.add(highStern);
   } else if (type === "longship") {
     addSquareSail(group, 0, -0.15, 0.78, 0xf4d2b8, 1);
     const dragon = new THREE.Mesh(new THREE.ConeGeometry(0.28 * scale, 1.1 * scale, 8), mat(0xd8b24a));
     dragon.rotation.x = Math.PI / 2.25;
-    dragon.position.set(0, 1.85 * scale, -4.15 * scale);
+    dragon.position.set(0, 1.54 * scale, -4.08 * scale);
     group.add(dragon);
     const tail = new THREE.Mesh(new THREE.TorusGeometry(0.34 * scale, 0.055 * scale, 8, 16, Math.PI), mats.hullDark);
-    tail.position.set(0, 1.75 * scale, 3.8 * scale);
+    tail.position.set(0, 1.46 * scale, 3.76 * scale);
     tail.rotation.x = -Math.PI / 2;
     group.add(tail);
   } else if (type === "knarr") {
     addSquareSail(group, 0, -0.25, 0.86, 0xead7a8, 1);
     addCabin(group, 0, 1.85, 1.7, 1.0, scale * 0.8, 0x8b5a32);
-    addDeckFittings(group, hullSize[0], hullSize[1], scale, 2, spec.color);
+    addDeckFittings(group, hullSize[0], hullSize[1], scale, 2, spec.color, profile);
   } else if (type === "lugger" || type === "dogger") {
     addSail(group, -0.25, -1.2, 0.82, 0xe9f0dc);
     addSail(group, 0.35, 1.05, 0.78, 0xdfe8cf);
@@ -1450,10 +1521,10 @@ function makeShip(type = "skiff", remote = false) {
     addSail(group, -0.65, -1.65, 0.88, 0xffead6);
     addSail(group, 0.15, 0.05, 1.08, 0xfff4df);
     if (type === "xebec") addSail(group, 0.75, 1.75, 0.78, 0xffead6);
-    addOars(group, type === "xebec" ? 5 : 3, hullSize[1], hullSize[0], scale);
+    addOars(group, type === "xebec" ? 5 : 3, hullSize[1], hullSize[0], scale, profile);
   } else if (type === "galley") {
     addSail(group, -0.2, -0.65, 1.0, 0xf8e8bc);
-    addOars(group, 9, hullSize[1], hullSize[0], scale);
+    addOars(group, 9, hullSize[1], hullSize[0], scale, profile);
     const ram = new THREE.Mesh(new THREE.ConeGeometry(0.22 * scale, 1.6 * scale, 6), mats.gold);
     ram.rotation.x = Math.PI / 2;
     ram.position.set(0, 0.75 * scale, -4.35 * scale);
@@ -1486,7 +1557,7 @@ function makeShip(type = "skiff", remote = false) {
     addSail(group, 0, 2.0, 0.86, 0xf6ead0);
     addCabin(group, 0, 2.55, 2.9, 2.1, scale, 0x694432);
     const forecastle = new THREE.Mesh(new THREE.BoxGeometry(2.15 * scale, 1.05 * scale, 1.15 * scale), mat(0x694432));
-    forecastle.position.set(0, 2.25 * scale, -2.75 * scale);
+    forecastle.position.set(0, 1.83 * scale, -2.65 * scale);
     group.add(forecastle);
   } else if (type === "manowar" || type === "fourthrate" || type === "firstrate") {
     const sailBoost = type === "firstrate" ? 1.08 : type === "fourthrate" ? 0.96 : 1;
@@ -1501,7 +1572,7 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, 0.9, 2.15, 0.95, 0xf1d98d, 2);
     addCabin(group, 0, 2.55, 3.15, 2.2, scale, 0x9d4b3e);
     const pagoda = new THREE.Mesh(new THREE.ConeGeometry(1.35 * scale, 0.75 * scale, 4), mat(0xd6a83c));
-    pagoda.position.set(0, 3.35 * scale, 2.55 * scale);
+    pagoda.position.set(0, 2.9 * scale, 2.55 * scale);
     pagoda.rotation.y = Math.PI / 4;
     group.add(pagoda);
   } else if (type === "ironclad") {
@@ -1509,19 +1580,19 @@ function makeShip(type = "skiff", remote = false) {
     armorDeck.position.y = 1.28 * scale;
     group.add(armorDeck);
     const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * scale, 0.78 * scale, 0.48 * scale, 14), mat(0x30363b));
-    turret.position.set(0, 1.88 * scale, -0.35 * scale);
+    turret.position.set(0, 1.78 * scale, -0.35 * scale);
     group.add(turret);
     const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.14 * scale, 1.8 * scale, 10), mats.dark);
     gun.rotation.x = Math.PI / 2;
-    gun.position.set(0, 1.88 * scale, -1.45 * scale);
+    gun.position.set(0, 1.78 * scale, -1.45 * scale);
     group.add(gun);
     const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * scale, 0.28 * scale, 1.25 * scale, 10), mats.dark);
-    stack.position.set(0.72 * scale, 2.2 * scale, 1.0 * scale);
+    stack.position.set(0.72 * scale, 2.12 * scale, 1.0 * scale);
     group.add(stack);
   } else {
     addSail(group, 0, 0.2, 0.86);
   }
-  addHistoricalDetails(group, type, hullSize[0], hullSize[1], scale, spec);
+  addHistoricalDetails(group, type, hullSize[0], hullSize[1], scale, spec, profile);
   const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.2 * scale, 1.5 * scale, 8), mats.dark);
   cannon.rotation.z = Math.PI / 2;
   cannon.position.set(0, 1.7 * scale, -1.65 * scale);
