@@ -414,6 +414,33 @@ button.active {
   flex: 0 0 auto;
 }
 
+.ship-compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  margin-top: 4px;
+  color: #5a7480;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.ship-compare span {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ship-compare .better {
+  color: #247d58;
+}
+
+.ship-compare .worse {
+  color: #a94438;
+}
+
+.ship-compare .same {
+  color: #6b7f88;
+}
+
 .ship-preview {
   width: 64px;
   height: 40px;

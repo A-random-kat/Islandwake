@@ -163,12 +163,32 @@ const shipBalance = {
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
 };
 
+function armorCapForSpeed(speed) {
+  if (speed >= 31) return 0.02;
+  if (speed >= 28) return 0.03;
+  if (speed >= 25) return 0.04;
+  if (speed >= 22) return 0.06;
+  if (speed >= 19) return 0.08;
+  if (speed >= 16) return 0.11;
+  if (speed >= 13) return 0.14;
+  return 0.2;
+}
+
+function deriveShipWeight(ship) {
+  const hullMass = (ship.hitbox || 3) ** 2 * 8;
+  const structureMass = (ship.hp || 500) / 150;
+  const cargoMass = (ship.capacity || 8) * 0.5;
+  const speedTrim = (ship.speed || 15) * 0.05;
+  return Math.round(clamp(hullMass + structureMass + cargoMass - speedTrim, 35, 320));
+}
+
 for (const ship of shipCatalog) {
   const balance = shipBalance[ship.id];
   if (!balance) continue;
   Object.assign(ship, balance);
-  ship.armor = clamp(ship.armor, 0, 0.2);
+  ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
+  ship.weight = balance.weight ?? deriveShipWeight(ship);
 }
 
 const captainId = localStorage.islandwakeId || crypto.randomUUID();
@@ -219,10 +239,13 @@ const islands = [];
 const bots = [];
 const remotePlayers = new Map();
 const projectiles = [];
+const impactEffects = [];
 const fish = [];
 const crates = [];
 const labels = [];
 const SHIP_WATERLINE_Y = -0.42;
+const CANNONBALL_SPEED = 29.3;
+const BOT_CANNON_RANGE = 34;
 const minimapCtx = ui.minimap.getContext("2d");
 const shipPreviewCache = new Map();
 let shipPreviewRenderer;
@@ -275,7 +298,7 @@ function nameGateOpen() {
 }
 
 function xpForLevel(level) {
-  return Math.round(50 + level * 24);
+  return Math.round((50 + level * 24) * 1.25);
 }
 
 function addXP(amount) {
@@ -317,6 +340,129 @@ function shipHitRadius(type = state.shipType) {
   return getShipStats(type).hitbox || 3;
 }
 
+function shipWeight(type = state.shipType) {
+  return Math.max(1, getShipStats(type).weight || 80);
+}
+
+function shipVisualScale(type = state.shipType) {
+  return {
+    shallop: 0.86,
+    pinnace: 0.88,
+    dart: 0.82,
+    cat: 0.92,
+    longship: 0.92,
+    dogger: 0.96,
+    sloop: 0.94,
+    tartane: 0.96,
+    storm: 0.92,
+    brig: 1.12,
+    brigantine: 1.1,
+    packet: 1.05,
+    barquentine: 1.12,
+    barque: 1.15,
+    bombketch: 1.22,
+    turtle: 1.22,
+    corvette: 1.16,
+    frigate: 1.22,
+    razee: 1.28,
+    galleon: 1.28,
+    merchantman: 1.28,
+    eastindiaman: 1.34,
+    carrack: 1.34,
+    treasure: 1.48,
+    fourthrate: 1.38,
+    manowar: 1.42,
+    firstrate: 1.5,
+    ironclad: 1.48,
+  }[type] || 1;
+}
+
+function shipHullDimensions(type = state.shipType) {
+  const [length, width] = {
+    shallop: [5.6, 1.85],
+    pinnace: [6.5, 1.75],
+    dart: [7.7, 1.75],
+    clipper: [7.4, 2.35],
+    galleon: [7.2, 3.25],
+    brig: [6.9, 3.05],
+    brigantine: [7.2, 2.75],
+    cat: [5.8, 1.45],
+    turtle: [6.2, 3.55],
+    bombketch: [6.4, 3.4],
+    storm: [8.1, 2.25],
+    sloop: [7.4, 2.0],
+    dhow: [7.1, 2.25],
+    cog: [6.2, 3.05],
+    hoy: [5.9, 2.85],
+    dogger: [6.6, 2.2],
+    xebec: [8.3, 2.4],
+    tartane: [7.2, 2.15],
+    caravel: [6.9, 2.65],
+    pink: [6.6, 2.55],
+    ketch: [6.9, 2.5],
+    frigate: [8.2, 2.9],
+    corvette: [7.8, 2.65],
+    razee: [8.5, 3.0],
+    carrack: [7.4, 3.5],
+    manowar: [8.4, 3.8],
+    fourthrate: [8.3, 3.65],
+    firstrate: [9.0, 4.0],
+    longship: [8.7, 1.7],
+    knarr: [6.5, 2.6],
+    lugger: [7.0, 2.15],
+    galley: [8.8, 2.2],
+    snow: [7.5, 2.8],
+    packet: [7.8, 2.45],
+    barquentine: [7.7, 2.55],
+    barque: [8.0, 2.8],
+    fluyt: [7.0, 3.4],
+    merchantman: [7.4, 3.45],
+    eastindiaman: [7.8, 3.55],
+    treasure: [8.0, 4.15],
+    ironclad: [7.8, 3.7],
+  }[type] || [6.5, 2.7];
+  const scale = shipVisualScale(type);
+  return { length: length * scale, width: width * scale };
+}
+
+function projectileHitsHull(localPoint, type) {
+  const { length, width } = shipHullDimensions(type);
+  const halfLength = length * 0.53 + 0.25;
+  const zT = Math.abs(localPoint.z) / halfLength;
+  if (zT > 1) return false;
+  const taper = clamp(1 - Math.pow(zT, 1.65) * 0.82, 0.18, 1);
+  const halfWidth = width * 0.52 * taper + 0.18;
+  const hullTop = 1.72 * shipVisualScale(type) + shipTier(type) * 0.16;
+  if (localPoint.y < -0.42 || localPoint.y > hullTop) return false;
+  const deckCurve = clamp(1 - Math.pow(Math.abs(localPoint.x) / Math.max(0.2, halfWidth), 2), 0, 1);
+  const allowedY = hullTop - (1 - deckCurve) * 0.42;
+  return Math.abs(localPoint.x) <= halfWidth && localPoint.y <= allowedY;
+}
+
+function projectileHitsMast(localPoint, type) {
+  const { length } = shipHullDimensions(type);
+  const scale = shipVisualScale(type);
+  const tier = shipTier(type);
+  const mastBottom = 1.05 * scale;
+  const mastTop = (5.2 + Math.min(1.4, tier * 0.32)) * scale;
+  if (localPoint.y < mastBottom || localPoint.y > mastTop) return false;
+  return mastPlan(type, length / scale).some((mastZ) => {
+    const z = -mastZ * scale;
+    const mastRadius = 0.22 * scale + 0.22;
+    return Math.hypot(localPoint.x, localPoint.z - z) <= mastRadius;
+  });
+}
+
+function projectileHitsShip(shot, ship, type) {
+  if (!ship) return false;
+  const broadRadius = Math.max(shipHitRadius(type) + 0.75, shipHullDimensions(type).length * 0.56);
+  if (dist2(shot.mesh.position, ship.position || ship) >= broadRadius) return false;
+  const localPoint = ship.worldToLocal
+    ? ship.worldToLocal(shot.mesh.position.clone())
+    : shot.mesh.position.clone().sub(ship.position || ship);
+  return projectileHitsHull(localPoint, type) || projectileHitsMast(localPoint, type);
+}
+
 function cargoCount() {
   return Object.values(state.cargo).reduce((total, count) => total + count, 0);
 }
@@ -335,6 +481,33 @@ function cannonReload() {
 
 function cannonRange() {
   return 34 + state.upgrades.range * 12;
+}
+
+function botCannonDamage(level = 1) {
+  return 34 + Math.max(0, Math.floor(level) - 1) * 4;
+}
+
+function botCannonReload() {
+  return 0.78;
+}
+
+function compareStatLabel(label, delta, suffix = "") {
+  if (!delta) return `<span class="same">${label} =</span>`;
+  const sign = delta > 0 ? "+" : "";
+  const className = delta > 0 ? "better" : "worse";
+  return `<span class="${className}">${label} ${sign}${delta}${suffix}</span>`;
+}
+
+function shipCompareMarkup(ship) {
+  const current = getShipStats();
+  const parts = [
+    compareStatLabel("HP", ship.hp - current.hp),
+    compareStatLabel("Armor", Math.round((ship.armor - current.armor) * 100), "%"),
+    compareStatLabel("Speed", ship.speed - current.speed),
+    compareStatLabel("Regen", ship.regen - current.regen),
+    compareStatLabel("Hold", ship.capacity - current.capacity),
+  ];
+  return `<div class="ship-compare">Vs your ${current.name}: ${parts.join(" ")}</div>`;
 }
 
 function availableShipsForIsland(island) {
@@ -514,6 +687,31 @@ function makeIsland(data) {
   shop.add(roof);
   shop.position.set(-radius * 0.24, 0, -radius * 0.05);
   group.add(shop);
+  const addBlock = (x, z, w, h, d, color, y = 3.2, blocks = true) => {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+    block.position.set(x, y + h * 0.5, z);
+    block.castShadow = true;
+    block.receiveShadow = true;
+    group.add(block);
+    if (blocks) collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d });
+    return block;
+  };
+  const addCone = (x, z, r, h, color, y = 5.4, sides = 4) => {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, sides), mat(color));
+    cone.position.set(x, y, z);
+    cone.rotation.y = Math.PI / sides;
+    cone.castShadow = true;
+    group.add(cone);
+    return cone;
+  };
+  const addTent = (x, z, color) => {
+    const cloth = new THREE.Mesh(new THREE.ConeGeometry(2.1, 1.2, 4), mat(color));
+    cloth.position.set(x, 3.55, z);
+    cloth.rotation.y = Math.PI / 4;
+    cloth.castShadow = true;
+    group.add(cloth);
+    obstacles.push({ x: data.x + x, z: data.z + z, r: 1.6 });
+  };
   if (data.theme === "norse") {
     const hall = new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.4, 3.1), mat(0x8b5a32));
     hall.position.set(4.4, 3.7, -3.4);
@@ -541,6 +739,71 @@ function makeIsland(data) {
       group.add(tower);
       obstacles.push({ x: data.x + side * 5.2, z: data.z - 5.2, r: 1.8 });
     }
+  }
+  if (data.theme === "starter") {
+    const light = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 4.6, 10), mat(0xf6ead0));
+    light.position.set(5.6, 4.9, -5.4);
+    light.castShadow = true;
+    group.add(light);
+    addCone(5.6, -5.4, 1.25, 0.9, accent, 7.7, 10);
+    obstacles.push({ x: data.x + 5.6, z: data.z - 5.4, r: 1.25 });
+  }
+  if (data.theme === "iberian") {
+    addBlock(4.7, -4.5, 3.2, 3.6, 3.0, 0xf4e5c9);
+    addCone(4.7, -4.5, 2.2, 1.4, 0xb84f44, 6.7);
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.13, 8, 18, Math.PI), mat(accent));
+    arch.position.set(-1.2, 3.65, -7.2);
+    arch.rotation.x = Math.PI / 2;
+    group.add(arch);
+  }
+  if (data.theme === "lagoon") {
+    const bridge = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.16, 8, 18, Math.PI), mat(0xd7b44a));
+    bridge.position.set(3.7, 3.25, 3.0);
+    bridge.rotation.x = Math.PI / 2;
+    group.add(bridge);
+    addBlock(-5.1, -4.1, 2.5, 2.5, 2.4, 0xe2d0a5);
+    addCone(-5.1, -4.1, 1.8, 0.9, accent, 5.3);
+  }
+  if (data.theme === "trade") {
+    addBlock(4.8, -4.0, 4.8, 2.6, 3.2, 0xb77b42);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5.2, 7), mats.wood);
+    mast.position.set(-5.4, 5.0, -2.6);
+    group.add(mast);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.5, 0.16), mat(0xf8f4e5));
+    blade.position.set(-5.4, 6.8, -2.6);
+    group.add(blade);
+    const blade2 = blade.clone();
+    blade2.rotation.z = Math.PI / 2;
+    group.add(blade2);
+    obstacles.push({ x: data.x - 5.4, z: data.z - 2.6, r: 1.2 });
+  }
+  if (data.theme === "dhow" || data.theme === "market") {
+    addTent(4.6, -3.9, accent);
+    addTent(1.8, -6.2, 0xf0d05a);
+    addTent(6.8, -0.8, 0xda9c5c);
+  }
+  if (data.theme === "schooner") {
+    addBlock(4.8, -4.2, 5.6, 1.0, 2.2, 0xb77b42, 3.0);
+    for (let i = 0; i < 3; i++) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(1.05 + i * 0.2, 0.055, 6, 12, Math.PI), mats.wood);
+      rib.position.set(3.7 + i * 0.9, 3.65, -4.2);
+      rib.rotation.x = Math.PI / 2;
+      group.add(rib);
+    }
+  }
+  if (data.theme === "atoll") {
+    addTent(4.4, -4.0, 0xef6f4f);
+    const shell = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.16, 8, 18), mat(0xf8f4e5));
+    shell.position.set(-5.2, 3.05, -4.2);
+    shell.scale.z = 0.5;
+    group.add(shell);
+  }
+  if (data.theme === "rocky") {
+    const cave = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.45, 8, 18, Math.PI), mat(0x3f4650));
+    cave.position.set(5.2, 3.3, -4.5);
+    cave.rotation.x = Math.PI / 2;
+    group.add(cave);
+    obstacles.push({ x: data.x + 5.2, z: data.z - 4.5, r: 2.4 });
   }
   const palmCount = data.theme === "atoll" ? 8 : 5;
   for (let i = 0; i < palmCount; i++) {
@@ -628,6 +891,17 @@ function randomWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
   return new THREE.Vector3(range * 0.65, SHIP_WATERLINE_Y, range * 0.65);
 }
 
+function randomTravelWaterPoint(range = MAP_LIMIT * 0.92) {
+  const point = new THREE.Vector3();
+  for (let i = 0; i < 90; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = range * (0.42 + Math.random() * 0.55);
+    point.set(Math.sin(angle) * radius, SHIP_WATERLINE_Y, Math.cos(angle) * radius);
+    if (!pointInAnyIsland(point, 22)) return point.clone();
+  }
+  return randomWaterPoint(range, 92);
+}
+
 function landingPointForShip(island, shipPosition) {
   const center = island.group.position;
   const baseAngle = Math.atan2(shipPosition.x - center.x, shipPosition.z - center.z);
@@ -671,18 +945,45 @@ function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.
     ? new THREE.Vector3(dx / distance, 0, dz / distance)
     : new THREE.Vector3(Math.sin(clock.elapsedTime * 8.17), 0, Math.cos(clock.elapsedTime * 8.17)).normalize();
   const overlap = minDistance - distance;
-  const totalShare = Math.max(0.001, aShare + bShare);
-  posA.add(normal.clone().multiplyScalar(overlap * (aShare / totalShare)));
-  posB.add(normal.clone().multiplyScalar(-overlap * (bShare / totalShare)));
-  if (velA) {
-    const inward = velA.dot(normal);
-    if (inward < 0) velA.add(normal.clone().multiplyScalar(-inward * 0.9));
-    velA.multiplyScalar(0.82);
-  }
-  if (velB) {
-    const inward = velB.dot(normal);
-    if (inward > 0) velB.add(normal.clone().multiplyScalar(-inward * 0.9));
-    velB.multiplyScalar(0.82);
+  const massA = shipWeight(typeA);
+  const massB = shipWeight(typeB);
+  const aMotion = aShare / massA;
+  const bMotion = bShare / massB;
+  const totalMotion = Math.max(0.000001, aMotion + bMotion);
+  const correction = Math.max(0, overlap - 0.08) * 0.68;
+  posA.add(normal.clone().multiplyScalar(correction * (aMotion / totalMotion)));
+  posB.add(normal.clone().multiplyScalar(-correction * (bMotion / totalMotion)));
+
+  const invMassA = velA && aShare > 0 ? aShare / massA : 0;
+  const invMassB = velB && bShare > 0 ? bShare / massB : 0;
+  const totalInvMass = invMassA + invMassB;
+  if (totalInvMass > 0) {
+    const velocityA = velA ? velA.dot(normal) : 0;
+    const velocityB = velB ? velB.dot(normal) : 0;
+    const relativeNormalSpeed = velocityA - velocityB;
+    const biasSpeed = clamp(Math.max(0, overlap - 0.12) * 0.42, 0, 1.9);
+    let normalImpulse = 0;
+    if (relativeNormalSpeed < biasSpeed) {
+      const restitution = relativeNormalSpeed < -5 ? 0.12 : 0.02;
+      normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / totalInvMass, 0, 900);
+      if (velA) velA.add(normal.clone().multiplyScalar(normalImpulse * invMassA));
+      if (velB) velB.add(normal.clone().multiplyScalar(-normalImpulse * invMassB));
+    }
+    if (normalImpulse > 0) {
+      const relativeVelocity = new THREE.Vector3();
+      if (velA) relativeVelocity.add(velA);
+      if (velB) relativeVelocity.sub(velB);
+      const tangent = relativeVelocity.sub(normal.clone().multiplyScalar(relativeVelocity.dot(normal)));
+      const tangentSpeed = tangent.length();
+      if (tangentSpeed > 0.001) {
+        const frictionImpulse = Math.min(tangentSpeed / totalInvMass, normalImpulse * 0.42);
+        tangent.multiplyScalar(-frictionImpulse / tangentSpeed);
+        if (velA) velA.add(tangent.clone().multiplyScalar(invMassA));
+        if (velB) velB.add(tangent.clone().multiplyScalar(-invMassB));
+      }
+    }
+    if (velA) velA.multiplyScalar(0.985);
+    if (velB) velB.multiplyScalar(0.985);
   }
   return true;
 }
@@ -846,8 +1147,10 @@ function addMastBase(group, z, scale) {
 function addSail(group, x, z, scale, color = 0xfff4da) {
   const mastX = 0;
   const mastZ = z;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale, 0.14 * scale, 5.5 * scale, 7), mats.dark);
-  mast.position.set(mastX, 3.2 * scale, mastZ);
+  const mastBottom = 1.42 * scale;
+  const mastHeight = 4.6 * scale;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale, 0.14 * scale, mastHeight, 7), mats.dark);
+  mast.position.set(mastX, mastBottom + mastHeight * 0.5, mastZ);
   mast.castShadow = true;
   group.add(mast);
   addMastBase(group, mastZ, scale);
@@ -876,8 +1179,10 @@ function addSail(group, x, z, scale, color = 0xfff4da) {
 function addSquareSail(group, x, z, scale, color = 0xfff4da, tiers = 1) {
   const mastX = 0;
   const mastZ = z;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, (5.2 + tiers) * scale, 7), mats.dark);
-  mast.position.set(mastX, 3.25 * scale, mastZ);
+  const mastBottom = 1.42 * scale;
+  const mastHeight = (4.6 + tiers * 0.55) * scale;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, mastHeight, 7), mats.dark);
+  mast.position.set(mastX, mastBottom + mastHeight * 0.5, mastZ);
   mast.castShadow = true;
   group.add(mast);
   addMastBase(group, mastZ, scale);
@@ -1713,13 +2018,91 @@ function makeCharacter() {
   return group;
 }
 
-function makeProjectile(owner, pos, dir, damage, range) {
+function makeProjectile(owner, pos, dir, damage, range, options = {}) {
+  const target = options.target
+    ? options.target.clone()
+    : pos.clone().add(dir.clone().normalize().multiplyScalar(range));
+  target.y = 0;
+  const start = pos.clone();
+  start.y = 1.15;
+  const distance = Math.max(1, dist2(start, target));
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), mats.dark);
-  mesh.position.copy(pos);
-  mesh.position.y = 1.2;
+  mesh.position.copy(start);
   mesh.castShadow = true;
   scene.add(mesh);
-  projectiles.push({ owner, mesh, dir: dir.clone(), speed: 52, life: range / 52, damage });
+  const trail = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]),
+    new THREE.LineBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.62 })
+  );
+  scene.add(trail);
+  projectiles.push({
+    owner,
+    mesh,
+    trail,
+    trailPoints: [start.clone()],
+    start,
+    target,
+    dir: dir.clone().normalize(),
+    speed: CANNONBALL_SPEED,
+    traveled: 0,
+    distance,
+    damage,
+    targetKind: options.targetKind || "any",
+    arcHeight: clamp(distance * 0.16, 3.2, 10.5),
+  });
+}
+
+function addImpactEffect(group, life = 0.7) {
+  scene.add(group);
+  impactEffects.push({ group, life, age: 0 });
+}
+
+function makeSplashEffect(position) {
+  const group = new THREE.Group();
+  group.position.set(position.x, 0.08, position.z);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.78, 24), ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.userData.baseScale = 1;
+  group.add(ring);
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.25;
+    const drop = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11 + Math.random() * 0.07, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.88 })
+    );
+    drop.position.set(Math.cos(angle) * 0.25, 0.16, Math.sin(angle) * 0.25);
+    drop.userData.velocity = new THREE.Vector3(Math.cos(angle) * (2.2 + Math.random()), 3.2 + Math.random() * 1.4, Math.sin(angle) * (2.2 + Math.random()));
+    group.add(drop);
+  }
+  addImpactEffect(group, 0.68);
+}
+
+function makeSplinterEffect(position, dir) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  const forward = dir.clone().normalize();
+  const side = new THREE.Vector3(forward.z, 0, -forward.x);
+  for (let i = 0; i < 13; i++) {
+    const shard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08 + Math.random() * 0.08, 0.08 + Math.random() * 0.08, 0.55 + Math.random() * 0.55),
+      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xd6a45d : 0x8b5a32, transparent: true, opacity: 0.95 })
+    );
+    shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    const spread = forward.clone().multiplyScalar(1.2 + Math.random() * 2.0)
+      .add(side.clone().multiplyScalar((Math.random() - 0.5) * 4.2))
+      .add(new THREE.Vector3(0, 1.1 + Math.random() * 2.4, 0));
+    shard.userData.velocity = spread;
+    shard.userData.spin = new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+    group.add(shard);
+  }
+  const puff = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xf2dfb7, transparent: true, opacity: 0.5 })
+  );
+  puff.userData.puff = true;
+  group.add(puff);
+  addImpactEffect(group, 0.78);
 }
 
 function makeLeviathanMesh() {
@@ -1962,6 +2345,7 @@ function initWorld() {
     group.rotation.y = Math.random() * Math.PI * 2;
     scene.add(group);
     bots.push({
+      localId: `bot-${i}`,
       isBot: true,
       group,
       shipType: spec.id,
@@ -1971,7 +2355,9 @@ function initWorld() {
       velocity: new THREE.Vector3(),
       rotation: group.rotation.y,
       agroUntil: 0,
-      naturallyAggressive: Math.random() < 0.04,
+      naturallyAggressive: Math.random() < 0.16,
+      targetBot: null,
+      botFightUntil: 0,
       fireCooldown: 1.6 + Math.random() * 2.4,
     });
   }
@@ -1979,6 +2365,10 @@ function initWorld() {
 
 function setTool(tool) {
   state.tool = tool;
+  if (tool !== "glass" && state.spyTarget) {
+    state.spyTarget = null;
+    updateSpyPanel();
+  }
   Object.entries(ui.toolButtons).forEach(([name, button]) => button.classList.toggle("active", name === tool));
 }
 
@@ -2030,7 +2420,6 @@ function setupNameGate() {
     ui.nameGate.classList.add("hidden");
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
     updateHud();
-    toast(`Welcome aboard, ${nextName}.`);
   });
 }
 
@@ -2164,9 +2553,12 @@ function useTool() {
     state.cooldown = fireDelay;
     const damage = cannonDamage();
     const range = cannonRange();
+    const targetDistance = clamp(dist2(playerShip.position, aimPoint), 4, range);
+    const target = playerShip.position.clone().add(dir.clone().multiplyScalar(targetDistance));
+    target.y = 0;
     const origin = playerShip.position.clone().add(dir.clone().multiplyScalar(3.8));
-    makeProjectile(playerId, origin, dir, damage, range);
-    publishShot(origin, dir, damage, range);
+    makeProjectile(playerId, origin, dir, damage, range, { target });
+    publishShot(origin, dir, damage, range, target);
   } else if (state.tool === "rod") {
     if (state.rodCooldown > 0) return;
     state.rodCooldown = 1.1;
@@ -2187,7 +2579,7 @@ function useTool() {
       startFishing(dir);
     }
   } else if (state.tool === "glass") {
-    inspectWithSpyglass(dir);
+    inspectWithSpyglass(dir, true);
   }
 }
 
@@ -2205,7 +2597,18 @@ function collectCrate(crate) {
   toast("Crate recovered: repairs, gold, and XP.");
 }
 
-function inspectWithSpyglass(dir = null) {
+function botCollectCrates(bot) {
+  if (multiplayer.serverWorld || !bot?.group || !crates.length) return;
+  const spec = getShipStats(bot.shipType);
+  const pickupRadius = shipHitRadius(bot.shipType) + 1.15;
+  crates.slice().forEach((crate) => {
+    if (dist2(bot.group.position, crate.mesh.position) > pickupRadius) return;
+    bot.hp = clamp((Number(bot.hp) || spec.hp) + (Number(crate.heal) || 0), 0, bot.serverMaxHp || spec.hp);
+    removeCrate(crate);
+  });
+}
+
+function inspectWithSpyglass(dir = null, requireShipHit = false) {
   if (state.mode !== "ship") return toast("Use the spyglass from your ship.");
   if (!dir) {
     dir = new THREE.Vector3();
@@ -2217,37 +2620,59 @@ function inspectWithSpyglass(dir = null) {
   const candidates = [
     ...bots.map((bot) => {
       const spec = getShipStats(bot.shipType);
-      return { kind: "Hostile", name: spec.name, level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipType: bot.shipType };
+      return { kind: "Hostile", name: spec.name, level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
     }),
     ...[...remotePlayers.values()].map((p) => {
       const spec = getShipStats(p.shipType);
-      return { kind: "Captain", name: p.name, level: p.level || 1, hp: p.hp || spec.hp, max: spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: p.lookPosition || p.group.position, shipType: p.shipType };
+      return { kind: "Captain", name: p.name, level: p.level || 1, hp: p.hp || spec.hp, max: spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: p.lookPosition || p.group.position, shipPos: p.group.position, shipType: p.shipType, group: p.group };
     }),
   ];
-  const target = candidates
-    .map((item) => {
-      const toTarget = item.pos.clone().sub(playerShip.position);
-      const distance = toTarget.length();
-      toTarget.y = 0;
-      const aim = toTarget.lengthSq() ? dir.dot(toTarget.normalize()) : 0;
-      return { ...item, distance, aim };
-    })
-    .filter((item) => item.distance < 135 && item.aim > -0.2)
-    .sort((a, b) => (b.aim * 55 - b.distance * 0.35) - (a.aim * 55 - a.distance * 0.35))[0]
-    || candidates
-      .map((item) => ({ ...item, distance: dist2(playerShip.position, item.pos), aim: 0 }))
-      .filter((item) => item.distance < 80)
-      .sort((a, b) => a.distance - b.distance)[0];
+  const directTarget = requireShipHit
+    ? candidates
+      .map((item) => {
+        if (!item.group?.visible) return null;
+        const hit = raycaster.intersectObject(item.group, true)[0];
+        return hit ? { ...item, pos: item.shipPos, distance: dist2(playerShip.position, item.shipPos), hitDistance: hit.distance } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.hitDistance - b.hitDistance)[0]
+    : null;
+  const scanned = requireShipHit ? [] : candidates.map((item) => {
+    const scanPos = requireShipHit ? item.shipPos : item.pos;
+    const toTarget = scanPos.clone().sub(playerShip.position);
+    toTarget.y = 0;
+    const distance = toTarget.length();
+    const forward = toTarget.dot(dir);
+    const closest = playerShip.position.clone().add(dir.clone().multiplyScalar(forward));
+    const missDistance = dist2(scanPos, closest);
+    const aim = distance > 0.01 ? dir.dot(toTarget.clone().normalize()) : 0;
+    return {
+      ...item,
+      pos: scanPos,
+      distance,
+      aim,
+      forward,
+      missDistance,
+      hitRadius: shipHitRadius(item.shipType) * 0.95,
+    };
+  });
+  const target = requireShipHit
+    ? directTarget
+    : scanned
+      .filter((item) => item.distance < 135 && item.aim > -0.2)
+      .sort((a, b) => (b.aim * 55 - b.distance * 0.35) - (a.aim * 55 - a.distance * 0.35))[0]
+      || scanned
+        .filter((item) => item.distance < 80)
+        .sort((a, b) => a.distance - b.distance)[0];
   if (!target) {
     state.spyTarget = null;
-    toast("Spyglass found no ships. Aim toward a sail.");
+    if (!requireShipHit) toast("Spyglass found no ships. Aim toward a sail.");
     updateSpyPanel();
     return;
   }
   const crateEstimate = crateDropCount({ isBot: true, shipType: target.shipType, level: target.level });
   const threat = target.level > state.level + 2 ? "Dangerous" : target.hp < target.max * 0.4 ? "Wounded" : "Manageable";
   state.spyTarget = { ...target, crateEstimate, threat, expires: clock.elapsedTime + 8 };
-  toast(`Spyglass locked: ${target.name}.`);
   updateSpyPanel();
 }
 
@@ -2325,7 +2750,7 @@ function renderShop() {
       const previewMarkup = preview
         ? `<img class="ship-preview" src="${preview}" alt="${ship.name} preview">`
         : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p></div></div>`;
+      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p>${shipCompareMarkup(ship)}</div></div>`;
     }).join("");
   } else {
     const ups = [
@@ -2432,6 +2857,52 @@ function updateWalker(dt) {
   character.position.y = groundY + state.walkHeight + Math.sin(clock.elapsedTime * 5) * 0.035;
 }
 
+function nearestBotEnemy(bot, maxDistance = 52) {
+  let best = null;
+  let bestDistance = maxDistance;
+  bots.forEach((other) => {
+    if (other === bot || other.hp <= 0) return;
+    const distance = dist2(bot.group.position, other.group.position);
+    if (distance < bestDistance) {
+      best = other;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
+function startBotFeud(bot, enemy, seconds = 9) {
+  if (!bot || !enemy) return;
+  bot.targetBot = enemy.localId;
+  bot.botFightUntil = clock.elapsedTime + seconds;
+  if (Math.random() < 0.7) {
+    enemy.targetBot = bot.localId;
+    enemy.botFightUntil = clock.elapsedTime + seconds * 0.85;
+  }
+}
+
+function botAimedTargetPoint(origin, targetPosition, targetVelocity = null, maxRange = BOT_CANNON_RANGE) {
+  const target = targetPosition.clone();
+  target.y = 0;
+  const baseOffset = target.clone().sub(origin);
+  baseOffset.y = 0;
+  const distance = baseOffset.length();
+  if (targetVelocity && distance > 0.01) {
+    const leadTime = clamp((distance / CANNONBALL_SPEED) * 0.35, 0, 0.9);
+    const lead = targetVelocity.clone();
+    lead.y = 0;
+    target.add(lead.multiplyScalar(leadTime));
+  }
+  const offset = target.clone().sub(origin);
+  offset.y = 0;
+  const aimedDistance = offset.length();
+  if (aimedDistance > maxRange && aimedDistance > 0.001) {
+    target.copy(origin).add(offset.normalize().multiplyScalar(maxRange));
+  }
+  target.y = 0;
+  return target;
+}
+
 function updateBots(dt) {
   if (multiplayer.serverWorld) {
     bots.forEach((bot, i) => {
@@ -2450,22 +2921,31 @@ function updateBots(dt) {
     const spec = getShipStats(bot.shipType);
     const playerDistance = dist2(bot.group.position, playerShip.position);
     const aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 28));
+    let fightingBot = bot.targetBot && bot.botFightUntil > clock.elapsedTime
+      ? bots.find((other) => other.localId === bot.targetBot && other.hp > 0)
+      : null;
+    if (!fightingBot && !aggressive && Math.random() < dt * 0.018) {
+      fightingBot = nearestBotEnemy(bot, 54);
+      if (fightingBot) startBotFeud(bot, fightingBot, 8 + Math.random() * 8);
+    }
     bot.turn -= dt;
     bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
     if (aggressive) {
       bot.target = playerShip.position.clone();
+    } else if (fightingBot) {
+      bot.target = fightingBot.group.position.clone();
     } else if (bot.turn < 0) {
       bot.turn = 4 + Math.random() * 7;
-      bot.target = randomWaterPoint(MAP_LIMIT * 0.86);
+      bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
     }
     const target = bot.target || playerShip.position;
     const toTarget = target.clone().sub(bot.group.position);
     toTarget.y = 0;
     const targetDistance = toTarget.length();
-    if (!aggressive && targetDistance < 9) {
+    if (!aggressive && !fightingBot && targetDistance < 9) {
       bot.velocity.multiplyScalar(Math.pow(0.62, dt * 3));
       bot.turn = 1.5 + Math.random() * 2.5;
-      bot.target = randomWaterPoint(MAP_LIMIT * 0.86);
+      bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
     }
     if (targetDistance > 5) {
       const avoidance = new THREE.Vector3();
@@ -2485,7 +2965,7 @@ function updateBots(dt) {
       };
       if (state.mode === "ship") avoidShip(playerShip.position, state.shipType, aggressive ? 0.55 : 1);
       bots.forEach((other) => {
-        if (other !== bot) avoidShip(other.group.position, other.shipType, 0.75);
+        if (other !== bot) avoidShip(other.group.position, other.shipType, fightingBot === other ? 0.28 : 0.75);
       });
       remotePlayers.forEach((remote) => {
         if (remote.group.visible) avoidShip(remote.group.position, remote.shipType, 0.8);
@@ -2493,14 +2973,15 @@ function updateBots(dt) {
       const steerTarget = toTarget.clone().add(avoidance);
       const desired = Math.atan2(steerTarget.x, steerTarget.z);
       const delta = angleDelta(desired, bot.rotation);
-      const turnRate = aggressive ? 0.95 + spec.speed / 46 : 0.6 + spec.speed / 64;
+      const inCombat = aggressive || Boolean(fightingBot);
+      const turnRate = inCombat ? 0.95 + spec.speed / 46 : 0.6 + spec.speed / 64;
       const turnStep = clamp(delta, -dt * turnRate, dt * turnRate);
       bot.rotation += turnStep;
       const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const arrive = clamp(targetDistance / (aggressive ? 20 : 34), 0.18, 1);
-      const desiredVelocity = forward.multiplyScalar(spec.speed * (aggressive ? 0.48 : 0.28) * facing * arrive);
-      bot.velocity.lerp(desiredVelocity, clamp(dt * (aggressive ? 1.5 : 1.0), 0, 0.18));
+      const arrive = clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
+      const desiredVelocity = forward.multiplyScalar(spec.speed * (inCombat ? 0.48 : 0.28) * facing * arrive);
+      bot.velocity.lerp(desiredVelocity, clamp(dt * (inCombat ? 1.5 : 1.0), 0, 0.18));
       bot.velocity.multiplyScalar(Math.pow(0.92, dt * 3));
       const next = bot.group.position.clone().add(bot.velocity.clone().multiplyScalar(dt));
       const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + shipHitRadius(bot.shipType) * 0.6 + 5);
@@ -2510,36 +2991,58 @@ function updateBots(dt) {
         bot.velocity.multiplyScalar(0.08);
         const away = Math.atan2(bot.group.position.x - blockedIsland.group.position.x, bot.group.position.z - blockedIsland.group.position.z);
         bot.rotation = lerpAngle(bot.rotation, away, 0.08);
-        bot.target = randomWaterPoint(MAP_LIMIT * 0.86);
+        bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
         bot.agroUntil = 0;
+        bot.targetBot = null;
         bot.turn = 2 + Math.random() * 3;
       }
       bot.group.rotation.y = bot.rotation;
     }
     bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
-    const shotDir = playerShip.position.clone().sub(bot.group.position);
+    botCollectCrates(bot);
+    const shotTarget = aggressive ? playerShip : fightingBot?.group;
+    const shotDir = shotTarget ? shotTarget.position.clone().sub(bot.group.position) : new THREE.Vector3();
     shotDir.y = 0;
     const facing = shotDir.lengthSq()
       ? new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation)).dot(shotDir.clone().normalize())
       : 0;
-    const canFire = state.mode === "ship" && bot.fireCooldown <= 0 && facing > 0.45;
-    if (aggressive && playerDistance < 34 && canFire) {
-      const shot = shotDir.normalize();
-      makeProjectile(`bot-${i}`, bot.group.position.clone().add(shot.clone().multiplyScalar(3.4)), shot, 7 + bot.level * 1.25, 34);
-      bot.fireCooldown = Math.max(1.6, 3.6 - Math.min(1.2, bot.level * 0.1));
+    const shotDistance = shotDir.length();
+    const canFire = shotTarget && bot.fireCooldown <= 0 && facing > 0.45;
+    if (canFire && shotDistance <= BOT_CANNON_RANGE && shotDistance > 0.01) {
+      const targetVelocity = fightingBot ? fightingBot.velocity : state.velocity;
+      const origin = bot.group.position.clone();
+      const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, BOT_CANNON_RANGE);
+      const shot = targetPoint.clone().sub(origin);
+      shot.y = 0;
+      if (shot.lengthSq() < 0.01) return;
+      shot.normalize();
+      makeProjectile(
+        bot.localId,
+        origin.add(shot.clone().multiplyScalar(3.4)),
+        shot,
+        botCannonDamage(bot.level),
+        BOT_CANNON_RANGE,
+        { target: targetPoint, targetKind: fightingBot ? "bot" : "player" },
+      );
+      bot.fireCooldown = botCannonReload();
     }
   });
 }
 
 function updateProjectiles(dt) {
   projectiles.slice().forEach((shot) => {
-    shot.life -= dt;
-    shot.mesh.position.add(shot.dir.clone().multiplyScalar(shot.speed * dt));
-    shot.mesh.position.y = 1.1 + Math.sin(clock.elapsedTime * 16) * 0.1;
+    shot.traveled += shot.speed * dt;
+    const progress = clamp(shot.traveled / shot.distance, 0, 1);
+    shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
+    shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    shot.trailPoints.push(shot.mesh.position.clone());
+    while (shot.trailPoints.length > 7) shot.trailPoints.shift();
+    shot.trail.geometry.setFromPoints(shot.trailPoints);
+    shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
     let hit = false;
     if (shot.owner === playerId) {
       bots.forEach((bot) => {
-        if (!hit && dist2(shot.mesh.position, bot.group.position) < shipHitRadius(bot.shipType) + 0.35) {
+        if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
           if (multiplayer.serverWorld && bot.serverId) {
             sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage });
           } else {
@@ -2550,18 +3053,65 @@ function updateProjectiles(dt) {
         }
       });
       remotePlayers.forEach((remote) => {
-        if (!hit && dist2(shot.mesh.position, remote.group.position) < shipHitRadius(remote.shipType) + 0.35) {
-          addXP(5 + Math.floor(shot.damage / 8));
+        if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
+          if (remote.mode !== "land") addXP(5 + Math.floor(shot.damage / 8));
           hit = true;
         }
       });
-    } else if (state.mode === "ship" && dist2(shot.mesh.position, playerShip.position) < shipHitRadius(state.shipType) + 0.35) {
+    } else if (shot.targetKind !== "bot" && state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
       damageTarget(state, shot.damage);
       hit = true;
+    } else if (!multiplayer.serverWorld && shot.targetKind !== "player") {
+      bots.forEach((bot) => {
+        if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
+          damageTarget(bot, shot.damage);
+          hit = true;
+        }
+      });
     }
-    if (shot.life <= 0 || hit) {
-      scene.remove(shot.mesh);
+    if (progress >= 1 || hit) {
+      if (hit) makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
+      else makeSplashEffect(shot.target);
+      scene.remove(shot.mesh, shot.trail);
+      shot.mesh.geometry.dispose();
+      shot.trail.geometry.dispose();
+      shot.trail.material.dispose();
       projectiles.splice(projectiles.indexOf(shot), 1);
+    }
+  });
+}
+
+function updateImpactEffects(dt) {
+  impactEffects.slice().forEach((effect) => {
+    effect.age += dt;
+    const t = clamp(effect.age / effect.life, 0, 1);
+    const fade = 1 - t;
+    effect.group.children.forEach((child) => {
+      if (child.userData.velocity) {
+        child.position.addScaledVector(child.userData.velocity, dt);
+        child.userData.velocity.y -= 8.5 * dt;
+      }
+      if (child.userData.spin) {
+        child.rotation.x += child.userData.spin.x * dt;
+        child.rotation.y += child.userData.spin.y * dt;
+        child.rotation.z += child.userData.spin.z * dt;
+      }
+      if (child.userData.puff) {
+        const scale = 1 + t * 2.6;
+        child.scale.setScalar(scale);
+      } else if (child.geometry?.type === "RingGeometry") {
+        const scale = 1 + t * 2.8;
+        child.scale.set(scale, scale, scale);
+      }
+      if (child.material) child.material.opacity = Math.max(0, fade * (child.userData.puff ? 0.45 : 0.9));
+    });
+    if (effect.age >= effect.life) {
+      scene.remove(effect.group);
+      effect.group.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+      });
+      impactEffects.splice(impactEffects.indexOf(effect), 1);
     }
   });
 }
@@ -2665,7 +3215,7 @@ function updateSpyPanel() {
   const distance = Math.round(dist2(playerShip.position, target.pos));
   const hpPct = Math.round((target.hp / target.max) * 100);
   ui.spyPanel.classList.remove("hidden");
-  ui.spyName.textContent = `${target.kind}: ${target.name}`;
+  ui.spyName.textContent = target.name;
   ui.spyDetails.innerHTML = `Lv.${target.level} | ${distance}m | ${target.threat}<br>HP ${Math.ceil(target.hp)}/${target.max} (${hpPct}%) | Armor ${Math.round(target.armor * 100)}%<br>Speed ${target.speed} | Regen ${target.regen}/s | Crates ${target.crateEstimate}`;
 }
 
@@ -2757,6 +3307,8 @@ function multiplayerPayload() {
     mode: state.mode,
     x: playerShip.position.x,
     z: playerShip.position.z,
+    vx: state.velocity.x,
+    vz: state.velocity.z,
     rotation: playerShip.rotation.y,
     landX: character.position.x,
     landZ: character.position.z,
@@ -2833,6 +3385,7 @@ function upsertRemotePlayer(data) {
 
   updateRemoteLabel(remote, data.name || "Captain");
   remote.updated = clock.elapsedTime;
+  remote.mode = data.mode || "ship";
   remote.level = data.level || 1;
   remote.hp = data.hp || getShipStats(shipType).hp;
   remote.group.position.set(x, SHIP_WATERLINE_Y, z);
@@ -2877,6 +3430,7 @@ function syncServerWorld(world) {
       bot = {
         isBot: true,
         serverId: data.id,
+        localId: data.id,
         group,
         velocity: new THREE.Vector3(),
         turn: 0,
@@ -2945,7 +3499,13 @@ function spawnRemoteShot(data) {
   const pos = new THREE.Vector3(Number(data.x), 0, Number(data.z));
   const dir = new THREE.Vector3(Number(data.dirX), 0, Number(data.dirZ));
   if (![pos.x, pos.z, dir.x, dir.z].every(Number.isFinite) || dir.lengthSq() < 0.01) return;
-  makeProjectile(data.owner || "remote", pos, dir.normalize(), Number(data.damage) || 20, Number(data.range) || 36);
+  const target = Number.isFinite(Number(data.targetX)) && Number.isFinite(Number(data.targetZ))
+    ? new THREE.Vector3(Number(data.targetX), 0, Number(data.targetZ))
+    : null;
+  makeProjectile(data.owner || "remote", pos, dir.normalize(), Number(data.damage) || 20, Number(data.range) || 36, {
+    target,
+    targetKind: data.targetKind || "any",
+  });
 }
 
 function handleMultiplayerMessage(message) {
@@ -3050,7 +3610,7 @@ addEventListener("beforeunload", () => {
   if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
 });
 
-function publishShot(origin, dir, damage, range) {
+function publishShot(origin, dir, damage, range, target = null) {
   sendMultiplayer({
     type: "shot",
     shot: {
@@ -3059,8 +3619,11 @@ function publishShot(origin, dir, damage, range) {
       z: origin.z,
       dirX: dir.x,
       dirZ: dir.z,
+      targetX: target?.x,
+      targetZ: target?.z,
       damage,
       range,
+      targetKind: "any",
     },
   });
 }
@@ -3102,6 +3665,7 @@ function frame() {
   updateBots(dt);
   resolveShipContacts();
   updateProjectiles(dt);
+  updateImpactEffects(dt);
   updateFish(dt);
   updateLeviathan(dt);
   updateCamera(dt);
@@ -3117,5 +3681,4 @@ initWorld();
 setupNameGate();
 setupMultiplayer();
 updateHud();
-toast("Islandwake launched. Multiplayer connects when the server is running.");
 frame();

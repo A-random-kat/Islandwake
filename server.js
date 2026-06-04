@@ -10,6 +10,8 @@ const bots = [];
 const crates = [];
 const worldBounds = 280;
 const botCount = 14;
+const cannonballSpeed = 29.3;
+const botCannonRange = 34;
 
 const islandCenters = [
   { x: -34, z: -24, radius: 20 },
@@ -55,6 +57,50 @@ const shipStats = [
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
 ];
+
+const shipPhysics = {
+  skiff: { radius: 2.4, weight: 50 },
+  shallop: { radius: 2.5, weight: 55 },
+  pinnace: { radius: 2.6, weight: 59 },
+  hoy: { radius: 2.9, weight: 76 },
+  cog: { radius: 3.1, weight: 89 },
+  longship: { radius: 3.2, weight: 88 },
+  dogger: { radius: 2.9, weight: 75 },
+  dhow: { radius: 3, weight: 82 },
+  sloop: { radius: 3, weight: 78 },
+  knarr: { radius: 3.2, weight: 95 },
+  lugger: { radius: 3, weight: 80 },
+  tartane: { radius: 3.1, weight: 85 },
+  pink: { radius: 3.2, weight: 95 },
+  cat: { radius: 3, weight: 77 },
+  dart: { radius: 3, weight: 78 },
+  junk: { radius: 3.6, weight: 121 },
+  ketch: { radius: 3.3, weight: 100 },
+  schooner: { radius: 3.3, weight: 97 },
+  galley: { radius: 3.5, weight: 107 },
+  xebec: { radius: 3.4, weight: 101 },
+  brigantine: { radius: 3.6, weight: 117 },
+  caravel: { radius: 3.5, weight: 114 },
+  snow: { radius: 3.7, weight: 126 },
+  packet: { radius: 3.5, weight: 110 },
+  barquentine: { radius: 3.7, weight: 128 },
+  clipper: { radius: 3.6, weight: 118 },
+  fluyt: { radius: 4, weight: 154 },
+  storm: { radius: 3.4, weight: 102 },
+  bombketch: { radius: 3.9, weight: 138 },
+  barque: { radius: 3.9, weight: 144 },
+  corvette: { radius: 3.9, weight: 138 },
+  frigate: { radius: 4.1, weight: 153 },
+  merchantman: { radius: 4.4, weight: 191 },
+  carrack: { radius: 4.4, weight: 185 },
+  galleon: { radius: 4.6, weight: 206 },
+  eastindiaman: { radius: 4.7, weight: 219 },
+  treasure: { radius: 4.9, weight: 238 },
+  razee: { radius: 4.6, weight: 195 },
+  fourthrate: { radius: 4.9, weight: 222 },
+  manowar: { radius: 5.2, weight: 250 },
+  firstrate: { radius: 5.6, weight: 290 },
+};
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -106,6 +152,19 @@ function randomPoint(radius = worldBounds, minCenterDistance = 0) {
   return { x: -radius * 0.68, z: radius * 0.54 };
 }
 
+function randomTravelPoint(radius = worldBounds * 0.92) {
+  for (let i = 0; i < 70; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = radius * (0.42 + Math.random() * 0.55);
+    const point = {
+      x: Math.sin(angle) * distance,
+      z: Math.cos(angle) * distance,
+    };
+    if (!isInsideIsland(point, 22)) return point;
+  }
+  return randomPoint(radius, 92);
+}
+
 function randomShip() {
   return shipStats[Math.floor(Math.random() * shipStats.length)];
 }
@@ -115,8 +174,48 @@ function shipSpec(type) {
 }
 
 function shipRadius(type) {
+  if (shipPhysics[type]?.radius) return shipPhysics[type].radius;
   const spec = shipSpec(type);
   return 2.35 + spec.tier * 0.48;
+}
+
+function shipWeight(type) {
+  if (shipPhysics[type]?.weight) return shipPhysics[type].weight;
+  const spec = shipSpec(type);
+  return Math.max(35, Math.round(42 + spec.tier * 26 + spec.hp / 180 - spec.speed * 0.08));
+}
+
+function botCannonDamage(level = 1) {
+  return 34 + Math.max(0, Math.floor(level) - 1) * 4;
+}
+
+function botCannonReload() {
+  return 0.78;
+}
+
+function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
+  let targetX = Number(shotTarget.x);
+  let targetZ = Number(shotTarget.z);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetZ)) {
+    targetX = bot.x;
+    targetZ = bot.z;
+  }
+  const distance = Math.hypot(targetX - bot.x, targetZ - bot.z);
+  const vx = Number(shotTarget.vx) || 0;
+  const vz = Number(shotTarget.vz) || 0;
+  if (distance > 0.01 && (vx || vz)) {
+    const leadTime = clamp((distance / cannonballSpeed) * 0.35, 0, 0.9);
+    targetX += vx * leadTime;
+    targetZ += vz * leadTime;
+  }
+  const dx = targetX - bot.x;
+  const dz = targetZ - bot.z;
+  const aimedDistance = Math.hypot(dx, dz);
+  if (aimedDistance > maxRange && aimedDistance > 0.001) {
+    targetX = bot.x + (dx / aimedDistance) * maxRange;
+    targetZ = bot.z + (dz / aimedDistance) * maxRange;
+  }
+  return { targetX, targetZ };
 }
 
 function separateBotFromPoint(bot, point, pointType, pushShare = 1) {
@@ -127,16 +226,96 @@ function separateBotFromPoint(bot, point, pointType, pushShare = 1) {
   if (distance >= minDistance) return false;
   const nx = distance > 0.001 ? dx / distance : Math.sin(Date.now() * 0.01);
   const nz = distance > 0.001 ? dz / distance : Math.cos(Date.now() * 0.01);
-  const push = (minDistance - distance) * pushShare;
-  bot.x += nx * push;
-  bot.z += nz * push;
-  const inward = bot.vx * nx + bot.vz * nz;
-  if (inward < 0) {
-    bot.vx += nx * -inward * 0.9;
-    bot.vz += nz * -inward * 0.9;
+  const overlap = minDistance - distance;
+  const botMass = shipWeight(bot.shipType);
+  const pointMass = shipWeight(pointType);
+  const totalWeight = botMass + pointMass;
+  const correction = Math.max(0, overlap - 0.08) * 0.68 * pushShare * (pointMass / totalWeight) * 2;
+  bot.x += nx * correction;
+  bot.z += nz * correction;
+  const pointVx = Number(point.vx) || 0;
+  const pointVz = Number(point.vz) || 0;
+  const relativeNormalSpeed = (bot.vx * nx + bot.vz * nz) - (pointVx * nx + pointVz * nz);
+  const invBot = pushShare > 0 ? pushShare / botMass : 0;
+  if (invBot > 0) {
+    const biasSpeed = clamp(Math.max(0, overlap - 0.12) * 0.42, 0, 1.9);
+    let normalImpulse = 0;
+    if (relativeNormalSpeed < biasSpeed) {
+      const restitution = relativeNormalSpeed < -5 ? 0.12 : 0.02;
+      normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / invBot, 0, 900);
+      bot.vx += nx * normalImpulse * invBot;
+      bot.vz += nz * normalImpulse * invBot;
+    }
+    if (normalImpulse > 0) {
+      const relVx = bot.vx - pointVx;
+      const relVz = bot.vz - pointVz;
+      const normalSpeed = relVx * nx + relVz * nz;
+      const tangentX = relVx - nx * normalSpeed;
+      const tangentZ = relVz - nz * normalSpeed;
+      const tangentSpeed = Math.hypot(tangentX, tangentZ);
+      if (tangentSpeed > 0.001) {
+        const frictionImpulse = Math.min(tangentSpeed / invBot, normalImpulse * 0.42);
+        bot.vx -= (tangentX / tangentSpeed) * frictionImpulse * invBot;
+        bot.vz -= (tangentZ / tangentSpeed) * frictionImpulse * invBot;
+      }
+    }
   }
-  bot.vx *= 0.76;
-  bot.vz *= 0.76;
+  bot.vx *= 0.985;
+  bot.vz *= 0.985;
+  return true;
+}
+
+function separateBots(bot, other) {
+  const minDistance = (shipRadius(bot.shipType) + shipRadius(other.shipType)) * 0.78;
+  const dx = bot.x - other.x;
+  const dz = bot.z - other.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance >= minDistance) return false;
+  const nx = distance > 0.001 ? dx / distance : Math.sin(Date.now() * 0.01);
+  const nz = distance > 0.001 ? dz / distance : Math.cos(Date.now() * 0.01);
+  const overlap = minDistance - distance;
+  const botMass = shipWeight(bot.shipType);
+  const otherMass = shipWeight(other.shipType);
+  const botMotion = otherMass / (botMass + otherMass);
+  const otherMotion = botMass / (botMass + otherMass);
+  const correction = Math.max(0, overlap - 0.08) * 0.68;
+  bot.x += nx * correction * botMotion;
+  bot.z += nz * correction * botMotion;
+  other.x -= nx * correction * otherMotion;
+  other.z -= nz * correction * otherMotion;
+  const invBot = 1 / botMass;
+  const invOther = 1 / otherMass;
+  const totalInvMass = invBot + invOther;
+  const relativeNormalSpeed = (bot.vx * nx + bot.vz * nz) - (other.vx * nx + other.vz * nz);
+  const biasSpeed = clamp(Math.max(0, overlap - 0.12) * 0.42, 0, 1.9);
+  let normalImpulse = 0;
+  if (relativeNormalSpeed < biasSpeed) {
+    const restitution = relativeNormalSpeed < -5 ? 0.12 : 0.02;
+    normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / totalInvMass, 0, 900);
+    bot.vx += nx * normalImpulse * invBot;
+    bot.vz += nz * normalImpulse * invBot;
+    other.vx -= nx * normalImpulse * invOther;
+    other.vz -= nz * normalImpulse * invOther;
+  }
+  if (normalImpulse > 0) {
+    const relVx = bot.vx - other.vx;
+    const relVz = bot.vz - other.vz;
+    const normalSpeed = relVx * nx + relVz * nz;
+    const tangentX = relVx - nx * normalSpeed;
+    const tangentZ = relVz - nz * normalSpeed;
+    const tangentSpeed = Math.hypot(tangentX, tangentZ);
+    if (tangentSpeed > 0.001) {
+      const frictionImpulse = Math.min(tangentSpeed / totalInvMass, normalImpulse * 0.42);
+      bot.vx -= (tangentX / tangentSpeed) * frictionImpulse * invBot;
+      bot.vz -= (tangentZ / tangentSpeed) * frictionImpulse * invBot;
+      other.vx += (tangentX / tangentSpeed) * frictionImpulse * invOther;
+      other.vz += (tangentZ / tangentSpeed) * frictionImpulse * invOther;
+    }
+  }
+  bot.vx *= 0.985;
+  bot.vz *= 0.985;
+  other.vx *= 0.985;
+  other.vz *= 0.985;
   return true;
 }
 
@@ -169,10 +348,7 @@ function resolveBotContacts() {
     const bot = bots[i];
     pushBotOutOfIsland(bot);
     for (let j = i + 1; j < bots.length; j++) {
-      const other = bots[j];
-      if (separateBotFromPoint(bot, other, other.shipType, 0.5)) {
-        separateBotFromPoint(other, bot, bot.shipType, 0.5);
-      }
+      separateBots(bot, bots[j]);
     }
     for (const socket of clients.values()) {
       if (!socket.player || socket.player.mode === "land") continue;
@@ -184,6 +360,7 @@ function resolveBotContacts() {
 function makeBot(id = crypto.randomUUID()) {
   const spec = randomShip();
   const point = randomPoint(worldBounds, 90);
+  const target = randomTravelPoint(worldBounds * 0.92);
   return {
     id,
     shipType: spec.id,
@@ -197,11 +374,13 @@ function makeBot(id = crypto.randomUUID()) {
     rotation: Math.random() * Math.PI * 2,
     vx: 0,
     vz: 0,
-    targetX: point.x,
-    targetZ: point.z,
+    targetX: target.x,
+    targetZ: target.z,
     targetPlayer: null,
-    aggressive: Math.random() < 0.04,
+    aggressive: Math.random() < 0.16,
     angerUntil: 0,
+    targetBot: null,
+    botFightUntil: 0,
     turn: Math.random() * 4,
     fireCooldown: 1.5 + Math.random() * 2.5,
   };
@@ -220,8 +399,68 @@ function spawnCrates(x, z, count, level = 1, tier = 0) {
   }
 }
 
+function botCollectCrates() {
+  const removed = [];
+  for (const bot of bots) {
+    if (bot.hp <= 0) continue;
+    const pickupRadius = shipRadius(bot.shipType) + 1.15;
+    for (let i = crates.length - 1; i >= 0; i--) {
+      const crate = crates[i];
+      if (Math.hypot(crate.x - bot.x, crate.z - bot.z) > pickupRadius) continue;
+      bot.hp = clamp(bot.hp + (Number(crate.heal) || 0), 0, bot.maxHp);
+      removed.push(crate.id);
+      crates.splice(i, 1);
+    }
+  }
+  removed.forEach((id) => broadcast({ type: "crateRemove", id }));
+  return removed.length;
+}
+
 function crateDropCount(bot) {
   return 2 + Math.floor((bot.level || 1) / 2) + (bot.tier || 0);
+}
+
+function nearestBotOpponent(bot, maxDistance = 54) {
+  let best = null;
+  let bestDistance = maxDistance;
+  for (const other of bots) {
+    if (other === bot || other.hp <= 0) continue;
+    const distance = Math.hypot(other.x - bot.x, other.z - bot.z);
+    if (distance < bestDistance) {
+      best = other;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function startBotFeud(bot, enemy, duration = 9000) {
+  if (!bot || !enemy) return;
+  const now = Date.now();
+  bot.targetBot = enemy.id;
+  bot.botFightUntil = now + duration;
+  if (Math.random() < 0.7) {
+    enemy.targetBot = bot.id;
+    enemy.botFightUntil = now + duration * 0.85;
+  }
+}
+
+function damageBot(bot, amount, rewardSocket = null) {
+  bot.hp -= clamp(Number(amount) || 0, 0, 240);
+  if (bot.hp > 0) return false;
+  const level = bot.level || 1;
+  const tier = bot.tier || 0;
+  spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
+  if (rewardSocket) {
+    send(rewardSocket, {
+      type: "botReward",
+      level,
+      gold: 50 + level * 14 + tier * 40,
+      xp: 48 + level * 22 + tier * 28,
+    });
+  }
+  resetBot(bot);
+  return true;
 }
 
 function botSnapshot(bot) {
@@ -290,6 +529,13 @@ function updateWorld() {
       bot.targetPlayer = targetSocket?.id || null;
       bot.angerUntil = targetSocket ? now + 9000 : 0;
     }
+    let targetBot = bot.targetBot && bot.botFightUntil > now
+      ? bots.find((item) => item.id === bot.targetBot && item.hp > 0)
+      : null;
+    if (!targetBot && !targetSocket && Math.random() < dt * 0.018) {
+      targetBot = nearestBotOpponent(bot, 54);
+      if (targetBot) startBotFeud(bot, targetBot, 8000 + Math.random() * 8000);
+    }
     bot.fireCooldown = Math.max(0, bot.fireCooldown - dt);
     bot.turn -= dt;
 
@@ -301,20 +547,29 @@ function updateWorld() {
         bot.targetPlayer = null;
         bot.angerUntil = 0;
       }
+    } else if (targetBot) {
+      bot.targetX = targetBot.x;
+      bot.targetZ = targetBot.z;
+      if (Math.hypot(bot.targetX - bot.x, bot.targetZ - bot.z) > 68) {
+        targetBot = null;
+        bot.targetBot = null;
+        bot.botFightUntil = 0;
+      }
     } else if (bot.turn <= 0 || Math.hypot(bot.targetX - bot.x, bot.targetZ - bot.z) < 8) {
-      const point = randomPoint(worldBounds * 0.92);
+      const point = randomTravelPoint(worldBounds * 0.92);
       bot.targetX = point.x;
       bot.targetZ = point.z;
       bot.turn = 4 + Math.random() * 7;
       bot.targetPlayer = null;
+      bot.targetBot = null;
     }
 
     const toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
     const distance = Math.hypot(toTarget.x, toTarget.z);
-    if (!targetSocket && distance < 9) {
+    if (!targetSocket && !targetBot && distance < 9) {
       bot.vx *= 0.62;
       bot.vz *= 0.62;
-      const point = randomPoint(worldBounds * 0.92);
+      const point = randomTravelPoint(worldBounds * 0.92);
       bot.targetX = point.x;
       bot.targetZ = point.z;
       bot.turn = 3 + Math.random() * 5;
@@ -339,7 +594,7 @@ function updateWorld() {
         const d = Math.hypot(dx, dz);
         const danger = (shipRadius(bot.shipType) + shipRadius(other.shipType)) * 0.8 + 9;
         if (d > 0.001 && d < danger) {
-          const force = ((danger - d) / danger) * 13;
+          const force = ((danger - d) / danger) * (targetBot === other ? 5 : 13);
           avoidance.x += (dx / d) * force;
           avoidance.z += (dz / d) * force;
         }
@@ -357,14 +612,15 @@ function updateWorld() {
       }
       const desired = Math.atan2(toTarget.x + avoidance.x, toTarget.z + avoidance.z);
       const delta = angleDelta(desired, bot.rotation);
-      const turnRate = targetSocket ? 0.95 + bot.speed / 46 : 0.6 + bot.speed / 64;
+      const inCombat = Boolean(targetSocket || targetBot);
+      const turnRate = inCombat ? 0.95 + bot.speed / 46 : 0.6 + bot.speed / 64;
       bot.rotation += clamp(delta, -turnRate * dt, turnRate * dt);
       const forward = { x: Math.sin(bot.rotation), z: Math.cos(bot.rotation) };
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const cruise = targetSocket ? 0.48 : 0.28;
-      const arrive = clamp(distance / (targetSocket ? 20 : 34), 0.18, 1);
+      const cruise = inCombat ? 0.48 : 0.28;
+      const arrive = clamp(distance / (inCombat ? 20 : 34), 0.18, 1);
       const desiredSpeed = bot.speed * cruise * facing * arrive;
-      const steer = clamp(dt * (targetSocket ? 1.5 : 1.0), 0, 0.18);
+      const steer = clamp(dt * (inCombat ? 1.5 : 1.0), 0, 0.18);
       bot.vx += (forward.x * desiredSpeed - bot.vx) * steer;
       bot.vz += (forward.z * desiredSpeed - bot.vz) * steer;
       bot.vx *= 0.976;
@@ -381,7 +637,9 @@ function updateWorld() {
         bot.rotation = bot.rotation + clamp(angleDelta(away, bot.rotation), -1.2 * dt, 1.2 * dt);
         bot.targetPlayer = null;
         bot.angerUntil = 0;
-        const point = randomPoint(worldBounds * 0.82);
+        bot.targetBot = null;
+        bot.botFightUntil = 0;
+        const point = randomTravelPoint(worldBounds * 0.92);
         bot.targetX = point.x;
         bot.targetZ = point.z;
         bot.turn = 2 + Math.random() * 3;
@@ -396,18 +654,34 @@ function updateWorld() {
       bot.vz *= -0.2;
       bot.targetPlayer = null;
       bot.angerUntil = 0;
-      const point = randomPoint(worldBounds * 0.82);
+      bot.targetBot = null;
+      bot.botFightUntil = 0;
+      const point = randomTravelPoint(worldBounds * 0.92);
       bot.targetX = point.x;
       bot.targetZ = point.z;
     }
 
-    if (targetSocket && bot.fireCooldown <= 0) {
-      const dx = (Number(targetSocket.player.x) || 0) - bot.x;
-      const dz = (Number(targetSocket.player.z) || 0) - bot.z;
+    const shotTarget = targetSocket?.player
+      ? { x: Number(targetSocket.player.x) || bot.x, z: Number(targetSocket.player.z) || bot.z, vx: Number(targetSocket.player.vx) || 0, vz: Number(targetSocket.player.vz) || 0, kind: "player" }
+      : targetBot
+        ? { x: targetBot.x, z: targetBot.z, vx: targetBot.vx, vz: targetBot.vz, kind: "bot", bot: targetBot }
+        : null;
+    if (shotTarget && bot.fireCooldown <= 0) {
+      const dx = shotTarget.x - bot.x;
+      const dz = shotTarget.z - bot.z;
       const shotDistance = Math.hypot(dx, dz);
-      if (shotDistance < 38 && shotDistance > 0.01) {
-        const dirX = dx / shotDistance;
-        const dirZ = dz / shotDistance;
+      const forwardX = Math.sin(bot.rotation);
+      const forwardZ = Math.cos(bot.rotation);
+      const facing = shotDistance > 0.01 ? (forwardX * dx + forwardZ * dz) / shotDistance : 0;
+      if (shotDistance <= botCannonRange && shotDistance > 0.01 && facing > 0.45) {
+        const { targetX, targetZ } = aimBotShot(bot, shotTarget, botCannonRange);
+        const aimDx = targetX - bot.x;
+        const aimDz = targetZ - bot.z;
+        const aimDistance = Math.hypot(aimDx, aimDz);
+        if (aimDistance <= 0.01) continue;
+        const dirX = aimDx / aimDistance;
+        const dirZ = aimDz / aimDistance;
+        const damage = botCannonDamage(bot.level);
         broadcast({
           type: "shot",
           shot: {
@@ -416,15 +690,24 @@ function updateWorld() {
             z: bot.z + dirZ * 3.6,
             dirX,
             dirZ,
-            damage: 18 + bot.level * 2.2 + bot.tier * 4,
-            range: 48,
+            targetX,
+            targetZ,
+            targetKind: shotTarget.kind,
+            damage,
+            range: botCannonRange,
           },
         });
-        bot.fireCooldown = Math.max(1.65, 3.8 - bot.level * 0.08);
+        if (shotTarget.bot) {
+          damageBot(shotTarget.bot, damage);
+          shotTarget.bot.targetBot = bot.id;
+          shotTarget.bot.botFightUntil = now + 9000;
+        }
+        bot.fireCooldown = botCannonReload();
       }
     }
   }
   resolveBotContacts();
+  botCollectCrates();
   broadcast(worldSnapshot());
 }
 
@@ -547,7 +830,22 @@ function handleMessage(socket, text) {
     return;
   }
   if (message.type === "hello" || message.type === "state") {
-    socket.player = { ...message.player, id: socket.id, updated: Date.now() };
+    const now = Date.now();
+    const previous = socket.player;
+    const next = { ...message.player, id: socket.id, updated: now };
+    const nextX = Number(next.x);
+    const nextZ = Number(next.z);
+    const prevX = Number(previous?.x);
+    const prevZ = Number(previous?.z);
+    const elapsed = previous?.updated ? clamp((now - previous.updated) / 1000, 0.05, 1) : 0;
+    if (elapsed && [nextX, nextZ, prevX, prevZ].every(Number.isFinite)) {
+      next.vx = (nextX - prevX) / elapsed;
+      next.vz = (nextZ - prevZ) / elapsed;
+    } else {
+      next.vx = Number(next.vx) || 0;
+      next.vz = Number(next.vz) || 0;
+    }
+    socket.player = next;
     broadcast({ type: "state", player: socket.player }, socket);
     if (message.type === "hello") {
       for (const other of clients.values()) {
@@ -562,22 +860,13 @@ function handleMessage(socket, text) {
   if (message.type === "hitBot") {
     const bot = bots.find((item) => item.id === message.id);
     if (!bot) return;
-    bot.hp -= clamp(Number(message.damage) || 0, 0, 240);
+    const damage = clamp(Number(message.damage) || 0, 0, 240);
     bot.targetPlayer = socket.id;
     bot.angerUntil = Date.now() + 12000 + (bot.level || 1) * 500;
+    bot.targetBot = null;
+    bot.botFightUntil = 0;
     bot.fireCooldown = Math.min(bot.fireCooldown, 1.35);
-    if (bot.hp <= 0) {
-      const level = bot.level || 1;
-      const tier = bot.tier || 0;
-      spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
-      send(socket, {
-        type: "botReward",
-        level,
-        gold: 50 + level * 14 + tier * 40,
-        xp: 48 + level * 22 + tier * 28,
-      });
-      resetBot(bot);
-    }
+    damageBot(bot, damage, socket);
     broadcast(worldSnapshot());
   }
   if (message.type === "collectCrate") {
