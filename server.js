@@ -110,6 +110,77 @@ function randomShip() {
   return shipStats[Math.floor(Math.random() * shipStats.length)];
 }
 
+function shipSpec(type) {
+  return shipStats.find((ship) => ship.id === type) || shipStats[0];
+}
+
+function shipRadius(type) {
+  const spec = shipSpec(type);
+  return 2.35 + spec.tier * 0.48;
+}
+
+function separateBotFromPoint(bot, point, pointType, pushShare = 1) {
+  const minDistance = (shipRadius(bot.shipType) + shipRadius(pointType)) * 0.78;
+  const dx = bot.x - point.x;
+  const dz = bot.z - point.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance >= minDistance) return false;
+  const nx = distance > 0.001 ? dx / distance : Math.sin(Date.now() * 0.01);
+  const nz = distance > 0.001 ? dz / distance : Math.cos(Date.now() * 0.01);
+  const push = (minDistance - distance) * pushShare;
+  bot.x += nx * push;
+  bot.z += nz * push;
+  const inward = bot.vx * nx + bot.vz * nz;
+  if (inward < 0) {
+    bot.vx += nx * -inward * 0.9;
+    bot.vz += nz * -inward * 0.9;
+  }
+  bot.vx *= 0.76;
+  bot.vz *= 0.76;
+  return true;
+}
+
+function pushBotOutOfIsland(bot) {
+  let pushed = false;
+  for (const island of islandCenters) {
+    const dx = bot.x - island.x;
+    const dz = bot.z - island.z;
+    const distance = Math.hypot(dx, dz);
+    const minDistance = island.radius + shipRadius(bot.shipType) * 0.65 + 5;
+    if (distance >= minDistance) continue;
+    const nx = distance > 0.001 ? dx / distance : 1;
+    const nz = distance > 0.001 ? dz / distance : 0;
+    bot.x = island.x + nx * minDistance;
+    bot.z = island.z + nz * minDistance;
+    const inward = bot.vx * nx + bot.vz * nz;
+    if (inward < 0) {
+      bot.vx += nx * -inward * 1.05;
+      bot.vz += nz * -inward * 1.05;
+    }
+    bot.vx *= 0.58;
+    bot.vz *= 0.58;
+    pushed = true;
+  }
+  return pushed;
+}
+
+function resolveBotContacts() {
+  for (let i = 0; i < bots.length; i++) {
+    const bot = bots[i];
+    pushBotOutOfIsland(bot);
+    for (let j = i + 1; j < bots.length; j++) {
+      const other = bots[j];
+      if (separateBotFromPoint(bot, other, other.shipType, 0.5)) {
+        separateBotFromPoint(other, bot, bot.shipType, 0.5);
+      }
+    }
+    for (const socket of clients.values()) {
+      if (!socket.player || socket.player.mode === "land") continue;
+      separateBotFromPoint(bot, socket.player, socket.player.shipType || "skiff", 1);
+    }
+  }
+}
+
 function makeBot(id = crypto.randomUUID()) {
   const spec = randomShip();
   const point = randomPoint(worldBounds, 90);
@@ -240,21 +311,64 @@ function updateWorld() {
 
     const toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
     const distance = Math.hypot(toTarget.x, toTarget.z);
+    if (!targetSocket && distance < 9) {
+      bot.vx *= 0.62;
+      bot.vz *= 0.62;
+      const point = randomPoint(worldBounds * 0.92);
+      bot.targetX = point.x;
+      bot.targetZ = point.z;
+      bot.turn = 3 + Math.random() * 5;
+    }
     if (distance > 0.01) {
-      const desired = Math.atan2(toTarget.x, toTarget.z);
+      const avoidance = { x: 0, z: 0 };
+      for (const island of islandCenters) {
+        const dx = bot.x - island.x;
+        const dz = bot.z - island.z;
+        const d = Math.hypot(dx, dz);
+        const danger = island.radius + shipRadius(bot.shipType) * 1.9 + 12;
+        if (d > 0.001 && d < danger) {
+          const force = ((danger - d) / danger) * 38;
+          avoidance.x += (dx / d) * force;
+          avoidance.z += (dz / d) * force;
+        }
+      }
+      for (const other of bots) {
+        if (other === bot) continue;
+        const dx = bot.x - other.x;
+        const dz = bot.z - other.z;
+        const d = Math.hypot(dx, dz);
+        const danger = (shipRadius(bot.shipType) + shipRadius(other.shipType)) * 0.8 + 9;
+        if (d > 0.001 && d < danger) {
+          const force = ((danger - d) / danger) * 13;
+          avoidance.x += (dx / d) * force;
+          avoidance.z += (dz / d) * force;
+        }
+      }
+      if (targetSocket?.player) {
+        const dx = bot.x - Number(targetSocket.player.x);
+        const dz = bot.z - Number(targetSocket.player.z);
+        const d = Math.hypot(dx, dz);
+        const danger = (shipRadius(bot.shipType) + shipRadius(targetSocket.player.shipType || "skiff")) * 0.8 + 7;
+        if (d > 0.001 && d < danger) {
+          const force = ((danger - d) / danger) * 10;
+          avoidance.x += (dx / d) * force;
+          avoidance.z += (dz / d) * force;
+        }
+      }
+      const desired = Math.atan2(toTarget.x + avoidance.x, toTarget.z + avoidance.z);
       const delta = angleDelta(desired, bot.rotation);
       const turnRate = targetSocket ? 0.95 + bot.speed / 46 : 0.6 + bot.speed / 64;
       bot.rotation += clamp(delta, -turnRate * dt, turnRate * dt);
       const forward = { x: Math.sin(bot.rotation), z: Math.cos(bot.rotation) };
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const cruise = targetSocket ? 0.55 : 0.34;
-      const arrive = clamp(distance / (targetSocket ? 20 : 34), 0.25, 1);
+      const cruise = targetSocket ? 0.48 : 0.28;
+      const arrive = clamp(distance / (targetSocket ? 20 : 34), 0.18, 1);
       const desiredSpeed = bot.speed * cruise * facing * arrive;
       const steer = clamp(dt * (targetSocket ? 1.5 : 1.0), 0, 0.18);
       bot.vx += (forward.x * desiredSpeed - bot.vx) * steer;
       bot.vz += (forward.z * desiredSpeed - bot.vz) * steer;
-      bot.vx *= 0.985;
-      bot.vz *= 0.985;
+      bot.vx *= 0.976;
+      bot.vz *= 0.976;
       const next = { x: bot.x + bot.vx * dt, z: bot.z + bot.vz * dt };
       const nearIsland = nearestIsland(next, 12);
       if (nearIsland.distance > 0) {
@@ -310,6 +424,7 @@ function updateWorld() {
       }
     }
   }
+  resolveBotContacts();
   broadcast(worldSnapshot());
 }
 
