@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=56" />
+  <link rel="stylesheet" href="styles.css?v=65" />
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -58,6 +58,15 @@
   </section>
   <button id="openMinimap" class="minimap-open hidden" title="Open minimap">Map</button>
 
+  <section id="leaderboardPanel" class="panel leaderboard">
+    <header>
+      <strong>Gold</strong>
+      <button id="closeLeaderboard" title="Hide leaderboard">x</button>
+    </header>
+    <ol id="leaderboardList"></ol>
+  </section>
+  <button id="openLeaderboard" class="leaderboard-open hidden" title="Open leaderboard">Gold</button>
+
   <div id="dockPrompt" class="prompt hidden">Press <b>T</b> to dock</div>
   <div id="toast"></div>
 
@@ -77,6 +86,6 @@
     <div id="shopBody"></div>
   </aside>
 
-  <script type="module" src="game.js?v=56"></script>
+  <script type="module" src="game.js?v=65"></script>
 </body>
 </html>

@@ -9,9 +9,20 @@ const clients = new Map();
 const bots = [];
 const crates = [];
 const worldBounds = 280;
+const visibleBounds = worldBounds * 1.12;
 const botCount = 14;
 const cannonballSpeed = 29.3;
 const botCannonRange = 34;
+const crateLifetimeMs = 120000;
+const crateSinkMs = 5000;
+const maxTreasures = 3;
+const krakenMaxHp = 10000;
+const krakenRadius = 25;
+const krakenAttackRadius = 62;
+const krakenSpeed = 1;
+const krakenAttackDamage = 999999;
+let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
+let kraken = null;
 
 const islandCenters = [
   { x: -34, z: -24, radius: 20 },
@@ -165,6 +176,36 @@ function randomTravelPoint(radius = worldBounds * 0.92) {
   return randomPoint(radius, 92);
 }
 
+function randomKrakenPoint() {
+  for (let i = 0; i < 90; i++) {
+    const point = randomPoint(worldBounds * 0.72, 120);
+    if (!isInsideIsland(point, krakenRadius + 24)) return point;
+  }
+  return { x: worldBounds * 0.42, z: -worldBounds * 0.28 };
+}
+
+function makeKraken() {
+  const point = randomKrakenPoint();
+  const target = randomKrakenPoint();
+  return {
+    id: "kraken",
+    x: point.x,
+    z: point.z,
+    vx: 0,
+    vz: 0,
+    rotation: Math.random() * Math.PI * 2,
+    targetX: target.x,
+    targetZ: target.z,
+    hp: krakenMaxHp,
+    maxHp: krakenMaxHp,
+    alive: true,
+    attackAt: 0,
+    defeatedAt: 0,
+  };
+}
+
+kraken = makeKraken();
+
 function randomShip() {
   return shipStats[Math.floor(Math.random() * shipStats.length)];
 }
@@ -173,24 +214,55 @@ function shipSpec(type) {
   return shipStats.find((ship) => ship.id === type) || shipStats[0];
 }
 
+function radiusScaleForPhysics(radius) {
+  if (radius >= 5.1) return 1.18;
+  if (radius >= 4.6) return 1.135;
+  if (radius >= 4.0) return 1.09;
+  if (radius >= 3.5) return 1.045;
+  return 1;
+}
+
 function shipRadius(type) {
-  if (shipPhysics[type]?.radius) return shipPhysics[type].radius;
+  if (shipPhysics[type]?.radius) return shipPhysics[type].radius * radiusScaleForPhysics(shipPhysics[type].radius);
   const spec = shipSpec(type);
   return 2.35 + spec.tier * 0.48;
 }
 
 function shipWeight(type) {
-  if (shipPhysics[type]?.weight) return shipPhysics[type].weight;
+  if (shipPhysics[type]?.weight) {
+    const baseRadius = shipPhysics[type].radius || 3;
+    const radiusScale = shipRadius(type) / baseRadius;
+    return Math.round(shipPhysics[type].weight * radiusScale * radiusScale);
+  }
   const spec = shipSpec(type);
   return Math.max(35, Math.round(42 + spec.tier * 26 + spec.hp / 180 - spec.speed * 0.08));
 }
 
-function botCannonDamage(level = 1) {
-  return 34 + Math.max(0, Math.floor(level) - 1) * 4;
+function botUpgradeLevels(botOrLevel = 1) {
+  const level = typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1;
+  const focus = typeof botOrLevel === "object" ? botOrLevel.upgradeFocus || "damage" : "damage";
+  const order = focus === "reload" ? ["reload", "range", "damage"]
+    : focus === "range" ? ["range", "damage", "reload"]
+      : ["damage", "reload", "range"];
+  const upgrades = { damage: 0, reload: 0, range: 0 };
+  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) upgrades[order[i % order.length]]++;
+  return upgrades;
 }
 
-function botCannonReload() {
-  return 0.78;
+function botCannonDamage(botOrLevel = 1) {
+  return 34 + botUpgradeLevels(botOrLevel).damage * 2;
+}
+
+function botCannonReload(botOrLevel = 1) {
+  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.0525);
+}
+
+function botCannonRangeFor(botOrLevel = 1) {
+  return botCannonRange + botUpgradeLevels(botOrLevel).range * 4;
+}
+
+function scaleDamageByRange(baseDamage, distance, range) {
+  return Math.round(baseDamage * (1 + clamp(distance / Math.max(1, range), 0, 1) * 0.35));
 }
 
 function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
@@ -377,7 +449,8 @@ function makeBot(id = crypto.randomUUID()) {
     targetX: target.x,
     targetZ: target.z,
     targetPlayer: null,
-    aggressive: Math.random() < 0.16,
+    aggressive: Math.random() < 0.24,
+    upgradeFocus: ["damage", "reload", "range"][Math.floor(Math.random() * 3)],
     angerUntil: 0,
     targetBot: null,
     botFightUntil: 0,
@@ -390,13 +463,66 @@ function spawnCrates(x, z, count, level = 1, tier = 0) {
   for (let i = 0; i < count; i++) {
     crates.push({
       id: crypto.randomUUID(),
+      kind: "crate",
+      born: Date.now(),
       x: x + (Math.random() - 0.5) * 6,
       z: z + (Math.random() - 0.5) * 6,
       heal: 8 + tier * 2 + Math.random() * 8,
-      xp: 16 + level * 4 + tier * 8 + Math.random() * 15,
-      gold: 14 + level * 4 + tier * 10 + Math.floor(Math.random() * 22),
+      xp: 8 + level * 2 + tier * 4 + Math.random() * 7.5,
+      gold: 7 + level * 2 + tier * 5 + Math.floor(Math.random() * 11),
     });
   }
+}
+
+function spawnTreasure(now = Date.now()) {
+  if (crates.filter((crate) => crate.kind === "treasure").length >= maxTreasures) return null;
+  const point = randomPoint(worldBounds * 0.94, 55);
+  const level = 4 + Math.floor(Math.random() * 8);
+  const tier = 2 + Math.floor(Math.random() * 4);
+  const crate = {
+    id: crypto.randomUUID(),
+    kind: "treasure",
+    born: now,
+    x: point.x,
+    z: point.z,
+    heal: 18 + tier * 3 + Math.random() * 12,
+    xp: Math.round((8 + level * 2 + tier * 4 + Math.random() * 7.5) * 20),
+    gold: Math.round((7 + level * 2 + tier * 5 + Math.random() * 11) * 10),
+  };
+  crates.push(crate);
+  return crate;
+}
+
+function nearestPickup(bot, maxDistance = 135) {
+  let best = null;
+  let bestScore = maxDistance;
+  for (const crate of crates) {
+    const distance = Math.hypot(crate.x - bot.x, crate.z - bot.z);
+    const priority = crate.kind === "treasure" || crate.kind === "kraken" ? 0.45 : 1;
+    const score = distance * priority;
+    if (distance < maxDistance && score < bestScore) {
+      best = crate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function updateCrateLifecycle(now) {
+  const removed = [];
+  for (let i = crates.length - 1; i >= 0; i--) {
+    const crate = crates[i];
+    if (!crate.born) crate.born = now;
+    const lifetime = crate.kind === "kraken" ? crateLifetimeMs * 4 : crateLifetimeMs;
+    if (now - crate.born <= lifetime + crateSinkMs) continue;
+    removed.push(crate.id);
+    crates.splice(i, 1);
+  }
+  if (now >= nextTreasureSpawnAt) {
+    nextTreasureSpawnAt = now + 28000 + Math.random() * 42000;
+    if (Math.random() < 0.55) spawnTreasure(now);
+  }
+  removed.forEach((id) => broadcast({ type: "crateRemove", id }));
 }
 
 function botCollectCrates() {
@@ -408,6 +534,10 @@ function botCollectCrates() {
       const crate = crates[i];
       if (Math.hypot(crate.x - bot.x, crate.z - bot.z) > pickupRadius) continue;
       bot.hp = clamp(bot.hp + (Number(crate.heal) || 0), 0, bot.maxHp);
+      if (crate.kind === "treasure") {
+        bot.level = Math.min(40, (bot.level || 1) + 2);
+        bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 1.1);
+      }
       removed.push(crate.id);
       crates.splice(i, 1);
     }
@@ -417,7 +547,7 @@ function botCollectCrates() {
 }
 
 function crateDropCount(bot) {
-  return 2 + Math.floor((bot.level || 1) / 2) + (bot.tier || 0);
+  return Math.max(1, Math.min(12, Math.floor(((bot.level || 1) + 1) / 4) + Math.max(0, bot.tier || 0)));
 }
 
 function nearestBotOpponent(bot, maxDistance = 54) {
@@ -463,6 +593,106 @@ function damageBot(bot, amount, rewardSocket = null) {
   return true;
 }
 
+function spawnKrakenTentacle(now = Date.now()) {
+  crates.push({
+    id: crypto.randomUUID(),
+    kind: "kraken",
+    born: now,
+    x: kraken.x + (Math.random() - 0.5) * 12,
+    z: kraken.z + (Math.random() - 0.5) * 12,
+    heal: 80,
+    xp: 2400 + Math.random() * 650,
+    gold: 1450 + Math.floor(Math.random() * 520),
+  });
+}
+
+function damageKraken(amount, rewardSocket = null) {
+  if (!kraken?.alive) return false;
+  if (rewardSocket?.player && dist(rewardSocket.player, kraken) > krakenAttackRadius + 56) return false;
+  kraken.hp -= clamp(Number(amount) || 0, 0, 260);
+  if (kraken.hp > 0) return false;
+  kraken.hp = 0;
+  kraken.alive = false;
+  kraken.defeatedAt = Date.now();
+  spawnKrakenTentacle(kraken.defeatedAt);
+  broadcast({ type: "krakenDefeated", by: rewardSocket?.player?.name || "Captain" });
+  return true;
+}
+
+function krakenSnapshot() {
+  if (!kraken) return null;
+  return {
+    id: kraken.id,
+    x: kraken.x,
+    z: kraken.z,
+    rotation: kraken.rotation,
+    hp: Math.max(0, Math.round(kraken.hp)),
+    maxHp: kraken.maxHp,
+    alive: kraken.alive,
+    defeatedAt: kraken.defeatedAt,
+    radius: krakenRadius,
+  };
+}
+
+function updateKraken(now, dt) {
+  if (!kraken || !kraken.alive) return;
+  const toTarget = { x: kraken.targetX - kraken.x, z: kraken.targetZ - kraken.z };
+  const targetDistance = Math.hypot(toTarget.x, toTarget.z);
+  if (targetDistance < 6 || isInsideIsland({ x: kraken.targetX, z: kraken.targetZ }, krakenRadius + 18)) {
+    const target = randomKrakenPoint();
+    kraken.targetX = target.x;
+    kraken.targetZ = target.z;
+  } else {
+    const desiredRotation = Math.atan2(toTarget.x, toTarget.z);
+    kraken.rotation += clamp(angleDelta(desiredRotation, kraken.rotation), -0.28 * dt, 0.28 * dt);
+    const forward = { x: Math.sin(kraken.rotation), z: Math.cos(kraken.rotation) };
+    kraken.vx += (forward.x * krakenSpeed - kraken.vx) * clamp(dt * 0.45, 0, 0.08);
+    kraken.vz += (forward.z * krakenSpeed - kraken.vz) * clamp(dt * 0.45, 0, 0.08);
+    kraken.vx *= 0.992;
+    kraken.vz *= 0.992;
+    const next = { x: kraken.x + kraken.vx * dt, z: kraken.z + kraken.vz * dt };
+    if (!isInsideIsland(next, krakenRadius + 16) && Math.abs(next.x) < worldBounds * 0.86 && Math.abs(next.z) < worldBounds * 0.86) {
+      kraken.x = next.x;
+      kraken.z = next.z;
+    } else {
+      const target = randomKrakenPoint();
+      kraken.targetX = target.x;
+      kraken.targetZ = target.z;
+      kraken.vx *= 0.2;
+      kraken.vz *= 0.2;
+    }
+  }
+
+  if (now < kraken.attackAt) return;
+  let targetSocket = null;
+  let targetDistanceBest = krakenAttackRadius;
+  for (const socket of clients.values()) {
+    if (!socket.player || socket.player.mode === "land") continue;
+    const distance = dist(socket.player, kraken);
+    if (distance < targetDistanceBest) {
+      targetSocket = socket;
+      targetDistanceBest = distance;
+    }
+  }
+  if (!targetSocket) return;
+  kraken.attackAt = now + 4600;
+  const kinds = ["smash", "grip", "slam"];
+  const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  broadcast({
+    type: "krakenAttack",
+    attack: {
+      id: crypto.randomUUID(),
+      target: targetSocket.id,
+      kind,
+      x: Number(targetSocket.player.x) || kraken.x,
+      z: Number(targetSocket.player.z) || kraken.z,
+      sourceX: kraken.x,
+      sourceZ: kraken.z,
+      damage: krakenAttackDamage,
+    },
+  });
+}
+
 function botSnapshot(bot) {
   return {
     id: bot.id,
@@ -480,8 +710,11 @@ function worldSnapshot() {
   return {
     type: "world",
     bots: bots.map(botSnapshot),
+    kraken: krakenSnapshot(),
     crates: crates.map((crate) => ({
       id: crate.id,
+      kind: crate.kind || "crate",
+      born: crate.born || Date.now(),
       x: crate.x,
       z: crate.z,
       heal: Math.round(crate.heal),
@@ -525,7 +758,7 @@ function updateWorld() {
     let targetSocket = bot.targetPlayer ? playerSocket(bot.targetPlayer) : null;
     if (targetSocket?.player?.mode === "land") targetSocket = null;
     if (!targetSocket && bot.aggressive) {
-      targetSocket = nearestShipPlayer(bot, 28);
+      targetSocket = nearestShipPlayer(bot, 34);
       bot.targetPlayer = targetSocket?.id || null;
       bot.angerUntil = targetSocket ? now + 9000 : 0;
     }
@@ -536,6 +769,7 @@ function updateWorld() {
       targetBot = nearestBotOpponent(bot, 54);
       if (targetBot) startBotFeud(bot, targetBot, 8000 + Math.random() * 8000);
     }
+    let pickupTarget = null;
     bot.fireCooldown = Math.max(0, bot.fireCooldown - dt);
     bot.turn -= dt;
 
@@ -555,6 +789,10 @@ function updateWorld() {
         bot.targetBot = null;
         bot.botFightUntil = 0;
       }
+    } else if ((pickupTarget = nearestPickup(bot, 165))) {
+      bot.targetX = pickupTarget.x;
+      bot.targetZ = pickupTarget.z;
+      bot.turn = Math.max(bot.turn, 1.2);
     } else if (bot.turn <= 0 || Math.hypot(bot.targetX - bot.x, bot.targetZ - bot.z) < 8) {
       const point = randomTravelPoint(worldBounds * 0.92);
       bot.targetX = point.x;
@@ -566,7 +804,7 @@ function updateWorld() {
 
     const toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
     const distance = Math.hypot(toTarget.x, toTarget.z);
-    if (!targetSocket && !targetBot && distance < 9) {
+    if (!targetSocket && !targetBot && !pickupTarget && distance < 9) {
       bot.vx *= 0.62;
       bot.vz *= 0.62;
       const point = randomTravelPoint(worldBounds * 0.92);
@@ -587,6 +825,11 @@ function updateWorld() {
           avoidance.z += (dz / d) * force;
         }
       }
+      const edgeMargin = 44;
+      const edgeX = worldBounds - Math.abs(bot.x);
+      const edgeZ = worldBounds - Math.abs(bot.z);
+      if (edgeX < edgeMargin) avoidance.x += -Math.sign(bot.x || 1) * ((edgeMargin - edgeX) / edgeMargin) * 48;
+      if (edgeZ < edgeMargin) avoidance.z += -Math.sign(bot.z || 1) * ((edgeMargin - edgeZ) / edgeMargin) * 48;
       for (const other of bots) {
         if (other === bot) continue;
         const dx = bot.x - other.x;
@@ -673,15 +916,16 @@ function updateWorld() {
       const forwardX = Math.sin(bot.rotation);
       const forwardZ = Math.cos(bot.rotation);
       const facing = shotDistance > 0.01 ? (forwardX * dx + forwardZ * dz) / shotDistance : 0;
-      if (shotDistance <= botCannonRange && shotDistance > 0.01 && facing > 0.45) {
-        const { targetX, targetZ } = aimBotShot(bot, shotTarget, botCannonRange);
+      const shotRange = botCannonRangeFor(bot);
+      if (shotDistance <= shotRange && shotDistance > 0.01 && facing > 0.45) {
+        const { targetX, targetZ } = aimBotShot(bot, shotTarget, shotRange);
         const aimDx = targetX - bot.x;
         const aimDz = targetZ - bot.z;
         const aimDistance = Math.hypot(aimDx, aimDz);
         if (aimDistance <= 0.01) continue;
         const dirX = aimDx / aimDistance;
         const dirZ = aimDz / aimDistance;
-        const damage = botCannonDamage(bot.level);
+        const damage = scaleDamageByRange(botCannonDamage(bot), shotDistance, shotRange);
         broadcast({
           type: "shot",
           shot: {
@@ -694,7 +938,7 @@ function updateWorld() {
             targetZ,
             targetKind: shotTarget.kind,
             damage,
-            range: botCannonRange,
+            range: shotRange,
           },
         });
         if (shotTarget.bot) {
@@ -702,12 +946,14 @@ function updateWorld() {
           shotTarget.bot.targetBot = bot.id;
           shotTarget.bot.botFightUntil = now + 9000;
         }
-        bot.fireCooldown = botCannonReload();
+        bot.fireCooldown = botCannonReload(bot);
       }
     }
   }
   resolveBotContacts();
   botCollectCrates();
+  updateCrateLifecycle(now);
+  updateKraken(now, dt);
   broadcast(worldSnapshot());
 }
 
@@ -869,11 +1115,17 @@ function handleMessage(socket, text) {
     damageBot(bot, damage, socket);
     broadcast(worldSnapshot());
   }
+  if (message.type === "hitKraken") {
+    const damage = clamp(Number(message.damage) || 0, 0, 260);
+    damageKraken(damage, socket);
+    broadcast(worldSnapshot());
+  }
   if (message.type === "collectCrate") {
     const index = crates.findIndex((crate) => crate.id === message.id);
     if (index < 0) return;
     const crate = crates[index];
-    if (socket.player && dist(crate, socket.player) > 8) return;
+    const pickupRange = crate.kind === "kraken" ? 20 : 18;
+    if (socket.player && dist(crate, socket.player) > pickupRange) return;
     crates.splice(index, 1);
     send(socket, { type: "crateReward", crate });
     broadcast({ type: "crateRemove", id: crate.id }, socket);

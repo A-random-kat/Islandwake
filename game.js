@@ -40,6 +40,10 @@ const ui = {
   minimap: document.querySelector("#minimap"),
   closeMinimap: document.querySelector("#closeMinimap"),
   openMinimap: document.querySelector("#openMinimap"),
+  leaderboardPanel: document.querySelector("#leaderboardPanel"),
+  leaderboardList: document.querySelector("#leaderboardList"),
+  closeLeaderboard: document.querySelector("#closeLeaderboard"),
+  openLeaderboard: document.querySelector("#openLeaderboard"),
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
@@ -55,7 +59,8 @@ const keys = new Set();
 const goods = ["Silk", "Spice", "Iron", "Tea", "Pearls"];
 const STARTER_SHIP = "skiff";
 const MAP_LIMIT = 280;
-const SEA_SIZE = 760;
+const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
+const SEA_SIZE = 2400;
 const islandData = [
   { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
   { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
@@ -164,13 +169,10 @@ const shipBalance = {
 };
 
 function armorCapForSpeed(speed) {
-  if (speed >= 31) return 0.02;
-  if (speed >= 28) return 0.03;
-  if (speed >= 25) return 0.04;
-  if (speed >= 22) return 0.06;
-  if (speed >= 19) return 0.08;
-  if (speed >= 16) return 0.11;
-  if (speed >= 13) return 0.14;
+  if (speed > 22) return 0;
+  if (speed >= 20) return 0.04;
+  if (speed >= 17) return 0.08;
+  if (speed >= 14) return 0.13;
   return 0.2;
 }
 
@@ -182,13 +184,29 @@ function deriveShipWeight(ship) {
   return Math.round(clamp(hullMass + structureMass + cargoMass - speedTrim, 35, 320));
 }
 
+function deriveFairShipPrice(ship) {
+  if (ship.id === STARTER_SHIP) return 0;
+  const value = ship.hp * 2.2
+    + ship.speed * 95
+    + ship.regen * 260
+    + ship.capacity * 65
+    + ship.armor * 8500
+    + ship.hitbox * 260;
+  const sizePremium = 1 + Math.max(0, (ship.hitbox || 3) - 3) * 0.18;
+  const blended = ship.price * 0.55 + value * sizePremium * 0.45;
+  return Math.max(ship.price, Math.round(blended / 50) * 50);
+}
+
 for (const ship of shipCatalog) {
   const balance = shipBalance[ship.id];
   if (!balance) continue;
   Object.assign(ship, balance);
   ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
-  ship.weight = balance.weight ?? deriveShipWeight(ship);
+  ship.price = deriveFairShipPrice(ship);
+  const tierScale = 1 + Math.max(0, shipTier(ship.id) - 2) * 0.045;
+  ship.hitbox = Math.round((ship.hitbox || 3) * tierScale * 10) / 10;
+  ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
 }
 
 const captainId = localStorage.islandwakeId || crypto.randomUUID();
@@ -246,6 +264,9 @@ const labels = [];
 const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
+const CRATE_LIFETIME = 120;
+const CRATE_SINK_TIME = 5;
+const MAX_TREASURES = 3;
 const minimapCtx = ui.minimap.getContext("2d");
 const shipPreviewCache = new Map();
 let shipPreviewRenderer;
@@ -255,6 +276,14 @@ let fishingLine;
 let fishingBobber;
 let leviathan;
 let leviathanCooldown = 0;
+let krakenBoss = null;
+let treasureSpawnTimer = 10 + Math.random() * 18;
+const leviathanAttacks = [
+  { id: "eat", label: "swallows your ship whole" },
+  { id: "ram", label: "rams through your hull" },
+  { id: "tail", label: "smashes your ship with its tail" },
+  { id: "spikes", label: "cuts your ship apart with its spikes" },
+];
 
 function setCylinderBetween(mesh, start, end) {
   const mid = start.clone().add(end).multiplyScalar(0.5);
@@ -333,7 +362,7 @@ function shipTier(type) {
 function crateDropCount(target) {
   const level = target.level || 1;
   const tier = target.isBot ? shipTier(target.shipType) : shipTier(state.shipType);
-  return 2 + Math.floor(level / 2) + tier;
+  return Math.max(1, Math.min(12, Math.floor((level + 1) / 4) + Math.max(0, tier)));
 }
 
 function shipHitRadius(type = state.shipType) {
@@ -345,7 +374,7 @@ function shipWeight(type = state.shipType) {
 }
 
 function shipVisualScale(type = state.shipType) {
-  return {
+  const baseScale = {
     shallop: 0.86,
     pinnace: 0.88,
     dart: 0.82,
@@ -375,6 +404,7 @@ function shipVisualScale(type = state.shipType) {
     firstrate: 1.5,
     ironclad: 1.48,
   }[type] || 1;
+  return baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055);
 }
 
 function shipHullDimensions(type = state.shipType) {
@@ -472,23 +502,46 @@ function cargoCapacity() {
 }
 
 function cannonDamage() {
-  return 34 + state.upgrades.damage * 4;
+  return 34 + state.upgrades.damage * 2;
 }
 
 function cannonReload() {
-  return Math.max(0.22, 0.78 - state.upgrades.fireRate * 0.105);
+  return Math.max(0.36, 0.78 - state.upgrades.fireRate * 0.0525);
 }
 
 function cannonRange() {
-  return 34 + state.upgrades.range * 12;
+  return 34 + state.upgrades.range * 4;
 }
 
-function botCannonDamage(level = 1) {
-  return 34 + Math.max(0, Math.floor(level) - 1) * 4;
+function rangeDamageMultiplier(distance, range) {
+  return 1 + clamp(distance / Math.max(1, range), 0, 1) * 0.35;
 }
 
-function botCannonReload() {
-  return 0.78;
+function scaleDamageByRange(baseDamage, distance, range) {
+  return Math.round(baseDamage * rangeDamageMultiplier(distance, range));
+}
+
+function botUpgradeLevels(botOrLevel = 1) {
+  const level = typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1;
+  const focus = typeof botOrLevel === "object" ? botOrLevel.upgradeFocus || "damage" : "damage";
+  const order = focus === "reload" ? ["reload", "range", "damage"]
+    : focus === "range" ? ["range", "damage", "reload"]
+      : ["damage", "reload", "range"];
+  const upgrades = { damage: 0, reload: 0, range: 0 };
+  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) upgrades[order[i % order.length]]++;
+  return upgrades;
+}
+
+function botCannonDamage(botOrLevel = 1) {
+  return 34 + botUpgradeLevels(botOrLevel).damage * 2;
+}
+
+function botCannonReload(botOrLevel = 1) {
+  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.0525);
+}
+
+function botCannonRange(botOrLevel = 1) {
+  return BOT_CANNON_RANGE + botUpgradeLevels(botOrLevel).range * 4;
 }
 
 function compareStatLabel(label, delta, suffix = "") {
@@ -1670,36 +1723,7 @@ function makeShip(type = "skiff", remote = false) {
   const group = new THREE.Group();
   group.userData.shipType = type;
   group.userData.hitRadius = shipHitRadius(type);
-  const scale = {
-    shallop: 0.86,
-    pinnace: 0.88,
-    dart: 0.82,
-    cat: 0.92,
-    longship: 0.92,
-    dogger: 0.96,
-    sloop: 0.94,
-    tartane: 0.96,
-    storm: 0.92,
-    brig: 1.12,
-    brigantine: 1.1,
-    packet: 1.05,
-    barquentine: 1.12,
-    barque: 1.15,
-    bombketch: 1.22,
-    turtle: 1.22,
-    corvette: 1.16,
-    frigate: 1.22,
-    razee: 1.28,
-    galleon: 1.28,
-    merchantman: 1.28,
-    eastindiaman: 1.34,
-    carrack: 1.34,
-    treasure: 1.48,
-    fourthrate: 1.38,
-    manowar: 1.42,
-    firstrate: 1.5,
-    ironclad: 1.48,
-  }[type] || 1;
+  const scale = shipVisualScale(type);
   const hullSize = {
     shallop: [5.6, 1.85],
     pinnace: [6.5, 1.75],
@@ -2109,59 +2133,377 @@ function makeLeviathanMesh() {
   const group = new THREE.Group();
   const bodyMat = mat(0x223142, 0.82);
   const bellyMat = mat(0x5c6f78, 0.9);
-  for (let i = 0; i < 8; i++) {
-    const segment = new THREE.Mesh(new THREE.SphereGeometry(2.7 - i * 0.12, 16, 10), bodyMat);
-    segment.position.set(Math.sin(i * 0.85) * 2.8, -0.5 + Math.sin(i * 0.6) * 0.7, i * 2.2);
-    segment.scale.set(1.35, 0.62, 0.9);
-    segment.castShadow = true;
-    group.add(segment);
-    if (i < 6) {
-      const crest = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 5), mats.dark);
-      crest.position.set(segment.position.x, segment.position.y + 1.6, segment.position.z);
-      crest.rotation.x = Math.PI;
-      group.add(crest);
+  const spinePath = new THREE.CatmullRomCurve3(Array.from({ length: 11 }, (_, i) => (
+    new THREE.Vector3(Math.sin(i * 0.7) * 5.2, Math.sin(i * 0.42) * 0.9, i * 4.4)
+  )));
+  const body = new THREE.Mesh(new THREE.TubeGeometry(spinePath, 84, 2.25, 16, false), bodyMat);
+  body.scale.set(1.18, 0.68, 1);
+  body.castShadow = true;
+  group.add(body);
+  const belly = new THREE.Mesh(new THREE.TubeGeometry(spinePath, 84, 1.28, 12, false), bellyMat);
+  belly.position.y = -0.92;
+  belly.scale.set(0.72, 0.35, 0.96);
+  group.add(belly);
+  const points = spinePath.getPoints(14);
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i];
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.68, 2.7, 5), mats.dark);
+    crest.position.set(p.x, p.y + 2.05, p.z);
+    crest.rotation.x = Math.PI;
+    crest.rotation.z = Math.sin(i) * 0.18;
+    crest.castShadow = true;
+    group.add(crest);
+    if (i % 2 === 0) {
+      [-1, 1].forEach((side) => {
+        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.7, 4.8, 4), bodyMat);
+        fin.position.set(p.x + side * 2.2, p.y - 0.2, p.z + 0.4);
+        fin.rotation.z = side * -1.25;
+        fin.rotation.y = Math.PI / 4;
+        fin.castShadow = true;
+        group.add(fin);
+      });
     }
   }
-  const head = new THREE.Mesh(new THREE.SphereGeometry(3.1, 18, 12), bodyMat);
-  head.position.set(0, 0.35, -2.9);
-  head.scale.set(1.25, 0.82, 1.05);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(5.3, 24, 16), bodyMat);
+  head.position.set(0, 2.25, -5.4);
+  head.scale.set(1.38, 0.9, 1.24);
+  head.castShadow = true;
   group.add(head);
-  const jaw = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.65, 2.4), bellyMat);
-  jaw.position.set(0, -0.68, -3.45);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(3.9, 16, 10), bodyMat);
+  neck.position.set(0, 1.35, -1.3);
+  neck.scale.set(1.35, 0.62, 1.35);
+  neck.castShadow = true;
+  group.add(neck);
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(2.75, 5.1, 12), bodyMat);
+  snout.position.set(0, 2.05, -9.25);
+  snout.rotation.x = -Math.PI / 2;
+  snout.scale.set(1.12, 0.78, 0.85);
+  snout.castShadow = true;
+  group.add(snout);
+  const jaw = new THREE.Mesh(new THREE.SphereGeometry(3.05, 16, 10), bellyMat);
+  jaw.position.set(0, 0.92, -7.35);
+  jaw.scale.set(1.9, 0.28, 0.78);
   group.add(jaw);
   for (let side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), mats.gold);
-    eye.position.set(side * 1.25, 0.78, -5.55);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8), mats.gold);
+    eye.position.set(side * 2.65, 3.35, -8.55);
     group.add(eye);
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.6, 7), mats.rock);
-    horn.position.set(side * 1.0, 1.55, -4.5);
-    horn.rotation.x = -0.55;
+    const brow = new THREE.Mesh(new THREE.ConeGeometry(0.36, 1.8, 5), mats.dark);
+    brow.position.set(side * 2.25, 3.82, -8.05);
+    brow.rotation.z = side * 1.1;
+    brow.castShadow = true;
+    group.add(brow);
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.65, 3.2, 7), mats.rock);
+    horn.position.set(side * 1.85, 4.25, -6.45);
+    horn.rotation.x = -0.72;
+    horn.rotation.z = side * 0.22;
+    horn.castShadow = true;
     group.add(horn);
-    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.62, 3.5, 4), bodyMat);
-    fin.position.set(side * 3.0, -0.2, 2.8);
-    fin.rotation.z = side * -1.2;
-    fin.rotation.y = Math.PI / 4;
-    group.add(fin);
+    for (let i = 0; i < 3; i++) {
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 5), mats.white);
+      tooth.position.set(side * (0.85 + i * 0.48), 0.56, -8.0 - i * 0.34);
+      tooth.rotation.x = Math.PI;
+      group.add(tooth);
+    }
   }
   return group;
 }
 
+function makeTaperedTentacle(curve, baseRadius, tipRadius, material, options = {}) {
+  const group = new THREE.Group();
+  const segments = options.segments || 14;
+  const radialSegments = options.radialSegments || 7;
+  const points = curve.getPoints(segments);
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const t0 = i / (points.length - 1);
+    const t1 = (i + 1) / (points.length - 1);
+    const r0 = baseRadius + (tipRadius - baseRadius) * t0;
+    const r1 = baseRadius + (tipRadius - baseRadius) * t1;
+    const length = a.distanceTo(b);
+    const section = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, length, radialSegments, 1, false), material);
+    setCylinderBetween(section, a, b);
+    section.castShadow = true;
+    group.add(section);
+  }
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(tipRadius * 1.15, radialSegments, 5), material);
+  tip.position.copy(points[points.length - 1]);
+  tip.scale.y = 0.72;
+  tip.castShadow = true;
+  group.add(tip);
+  if (options.suckerMat) {
+    const suckerTs = options.suckerTs || [0.32, 0.48, 0.64, 0.8];
+    suckerTs.forEach((t, index) => {
+      const point = curve.getPoint(t);
+      const size = Math.max(0.12, baseRadius * 0.38 - index * 0.04);
+      const sucker = new THREE.Mesh(new THREE.SphereGeometry(size, 7, 5), options.suckerMat);
+      sucker.position.copy(point);
+      sucker.position.y -= baseRadius * 0.62;
+      sucker.scale.y = 0.26;
+      group.add(sucker);
+    });
+  }
+  return group;
+}
+
+function makeKrakenMesh() {
+  const group = new THREE.Group();
+  const lowMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.02, flatShading: true });
+  const skin = lowMat(0xb82724);
+  const darkSkin = lowMat(0x6d1516);
+  const underside = lowMat(0xf06a4e);
+  const suckerMat = lowMat(0xffb08a);
+  const eyeMat = lowMat(0xffe36b);
+  const pupilMat = lowMat(0x16112a);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(8.8, 14, 10), skin);
+  head.scale.set(1.08, 0.76, 1.0);
+  head.position.set(0, 2.0, -4.0);
+  head.castShadow = true;
+  group.add(head);
+
+  const mantle = new THREE.Mesh(new THREE.SphereGeometry(9.2, 14, 10), skin);
+  mantle.scale.set(0.86, 1.12, 0.74);
+  mantle.position.set(0, 4.7, 2.8);
+  mantle.rotation.x = 0.2;
+  mantle.castShadow = true;
+  group.add(mantle);
+
+  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(8.0, 12, 8), darkSkin);
+  shoulder.scale.set(1.28, 0.38, 0.7);
+  shoulder.position.set(0, 1.1, 0.4);
+  shoulder.castShadow = true;
+  group.add(shoulder);
+
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(5.2, 5.8, 9), darkSkin);
+  crown.scale.set(0.92, 0.78, 0.78);
+  crown.position.set(0, 8.0, 1.9);
+  crown.rotation.x = Math.PI;
+  crown.castShadow = true;
+  group.add(crown);
+
+  const browPlate = new THREE.Mesh(new THREE.BoxGeometry(9.5, 1.2, 2.5), darkSkin);
+  browPlate.position.set(0, 4.05, -8.0);
+  browPlate.castShadow = true;
+  group.add(browPlate);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(7.6, 12, 8), underside);
+  belly.scale.set(1.0, 0.2, 0.92);
+  belly.position.set(0, -1.25, -0.8);
+  group.add(belly);
+
+  const beakTop = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.4, 4), pupilMat);
+  beakTop.position.set(0, 0.95, -9.0);
+  beakTop.rotation.x = Math.PI / 2;
+  beakTop.rotation.z = Math.PI / 4;
+  group.add(beakTop);
+  const beakBottom = beakTop.clone();
+  beakBottom.position.y = 0.15;
+  beakBottom.rotation.x = -Math.PI / 2;
+  group.add(beakBottom);
+
+  for (let side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8), eyeMat);
+    eye.scale.set(1.0, 0.82, 0.58);
+    eye.position.set(side * 3.1, 3.75, -9.1);
+    group.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), pupilMat);
+    pupil.scale.set(0.78, 0.86, 0.32);
+    pupil.position.set(side * 3.1, 3.68, -9.78);
+    group.add(pupil);
+    const cheek = new THREE.Mesh(new THREE.ConeGeometry(1.15, 3.4, 5), darkSkin);
+    cheek.position.set(side * 5.7, 1.75, -5.9);
+    cheek.rotation.z = side * -1.1;
+    cheek.rotation.y = side * 0.35;
+    cheek.castShadow = true;
+    group.add(cheek);
+  }
+
+  const tentacleOffsets = [-0.95, -0.68, -0.42, -0.16, 0.16, 0.42, 0.68, 0.95];
+  tentacleOffsets.forEach((offset, i) => {
+    const angle = Math.PI + offset;
+    const reach = i % 2 ? 31 : 25;
+    const curl = (i % 4 < 2 ? -1 : 1) * 0.34;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(Math.sin(angle) * 5.5, -0.9, Math.cos(angle) * 4.0 - 3.5),
+      new THREE.Vector3(Math.sin(angle + curl * 0.35) * 12.5, 0.85 + (i % 2) * 0.45, Math.cos(angle + curl * 0.35) * 11.5 - 3.5),
+      new THREE.Vector3(Math.sin(angle + curl) * reach, 0.05, Math.cos(angle + curl) * reach - 2.8),
+      new THREE.Vector3(Math.sin(angle + curl * 1.25) * (reach + 4.5), -0.55, Math.cos(angle + curl * 1.25) * (reach + 4.5) - 2.4),
+    ]);
+    const tentacle = makeTaperedTentacle(curve, i < 4 ? 1.12 : 0.92, i < 4 ? 0.38 : 0.28, skin, {
+      segments: 13,
+      radialSegments: 7,
+      suckerMat,
+    });
+    tentacle.userData.tentacle = true;
+    tentacle.userData.phase = i * 0.74;
+    group.add(tentacle);
+  });
+
+  for (let i = 0; i < 9; i++) {
+    const spot = new THREE.Mesh(new THREE.SphereGeometry(0.42 - (i % 3) * 0.05, 7, 5), darkSkin);
+    spot.position.set(Math.sin(i * 2.1) * (2.2 + (i % 3) * 1.2), 5.1 + Math.sin(i) * 1.2, 1.4 + Math.cos(i * 1.3) * 2.0);
+    spot.scale.y = 0.32;
+    group.add(spot);
+  }
+
+  group.userData.radius = 25;
+  return group;
+}
+
+function syncKraken(data) {
+  if (!data) return;
+  if (!krakenBoss) {
+    krakenBoss = {
+      group: makeKrakenMesh(),
+      hp: Number(data.hp) || 10000,
+      maxHp: Number(data.maxHp) || 10000,
+      alive: data.alive !== false,
+      radius: Number(data.radius) || 25,
+    };
+    scene.add(krakenBoss.group);
+  }
+  krakenBoss.hp = Number(data.hp) || 0;
+  krakenBoss.maxHp = Number(data.maxHp) || 10000;
+  krakenBoss.alive = data.alive !== false;
+  krakenBoss.radius = Number(data.radius) || 25;
+  krakenBoss.defeatedAt = Number(data.defeatedAt) || 0;
+  krakenBoss.group.position.x = Number(data.x) || 0;
+  krakenBoss.group.position.z = Number(data.z) || 0;
+  krakenBoss.group.rotation.y = Number(data.rotation) || 0;
+  if (krakenBoss.alive) {
+    krakenBoss.group.visible = true;
+    krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.6) * 0.18;
+  } else {
+    const sinkAge = krakenBoss.defeatedAt ? Math.max(0, (Date.now() - krakenBoss.defeatedAt) / 1000) : 0;
+    krakenBoss.group.position.y = -Math.min(9, sinkAge * 0.75);
+    krakenBoss.group.visible = sinkAge < 18;
+  }
+}
+
+function projectileHitsKraken(shot) {
+  if (!krakenBoss?.alive || !krakenBoss.group.visible) return false;
+  const radius = krakenBoss.radius || 25;
+  return dist2(shot.mesh.position, krakenBoss.group.position) <= radius + 2.5 && shot.mesh.position.y < 14;
+}
+
+function makeKrakenAttackEffect(attack) {
+  const group = new THREE.Group();
+  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
+  const dir = target.clone().sub(source);
+  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
+  dir.normalize();
+  const side = new THREE.Vector3(dir.z, 0, -dir.x);
+  group.userData.krakenAttack = true;
+  const attackMat = new THREE.MeshStandardMaterial({ color: 0xb82724, roughness: 0.86, metalness: 0.02, flatShading: true, transparent: true, opacity: 0.96 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x6d1516, roughness: 0.9, metalness: 0.02, flatShading: true, transparent: true, opacity: 0.96 });
+
+  const base = target.clone().add(dir.clone().multiplyScalar(-13)).add(side.clone().multiplyScalar(-5));
+  const tentacleCurve = new THREE.CatmullRomCurve3([
+    base.clone().add(new THREE.Vector3(0, -2.4, 0)),
+    target.clone().add(dir.clone().multiplyScalar(-15)).add(side.clone().multiplyScalar(4)).add(new THREE.Vector3(0, 5.5, 0)),
+    target.clone().add(dir.clone().multiplyScalar(-8)).add(side.clone().multiplyScalar(9)).add(new THREE.Vector3(0, 14.5, 0)),
+    target.clone().add(dir.clone().multiplyScalar(-2)).add(side.clone().multiplyScalar(5)).add(new THREE.Vector3(0, 19.5, 0)),
+  ]);
+  const tentacle = makeTaperedTentacle(tentacleCurve, attack.kind === "slam" ? 1.72 : 1.46, 0.58, attackMat.clone(), { segments: 18, radialSegments: 9 });
+  tentacle.userData.krakenAttackTentacle = true;
+  tentacle.userData.slamOffset = target.clone().add(side.clone().multiplyScalar(1.6)).sub(tentacleCurve.getPoint(1));
+  tentacle.userData.slamRotation = -0.95 * Math.sign(side.x || 1);
+  group.add(tentacle);
+
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(1.9, 10, 8), darkMat.clone());
+  tip.position.copy(tentacleCurve.getPoint(1));
+  tip.castShadow = true;
+  tip.userData.krakenTip = true;
+  tip.userData.curlPoint = tentacleCurve.getPoint(1).clone();
+  tip.userData.slamPoint = target.clone().add(new THREE.Vector3(0, 1.2, 0));
+  group.add(tip);
+
+  const splash = new THREE.Mesh(new THREE.RingGeometry(2.6, 5.2, 32), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.78, side: THREE.DoubleSide }));
+  splash.position.copy(target);
+  splash.position.y = 0.12;
+  splash.rotation.x = -Math.PI / 2;
+  splash.userData.baseScale = 0.9;
+  splash.visible = false;
+  splash.userData.krakenSplash = true;
+  group.add(splash);
+  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(2.2, 4.0, 28), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.58, side: THREE.DoubleSide }));
+  riseSplash.position.copy(base);
+  riseSplash.position.y = 0.1;
+  riseSplash.rotation.x = -Math.PI / 2;
+  riseSplash.userData.krakenRiseSplash = true;
+  group.add(riseSplash);
+  addImpactEffect(group, 5.4);
+}
+
+function applyKrakenAttack(attack) {
+  if (!attack) return;
+  makeKrakenAttackEffect(attack);
+  const isTarget = attack.target && attack.target === multiplayer.networkId;
+  if (isTarget && state.mode === "ship") {
+    const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+    setTimeout(() => {
+      if (state.mode !== "ship") return;
+      if (dist2(playerShip.position, slamPoint) > shipHitRadius(state.shipType) + 11) return;
+      damageTarget(state, maxHp() * 4);
+    }, 3650);
+  }
+}
+
+function makeLeviathanAttackEffect(position, outward, attackId) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  group.position.y = 0.35;
+  const side = new THREE.Vector3(outward.z, 0, -outward.x).normalize();
+  if (attackId === "tail") {
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.65, 34, 12), mat(0x223142));
+    setCylinderBetween(tail, side.clone().multiplyScalar(-18).add(new THREE.Vector3(0, 8, 0)), side.clone().multiplyScalar(18).add(new THREE.Vector3(0, 0.45, 0)));
+    tail.castShadow = true;
+    group.add(tail);
+  } else if (attackId === "spikes") {
+    for (let i = -4; i <= 4; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.85, 7.8, 5), mats.dark);
+      spike.position.copy(side.clone().multiplyScalar(i * 2.7)).add(outward.clone().multiplyScalar(1.4));
+      spike.position.y = 3.8;
+      spike.rotation.x = Math.PI;
+      spike.castShadow = true;
+      group.add(spike);
+    }
+  } else if (attackId === "ram") {
+    const wave = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 3.4, 36, 14), mat(0x5c6f78));
+    setCylinderBetween(wave, outward.clone().multiplyScalar(-22).add(new THREE.Vector3(0, 1.2, 0)), outward.clone().multiplyScalar(14).add(new THREE.Vector3(0, 1.2, 0)));
+    wave.castShadow = true;
+    group.add(wave);
+  } else {
+    const jaws = new THREE.Mesh(new THREE.TorusGeometry(6.2, 0.7, 12, 30, Math.PI), mat(0x223142));
+    jaws.position.y = 3.0;
+    jaws.rotation.x = Math.PI / 2;
+    jaws.rotation.z = Math.atan2(outward.z, outward.x);
+    jaws.castShadow = true;
+    group.add(jaws);
+  }
+  addImpactEffect(group, 4.4);
+}
+
 function summonLeviathan() {
   if (clock.elapsedTime < leviathanCooldown || state.mode !== "ship") return;
-  leviathanCooldown = clock.elapsedTime + 5.5;
+  leviathanCooldown = clock.elapsedTime + 10.2;
   if (leviathan?.group) scene.remove(leviathan.group);
   const outward = playerShip.position.clone();
   outward.y = 0;
   if (outward.lengthSq() < 0.01) outward.set(1, 0, 0);
   outward.normalize();
+  const attack = leviathanAttacks[Math.floor(Math.random() * leviathanAttacks.length)];
   const group = makeLeviathanMesh();
-  group.position.copy(playerShip.position).add(outward.multiplyScalar(-10));
-  group.position.y = -4.8;
-  group.rotation.y = Math.atan2(outward.x, outward.z);
-  group.scale.setScalar(0.35);
+  const spawnDistance = Math.max(MINIMAP_VISIBLE_LIMIT + 90, Math.hypot(playerShip.position.x, playerShip.position.z) + 46);
+  group.position.set(outward.x * spawnDistance, -12.5, outward.z * spawnDistance);
+  group.rotation.y = Math.atan2(outward.x, outward.z) + Math.PI;
+  group.scale.setScalar(1.4);
   scene.add(group);
-  leviathan = { group, born: clock.elapsedTime, struck: false };
-  toast("You reached forbidden waters. The Leviathan rises.");
+  leviathan = { group, born: clock.elapsedTime, struck: false, outward: outward.clone(), attack };
+  toast(`You left the charted sea. The Leviathan ${attack.label}.`);
 }
 
 function makeFish() {
@@ -2181,13 +2523,46 @@ function makeFish() {
   fish.push(group);
 }
 
-function makeCrateMesh(x, z) {
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.05, 1.25), mats.crate);
-  crate.position.set(x, 0.65, z);
-  crate.rotation.y = Math.random() * Math.PI;
-  crate.castShadow = true;
-  scene.add(crate);
-  return crate;
+function makeCrateMesh(x, z, kind = "crate") {
+  const group = new THREE.Group();
+  group.position.set(x, 0.65, z);
+  group.rotation.y = Math.random() * Math.PI;
+  if (kind === "kraken") {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.8, 0, -0.4),
+      new THREE.Vector3(-0.8, 0.55, 0.8),
+      new THREE.Vector3(1.5, 0.15, 0.3),
+      new THREE.Vector3(3.1, 0.45, -0.6),
+    ]);
+    const tentacle = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.42, 9, false), mat(0x6b3d69));
+    tentacle.castShadow = true;
+    group.add(tentacle);
+    const glow = new THREE.Mesh(new THREE.RingGeometry(1.7, 2.15, 24), new THREE.MeshBasicMaterial({ color: 0xf3c33b, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = -0.45;
+    group.add(glow);
+    scene.add(group);
+    return group;
+  }
+  const isTreasure = kind === "treasure";
+  const chest = new THREE.Mesh(
+    new THREE.BoxGeometry(isTreasure ? 1.65 : 1.25, isTreasure ? 1.12 : 1.05, isTreasure ? 1.35 : 1.25),
+    isTreasure ? mats.gold : mats.crate
+  );
+  chest.castShadow = true;
+  group.add(chest);
+  if (isTreasure) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.18, 1.48), mats.dark);
+    band.position.y = 0.13;
+    band.castShadow = true;
+    group.add(band);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.32, 1.18), mat(0xf6cc55));
+    lid.position.y = 0.62;
+    lid.castShadow = true;
+    group.add(lid);
+  }
+  scene.add(group);
+  return group;
 }
 
 function removeCrate(crate) {
@@ -2201,11 +2576,54 @@ function dropCrates(pos, count) {
   for (let i = 0; i < count; i++) {
     crates.push({
       mesh: makeCrateMesh(pos.x + (Math.random() - 0.5) * 5, pos.z + (Math.random() - 0.5) * 5),
+      kind: "crate",
+      born: clock.elapsedTime,
       heal: 8 + Math.random() * 8,
-      xp: 12 + Math.random() * 18,
-      gold: 10 + Math.floor(Math.random() * 26),
+      xp: 6 + Math.random() * 9,
+      gold: 5 + Math.floor(Math.random() * 13),
     });
   }
+}
+
+function spawnTreasure(position = null) {
+  const point = position || randomWaterPoint(MAP_LIMIT * 0.94, 55);
+  crates.push({
+    mesh: makeCrateMesh(point.x, point.z, "treasure"),
+    kind: "treasure",
+    born: clock.elapsedTime,
+    heal: 18 + Math.random() * 14,
+    xp: 220 + Math.random() * 120,
+    gold: 110 + Math.floor(Math.random() * 80),
+  });
+}
+
+function nearestTreasureTo(point, maxDistance = 150) {
+  let best = null;
+  let bestDist = maxDistance;
+  crates.forEach((crate) => {
+    if (crate.kind !== "treasure") return;
+    const d = dist2(point, crate.mesh.position);
+    if (d < bestDist) {
+      best = crate;
+      bestDist = d;
+    }
+  });
+  return best;
+}
+
+function nearestPickupTo(point, maxDistance = 125) {
+  let best = null;
+  let bestScore = maxDistance;
+  crates.forEach((crate) => {
+    const d = dist2(point, crate.mesh.position);
+    const priority = crate.kind === "treasure" || crate.kind === "kraken" ? 0.45 : 1;
+    const score = d * priority;
+    if (d < maxDistance && score < bestScore) {
+      best = crate;
+      bestScore = score;
+    }
+  });
+  return best;
 }
 
 function clearFishingRig() {
@@ -2355,7 +2773,8 @@ function initWorld() {
       velocity: new THREE.Vector3(),
       rotation: group.rotation.y,
       agroUntil: 0,
-      naturallyAggressive: Math.random() < 0.16,
+      naturallyAggressive: Math.random() < 0.24,
+      upgradeFocus: ["damage", "reload", "range"][i % 3],
       targetBot: null,
       botFightUntil: 0,
       fireCooldown: 1.6 + Math.random() * 2.4,
@@ -2385,6 +2804,15 @@ ui.openMinimap.addEventListener("click", () => {
   ui.minimapPanel.classList.remove("hidden");
   ui.minimapPanel.classList.remove("expanded");
   ui.openMinimap.classList.add("hidden");
+});
+ui.closeLeaderboard?.addEventListener("click", () => {
+  ui.leaderboardPanel.classList.add("hidden");
+  ui.openLeaderboard.classList.remove("hidden");
+});
+ui.openLeaderboard?.addEventListener("click", () => {
+  ui.leaderboardPanel.classList.remove("hidden");
+  ui.openLeaderboard.classList.add("hidden");
+  renderLeaderboard();
 });
 ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
   state.shopTab = tab.dataset.tab;
@@ -2551,9 +2979,9 @@ function useTool() {
     const fireDelay = cannonReload();
     if (state.cooldown > 0) return;
     state.cooldown = fireDelay;
-    const damage = cannonDamage();
     const range = cannonRange();
     const targetDistance = clamp(dist2(playerShip.position, aimPoint), 4, range);
+    const damage = scaleDamageByRange(cannonDamage(), targetDistance, range);
     const target = playerShip.position.clone().add(dir.clone().multiplyScalar(targetDistance));
     target.y = 0;
     const origin = playerShip.position.clone().add(dir.clone().multiplyScalar(3.8));
@@ -2593,8 +3021,9 @@ function collectCrate(crate) {
   state.hp = clamp(state.hp + crate.heal, 0, maxHp());
   addXP(crate.xp);
   state.gold += crate.gold ?? (10 + Math.floor(Math.random() * 26));
+  const kind = crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate";
   removeCrate(crate);
-  toast("Crate recovered: repairs, gold, and XP.");
+  toast(`${kind} recovered: repairs, gold, and XP.`);
 }
 
 function botCollectCrates(bot) {
@@ -2604,6 +3033,10 @@ function botCollectCrates(bot) {
   crates.slice().forEach((crate) => {
     if (dist2(bot.group.position, crate.mesh.position) > pickupRadius) return;
     bot.hp = clamp((Number(bot.hp) || spec.hp) + (Number(crate.heal) || 0), 0, bot.serverMaxHp || spec.hp);
+    if (crate.kind === "treasure" || crate.kind === "kraken") {
+      bot.level = Math.min(40, (bot.level || 1) + 2);
+      bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 1.1);
+    }
     removeCrate(crate);
   });
 }
@@ -2825,7 +3258,7 @@ function updateShip(dt) {
   playerShip.rotation.y = state.rotation;
   playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
   state.position.copy(playerShip.position);
-  if (Math.abs(playerShip.position.x) > MAP_LIMIT || Math.abs(playerShip.position.z) > MAP_LIMIT) summonLeviathan();
+  if (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT) summonLeviathan();
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
   });
@@ -2834,12 +3267,13 @@ function updateShip(dt) {
 function updateWalker(dt) {
   const island = islands.find((item) => item.name === state.dockedAt);
   if (!island) return;
-  const move = new THREE.Vector3((keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0), 0, (keys.has("s") ? 1 : 0) - (keys.has("w") ? 1 : 0));
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    character.rotation.y = Math.atan2(move.x, move.z);
-    state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.12);
-    const next = character.position.clone().add(move.multiplyScalar(dt * 11));
+  const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
+  character.rotation.y += turn * dt * 2.45;
+  state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.18);
+  const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0);
+  if (throttle) {
+    const forward = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
+    const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 10.5));
     const groundY = walkableGroundY(island, next);
     if (groundY !== null) {
       character.position.x = next.x;
@@ -2920,7 +3354,7 @@ function updateBots(dt) {
   bots.forEach((bot, i) => {
     const spec = getShipStats(bot.shipType);
     const playerDistance = dist2(bot.group.position, playerShip.position);
-    const aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 28));
+    const aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 34));
     let fightingBot = bot.targetBot && bot.botFightUntil > clock.elapsedTime
       ? bots.find((other) => other.localId === bot.targetBot && other.hp > 0)
       : null;
@@ -2928,12 +3362,15 @@ function updateBots(dt) {
       fightingBot = nearestBotEnemy(bot, 54);
       if (fightingBot) startBotFeud(bot, fightingBot, 8 + Math.random() * 8);
     }
+    const pickupTarget = !aggressive && !fightingBot ? nearestPickupTo(bot.group.position, 155) : null;
     bot.turn -= dt;
     bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
     if (aggressive) {
       bot.target = playerShip.position.clone();
     } else if (fightingBot) {
       bot.target = fightingBot.group.position.clone();
+    } else if (pickupTarget) {
+      bot.target = pickupTarget.mesh.position.clone();
     } else if (bot.turn < 0) {
       bot.turn = 4 + Math.random() * 7;
       bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
@@ -2942,7 +3379,7 @@ function updateBots(dt) {
     const toTarget = target.clone().sub(bot.group.position);
     toTarget.y = 0;
     const targetDistance = toTarget.length();
-    if (!aggressive && !fightingBot && targetDistance < 9) {
+    if (!aggressive && !fightingBot && !pickupTarget && targetDistance < 9) {
       bot.velocity.multiplyScalar(Math.pow(0.62, dt * 3));
       bot.turn = 1.5 + Math.random() * 2.5;
       bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
@@ -2956,6 +3393,11 @@ function updateBots(dt) {
         const danger = island.radius + shipHitRadius(bot.shipType) * 1.8 + 12;
         if (distance > 0.001 && distance < danger) avoidance.add(away.normalize().multiplyScalar((danger - distance) / danger * 38));
       });
+      const edgeMargin = 44;
+      const edgeX = MAP_LIMIT - Math.abs(bot.group.position.x);
+      const edgeZ = MAP_LIMIT - Math.abs(bot.group.position.z);
+      if (edgeX < edgeMargin) avoidance.x += -Math.sign(bot.group.position.x || 1) * ((edgeMargin - edgeX) / edgeMargin) * 48;
+      if (edgeZ < edgeMargin) avoidance.z += -Math.sign(bot.group.position.z || 1) * ((edgeMargin - edgeZ) / edgeMargin) * 48;
       const avoidShip = (position, type, weight = 1) => {
         const away = bot.group.position.clone().sub(position);
         away.y = 0;
@@ -3008,23 +3450,25 @@ function updateBots(dt) {
       : 0;
     const shotDistance = shotDir.length();
     const canFire = shotTarget && bot.fireCooldown <= 0 && facing > 0.45;
-    if (canFire && shotDistance <= BOT_CANNON_RANGE && shotDistance > 0.01) {
+    const botRange = botCannonRange(bot);
+    if (canFire && shotDistance <= botRange && shotDistance > 0.01) {
       const targetVelocity = fightingBot ? fightingBot.velocity : state.velocity;
       const origin = bot.group.position.clone();
-      const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, BOT_CANNON_RANGE);
+      const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, botRange);
       const shot = targetPoint.clone().sub(origin);
       shot.y = 0;
       if (shot.lengthSq() < 0.01) return;
       shot.normalize();
+      const damage = scaleDamageByRange(botCannonDamage(bot), shotDistance, botRange);
       makeProjectile(
         bot.localId,
         origin.add(shot.clone().multiplyScalar(3.4)),
         shot,
-        botCannonDamage(bot.level),
-        BOT_CANNON_RANGE,
+        damage,
+        botRange,
         { target: targetPoint, targetKind: fightingBot ? "bot" : "player" },
       );
-      bot.fireCooldown = botCannonReload();
+      bot.fireCooldown = botCannonReload(bot);
     }
   });
 }
@@ -3048,16 +3492,21 @@ function updateProjectiles(dt) {
           } else {
             damageTarget(bot, shot.damage);
           }
-          addXP(3 + Math.floor(shot.damage / 9));
+          addXP(1 + Math.floor(shot.damage / 27));
           hit = true;
         }
       });
       remotePlayers.forEach((remote) => {
         if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
-          if (remote.mode !== "land") addXP(5 + Math.floor(shot.damage / 8));
+          if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
           hit = true;
         }
       });
+      if (!hit && projectileHitsKraken(shot)) {
+        if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: shot.damage });
+        krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - shot.damage);
+        hit = true;
+      }
     } else if (shot.targetKind !== "bot" && state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
       damageTarget(state, shot.damage);
       hit = true;
@@ -3081,12 +3530,59 @@ function updateProjectiles(dt) {
   });
 }
 
+function updateKrakenAttackEffect(effect, t) {
+  const curl = clamp(t / 0.48, 0, 1);
+  const hold = clamp((t - 0.42) / 0.18, 0, 1);
+  const slam = clamp((t - 0.62) / 0.18, 0, 1);
+  const after = clamp((t - 0.8) / 0.2, 0, 1);
+  effect.group.children.forEach((child) => {
+    if (child.userData.krakenAttackTentacle) {
+      child.visible = true;
+      child.position.y = -8.0 + curl * 8.0 + Math.sin(hold * Math.PI) * 1.2;
+      if (t >= 0.52) {
+        child.position.lerp(child.userData.slamOffset, slam);
+        child.position.y += 10.5 * (1 - slam);
+        child.rotation.z = child.userData.slamRotation * slam + Math.sin((1 - slam) * Math.PI) * 0.16;
+        child.scale.setScalar(0.96 + slam * 0.12);
+      } else {
+        child.rotation.z = Math.sin(curl * Math.PI) * 0.18;
+        child.scale.setScalar(0.76 + curl * 0.24);
+      }
+    }
+    if (child.userData.krakenRiseSplash) {
+      child.visible = t < 0.55;
+      const scale = 0.8 + curl * 2.4;
+      child.scale.set(scale, scale, scale);
+      child.material.opacity = Math.max(0, 0.58 * (1 - curl));
+    }
+    if (child.userData.krakenTip) {
+      child.visible = true;
+      child.position.lerpVectors(child.userData.curlPoint, child.userData.slamPoint, slam);
+      child.position.y += t < 0.52 ? -8.0 + curl * 8.0 : 11.2 * (1 - slam);
+      child.scale.setScalar(1 + Math.sin(after * Math.PI) * 0.25);
+    }
+    if (child.userData.krakenSplash) {
+      child.visible = t >= 0.78;
+      const scale = 1 + after * 3.2;
+      child.scale.set(scale, scale, scale);
+      child.material.opacity = Math.max(0, 0.82 * (1 - after));
+    }
+  });
+}
+
 function updateImpactEffects(dt) {
   impactEffects.slice().forEach((effect) => {
     effect.age += dt;
     const t = clamp(effect.age / effect.life, 0, 1);
     const fade = 1 - t;
+    if (effect.group.userData.krakenAttack) updateKrakenAttackEffect(effect, t);
     effect.group.children.forEach((child) => {
+      if (effect.group.userData.krakenAttack && (
+        child.userData.krakenAttackTentacle
+        || child.userData.krakenRiseSplash
+        || child.userData.krakenTip
+        || child.userData.krakenSplash
+      )) return;
       if (child.userData.velocity) {
         child.position.addScaledVector(child.userData.velocity, dt);
         child.userData.velocity.y -= 8.5 * dt;
@@ -3152,31 +3648,72 @@ function updateFish(dt) {
       );
     }
   }
-  crates.forEach((crate) => {
-    crate.mesh.rotation.y += dt * 0.65;
-    crate.mesh.position.y = 0.72 + Math.sin(clock.elapsedTime * 2 + crate.mesh.id) * 0.1;
+  if (!multiplayer.serverWorld) {
+    treasureSpawnTimer -= dt;
+    if (treasureSpawnTimer <= 0) {
+      treasureSpawnTimer = 28 + Math.random() * 42;
+      const treasureCount = crates.filter((crate) => crate.kind === "treasure").length;
+      if (treasureCount < MAX_TREASURES && Math.random() < 0.45) spawnTreasure();
+    }
+  }
+  crates.slice().forEach((crate) => {
+    if (crate.born === undefined) crate.born = clock.elapsedTime;
+    crate.mesh.rotation.y += dt * (crate.kind === "treasure" || crate.kind === "kraken" ? 0.92 : 0.65);
+    const age = clock.elapsedTime - crate.born;
+    const lifetime = crate.kind === "kraken" ? CRATE_LIFETIME * 4 : CRATE_LIFETIME;
+    const sink = clamp((age - lifetime) / CRATE_SINK_TIME, 0, 1);
+    const baseY = crate.kind === "kraken" ? 0.54 : crate.kind === "treasure" ? 0.78 : 0.72;
+    crate.mesh.position.y = baseY + Math.sin(clock.elapsedTime * 2 + crate.mesh.id) * 0.1 - sink * 1.8;
+    const baseScale = crate.kind === "kraken" ? 1.2 : crate.kind === "treasure" ? 1.08 : 1;
+    crate.mesh.scale.setScalar(baseScale * (1 - sink * 0.35));
+    if (!crate.serverId && age > lifetime + CRATE_SINK_TIME) removeCrate(crate);
   });
 }
 
 function updateLeviathan(dt) {
   if (!leviathan?.group) return;
   const age = clock.elapsedTime - leviathan.born;
-  leviathan.group.position.y = -4.8 + Math.sin(clamp(age / 1.1, 0, 1) * Math.PI * 0.5) * 5.0;
-  leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 3) * 0.08;
-  leviathan.group.scale.setScalar(0.35 + clamp(age / 1.2, 0, 1) * 0.8);
-  if (!leviathan.struck && age > 0.85) {
+  const rise = Math.sin(clamp(age / 3.0, 0, 1) * Math.PI * 0.5);
+  leviathan.group.position.y = -13.5 + rise * 13.2;
+  leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 1.05) * 0.1;
+  leviathan.group.scale.setScalar(1.4 + rise * 3.6);
+  if (!leviathan.struck && age > 2.25) {
     leviathan.struck = true;
+    makeLeviathanAttackEffect(playerShip.position.clone(), leviathan.outward, leviathan.attack.id);
     damageTarget(state, maxHp() * 4);
   }
-  if (age > 3.2) {
+  if (age > 8.2) {
     scene.remove(leviathan.group);
     leviathan = null;
   }
 }
 
+function updateKraken(dt) {
+  if (!krakenBoss?.group) return;
+  if (krakenBoss.alive) {
+    krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.58) * 0.18;
+  }
+  krakenBoss.group.children.forEach((child) => {
+    if (!child.userData?.tentacle) return;
+    child.rotation.y = Math.sin(clock.elapsedTime * 0.7 + child.userData.phase) * 0.045;
+    child.rotation.z = Math.cos(clock.elapsedTime * 0.52 + child.userData.phase) * 0.025;
+  });
+}
+
 function updateCamera(dt) {
   if (keys.has("arrowleft")) state.cameraYaw += 1.9 * dt;
   if (keys.has("arrowright")) state.cameraYaw -= 1.9 * dt;
+  if (state.mode === "land") {
+    if (character) character.visible = false;
+    const eye = character.position.clone().add(new THREE.Vector3(0, 2.35, 0));
+    const yaw = character.rotation.y;
+    const look = eye.clone().add(new THREE.Vector3(Math.sin(yaw), -0.08, Math.cos(yaw)).multiplyScalar(16));
+    camera.position.lerp(eye, 0.36);
+    camera.lookAt(look);
+    labels.forEach((label) => label.lookAt(camera.position));
+    return;
+  }
+  if (character) character.visible = false;
   const target = state.mode === "ship" ? playerShip.position : character.position;
   const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * 58, 46, Math.cos(state.cameraYaw) * 58);
   const desired = target.clone().add(offset);
@@ -3203,6 +3740,34 @@ function updateHud() {
       : `Press <b>C</b> to set sail or <b>R</b> for the shop`;
   }
   updateSpyPanel();
+  renderLeaderboard();
+}
+
+function renderLeaderboard() {
+  if (!ui.leaderboardList || ui.leaderboardPanel.classList.contains("hidden")) return;
+  const rows = [
+    { name: captainName(), gold: Math.floor(state.gold), self: true },
+    ...[...remotePlayers.values()].map((player) => ({
+      name: player.name || "Captain",
+      gold: Math.floor(Number(player.gold) || 0),
+      self: false,
+    })),
+  ]
+    .sort((a, b) => b.gold - a.gold)
+    .slice(0, 10);
+  ui.leaderboardList.innerHTML = rows.map((row) => (
+    `<li${row.self ? ' class="self"' : ""}><span>${escapeMarkup(row.name)}</span><b>${row.gold}g</b></li>`
+  )).join("");
+}
+
+function escapeMarkup(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
 }
 
 function updateSpyPanel() {
@@ -3219,11 +3784,17 @@ function updateSpyPanel() {
   ui.spyDetails.innerHTML = `Lv.${target.level} | ${distance}m | ${target.threat}<br>HP ${Math.ceil(target.hp)}/${target.max} (${hpPct}%) | Armor ${Math.round(target.armor * 100)}%<br>Speed ${target.speed} | Regen ${target.regen}/s | Crates ${target.crateEstimate}`;
 }
 
-function drawMapDot(ctx, x, z, radius, color, stroke = null) {
-  const range = MAP_LIMIT * 1.12;
+function mapPoint(x, z) {
+  const range = MINIMAP_VISIBLE_LIMIT;
   const size = ui.minimap.width;
-  const px = size * 0.5 + (x / range) * size * 0.5;
-  const py = size * 0.5 + (z / range) * size * 0.5;
+  return {
+    x: size * 0.5 + (x / range) * size * 0.5,
+    y: size * 0.5 + (z / range) * size * 0.5,
+  };
+}
+
+function drawMapDot(ctx, x, z, radius, color, stroke = null) {
+  const { x: px, y: py } = mapPoint(x, z);
   ctx.beginPath();
   ctx.arc(px, py, radius, 0, Math.PI * 2);
   ctx.fillStyle = color;
@@ -3234,6 +3805,51 @@ function drawMapDot(ctx, x, z, radius, color, stroke = null) {
     ctx.stroke();
   }
   return { x: px, y: py };
+}
+
+function drawKrakenMapMarker(ctx, x, z, ratio, hp, maxHp) {
+  const pos = mapPoint(x, z);
+  const pulse = (Math.sin(clock.elapsedTime * 3.4) + 1) * 0.5;
+  const radius = (5.8 + pulse * 0.9) * ratio;
+  const hpRatio = clamp((Number(hp) || 0) / Math.max(1, Number(maxHp) || 10000), 0, 1);
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.lineCap = "round";
+
+  ctx.fillStyle = "rgba(184,39,36,0.94)";
+  ctx.strokeStyle = "rgba(243,195,59,0.9)";
+  ctx.lineWidth = 1.5 * ratio;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,238,166,0.58)";
+  ctx.lineWidth = 0.9 * ratio;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + 2.3 * ratio, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#f3c33b";
+  ctx.lineWidth = 1.4 * ratio;
+  for (let i = 0; i < 6; i++) {
+    ctx.save();
+    ctx.rotate((Math.PI * 2 * i) / 6 + Math.sin(clock.elapsedTime * 1.2) * 0.08);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(1.8 * ratio, -2.0 * ratio, 4.0 * ratio, -1.2 * ratio, 5.4 * ratio, -3.4 * ratio);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = "#e95055";
+  ctx.lineWidth = 1.7 * ratio;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + 4.0 * ratio, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpRatio);
+  ctx.stroke();
+
+  ctx.restore();
+  return pos;
 }
 
 function updateMinimap() {
@@ -3268,13 +3884,21 @@ function updateMinimap() {
   }
   islands.forEach((island) => {
     const pos = drawMapDot(ctx, island.group.position.x, island.group.position.z, Math.max(3, island.radius * size / (MAP_LIMIT * 2.45)), "#72bf61", "#f3df9b");
-    if (expanded) {
-      ctx.fillStyle = "#17313c";
-      ctx.font = `${Math.max(10, size * 0.032)}px sans-serif`;
-      ctx.fillText(island.name, pos.x + 5, pos.y - 5);
-    }
+    ctx.fillStyle = "#17313c";
+    ctx.font = `700 ${Math.max(7, size * 0.024)}px sans-serif`;
+    ctx.fillText(island.name, pos.x + 4, pos.y - 4);
   });
-  crates.forEach((crate) => drawMapDot(ctx, crate.mesh.position.x, crate.mesh.position.z, expanded ? 3.2 : 2.2, "#b87533", "#fff0bc"));
+  crates.forEach((crate) => drawMapDot(
+    ctx,
+    crate.mesh.position.x,
+    crate.mesh.position.z,
+    crate.kind === "kraken" ? 4.2 : crate.kind === "treasure" ? 3.6 : 2.2,
+    crate.kind === "kraken" ? "#6b3d69" : crate.kind === "treasure" ? "#f3c33b" : "#b87533",
+    "#fff0bc"
+  ));
+  if (krakenBoss?.group?.visible) {
+    drawKrakenMapMarker(ctx, krakenBoss.group.position.x, krakenBoss.group.position.z, ratio, krakenBoss.hp, krakenBoss.maxHp);
+  }
   bots.forEach((bot) => drawMapDot(ctx, bot.group.position.x, bot.group.position.z, expanded ? 4 : 3, "#cf493f", "#341918"));
   remotePlayers.forEach((remote) => {
     if (remote.group.visible) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
@@ -3302,6 +3926,7 @@ function multiplayerPayload() {
   return {
     name: captainName(),
     level: state.level,
+    gold: Math.floor(state.gold),
     hp: state.hp,
     shipType: state.shipType,
     mode: state.mode,
@@ -3387,6 +4012,7 @@ function upsertRemotePlayer(data) {
   remote.updated = clock.elapsedTime;
   remote.mode = data.mode || "ship";
   remote.level = data.level || 1;
+  remote.gold = Number(data.gold) || 0;
   remote.hp = data.hp || getShipStats(shipType).hp;
   remote.group.position.set(x, SHIP_WATERLINE_Y, z);
   remote.group.rotation.y = Number(data.rotation) || 0;
@@ -3464,15 +4090,20 @@ function syncServerWorld(world) {
     seenCrates.add(data.id);
     let crate = crates.find((item) => item.serverId === data.id);
     if (!crate) {
+      const kind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : "crate";
       crate = {
         serverId: data.id,
-        mesh: makeCrateMesh(Number(data.x) || 0, Number(data.z) || 0),
+        mesh: makeCrateMesh(Number(data.x) || 0, Number(data.z) || 0, kind),
+        kind,
         heal: Number(data.heal) || 10,
         xp: Number(data.xp) || 16,
         gold: Number(data.gold) || 14,
+        born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
       };
       crates.push(crate);
     }
+    crate.kind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : "crate";
+    if (Number.isFinite(Number(data.born))) crate.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
     crate.heal = Number(data.heal) || crate.heal;
     crate.xp = Number(data.xp) || crate.xp;
     crate.gold = Number(data.gold) || crate.gold;
@@ -3482,6 +4113,7 @@ function syncServerWorld(world) {
   crates.slice().forEach((crate) => {
     if (!crate.serverId || !seenCrates.has(crate.serverId)) removeCrate(crate);
   });
+  syncKraken(world.kraken);
 }
 
 function applyCrateReward(crate) {
@@ -3491,7 +4123,7 @@ function applyCrateReward(crate) {
   state.hp = clamp(state.hp + (Number(crate.heal) || 0), 0, maxHp());
   addXP(Number(crate.xp) || 0);
   state.gold += Number(crate.gold) || 0;
-  toast("Crate recovered: repairs, gold, and XP.");
+  toast(`${crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate"} recovered: repairs, gold, and XP.`);
 }
 
 function spawnRemoteShot(data) {
@@ -3524,6 +4156,10 @@ function handleMultiplayerMessage(message) {
     applyCrateReward(message.crate);
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
+  } else if (message.type === "krakenAttack") {
+    applyKrakenAttack(message.attack);
+  } else if (message.type === "krakenDefeated") {
+    // The dropped tentacle reward is visible in-world; no popup needed.
   } else if (message.type === "botReward") {
     state.gold += Number(message.gold) || 0;
     addXP(Number(message.xp) || 0);
@@ -3668,6 +4304,7 @@ function frame() {
   updateImpactEffects(dt);
   updateFish(dt);
   updateLeviathan(dt);
+  updateKraken(dt);
   updateCamera(dt);
   animateSea();
   publishMultiplayer();

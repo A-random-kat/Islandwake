@@ -263,6 +263,76 @@ button.active {
   pointer-events: auto;
 }
 
+.leaderboard {
+  position: fixed;
+  right: 16px;
+  top: 244px;
+  z-index: 7;
+  width: 204px;
+  pointer-events: auto;
+}
+
+.leaderboard header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.leaderboard header strong {
+  font-size: 13px;
+}
+
+.leaderboard button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  line-height: 1;
+}
+
+.leaderboard ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.leaderboard li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: #244956;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.leaderboard li.self {
+  color: #10313d;
+  background: rgba(249, 196, 72, 0.32);
+}
+
+.leaderboard li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-open {
+  position: fixed;
+  right: 16px;
+  top: 244px;
+  z-index: 7;
+  min-width: 56px;
+  height: 34px;
+  pointer-events: auto;
+}
+
 .cargo strong {
   display: block;
   margin-bottom: 6px;
@@ -491,6 +561,19 @@ button.active {
   #minimap {
     width: 126px;
     height: 126px;
+  }
+
+  .leaderboard {
+    top: auto;
+    right: 10px;
+    bottom: 222px;
+    width: 150px;
+  }
+
+  .leaderboard-open {
+    top: auto;
+    right: 10px;
+    bottom: 222px;
   }
 
   .shop {
