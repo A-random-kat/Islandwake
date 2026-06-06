@@ -73,6 +73,27 @@ const shipStats = [
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
 ];
 
+const playerShipTiers = {
+  skiff: 0,
+  shallop: 0,
+  pinnace: 0,
+  hoy: 0,
+  dogger: 1,
+  tartane: 1,
+  pink: 2,
+  cat: 2,
+  ketch: 2,
+  galley: 2,
+  packet: 3,
+  barquentine: 3,
+  clipper: 3,
+  bombketch: 3,
+  storm: 3,
+  merchantman: 4,
+  treasure: 5,
+  fourthrate: 5,
+};
+
 const shipPhysics = {
   skiff: { radius: 2.4, weight: 50 },
   shallop: { radius: 2.5, weight: 55 },
@@ -223,6 +244,12 @@ function shipSpec(type) {
   return shipStats.find((ship) => ship.id === type) || shipStats[0];
 }
 
+function shipTierForDrop(type) {
+  const listed = shipStats.find((ship) => ship.id === type);
+  if (listed) return listed.tier || 0;
+  return playerShipTiers[type] || 0;
+}
+
 function radiusScaleForPhysics(radius) {
   if (radius >= 5.1) return 1.18;
   if (radius >= 4.6) return 1.135;
@@ -263,7 +290,7 @@ function botCannonDamage(botOrLevel = 1) {
 }
 
 function botCannonReload(botOrLevel = 1) {
-  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.0525);
+  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.02);
 }
 
 function botCannonRangeFor(botOrLevel = 1) {
@@ -285,9 +312,14 @@ function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
   const vx = Number(shotTarget.vx) || 0;
   const vz = Number(shotTarget.vz) || 0;
   if (distance > 0.01 && (vx || vz)) {
-    const leadTime = clamp((distance / cannonballSpeed) * 0.35, 0, 0.9);
-    targetX += vx * leadTime;
-    targetZ += vz * leadTime;
+    const leadTime = clamp(distance / cannonballSpeed, 0, 1.35);
+    targetX += vx * leadTime * 0.82;
+    targetZ += vz * leadTime * 0.82;
+  }
+  if (distance > 0.01) {
+    const jitter = clamp(0.45 + distance * 0.012, 0.45, 1.4);
+    targetX += (Math.random() - 0.5) * jitter;
+    targetZ += (Math.random() - 0.5) * jitter;
   }
   const dx = targetX - bot.x;
   const dz = targetZ - bot.z;
@@ -1237,6 +1269,20 @@ function handleMessage(socket, text) {
     bot.botFightUntil = 0;
     bot.fireCooldown = Math.min(bot.fireCooldown, 1.35);
     damageBot(bot, damage, socket);
+    broadcast(worldSnapshot());
+  }
+  if (message.type === "playerSunk") {
+    const now = Date.now();
+    if (!socket.player || socket.player.mode === "land") return;
+    if (now - (socket.lastPlayerCrateDropAt || 0) < 6000) return;
+    const x = Number(socket.player.x);
+    const z = Number(socket.player.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    const level = clamp(Math.floor(Number(socket.player.level) || Number(message.level) || 1), 1, 40);
+    const shipType = socket.player.shipType || message.shipType || "skiff";
+    const tier = shipTierForDrop(shipType);
+    spawnCrates(x, z, crateDropCount({ level, tier }), level, tier);
+    socket.lastPlayerCrateDropAt = now;
     broadcast(worldSnapshot());
   }
   if (message.type === "hitKraken") {

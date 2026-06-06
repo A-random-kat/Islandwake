@@ -59,6 +59,7 @@ const ui = {
 const keys = new Set();
 const goods = ["Silk", "Spice", "Iron", "Tea", "Pearls"];
 const STARTER_SHIP = "skiff";
+const MAX_PLAYER_LEVEL = 20;
 const TRADE_SELL_RATE = 0.85;
 const CRATE_DROP_MULTIPLIER = 1.2;
 const KRAKEN_ATTACK_LIFE = 6.8;
@@ -354,12 +355,21 @@ function xpForLevel(level) {
 }
 
 function addXP(amount) {
+  if (state.level >= MAX_PLAYER_LEVEL) {
+    state.level = MAX_PLAYER_LEVEL;
+    state.xp = 0;
+    return;
+  }
   state.xp += amount;
-  while (state.xp >= xpForLevel(state.level)) {
+  while (state.level < MAX_PLAYER_LEVEL && state.xp >= xpForLevel(state.level)) {
     state.xp -= xpForLevel(state.level);
     state.level++;
     state.points++;
     toast(`Level ${state.level}! Upgrade point earned.`);
+  }
+  if (state.level >= MAX_PLAYER_LEVEL) {
+    state.level = MAX_PLAYER_LEVEL;
+    state.xp = 0;
   }
 }
 
@@ -538,7 +548,7 @@ function cannonDamage() {
 }
 
 function cannonReload() {
-  return Math.max(0.36, 0.78 - state.upgrades.fireRate * 0.0525);
+  return Math.max(0.36, 0.78 - state.upgrades.fireRate * 0.02);
 }
 
 function cannonRange() {
@@ -569,7 +579,7 @@ function botCannonDamage(botOrLevel = 1) {
 }
 
 function botCannonReload(botOrLevel = 1) {
-  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.0525);
+  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.02);
 }
 
 function botCannonRange(botOrLevel = 1) {
@@ -3233,6 +3243,30 @@ function dropCrates(pos, count) {
   }
 }
 
+function dropPlayerDeathCrates(pos) {
+  const count = crateDropCount(state);
+  if (multiplayer.serverWorld) {
+    if (sendMultiplayer({
+      type: "playerSunk",
+      x: pos.x,
+      z: pos.z,
+      level: state.level,
+      shipType: state.shipType,
+    })) return;
+  }
+  dropCrates(pos, count);
+  if (multiplayer.channel) {
+    sendMultiplayer({
+      type: "playerSunk",
+      x: pos.x,
+      z: pos.z,
+      count,
+      level: state.level,
+      shipType: state.shipType,
+    });
+  }
+}
+
 function spawnTreasure(position = null) {
   const point = position || randomWaterPoint(MAP_LIMIT * 0.94, 55);
   crates.push({
@@ -3368,8 +3402,8 @@ function damageTarget(target, amount) {
   if (target.hp <= 0) {
     const level = target.level || 1;
     const deathPos = target.isBot ? target.group.position : playerShip.position;
-    dropCrates(deathPos, crateDropCount(target));
     if (target.isBot) {
+      dropCrates(deathPos, crateDropCount(target));
       target.hp = getShipStats(target.shipType).hp;
       target.group.position.copy(randomWaterPoint(MAP_LIMIT * 0.9, 82));
       target.level = Math.max(1, target.level + (Math.random() > 0.55 ? 1 : 0));
@@ -3379,6 +3413,7 @@ function damageTarget(target, amount) {
       addXP(40 + level * 22);
       toast(`Sank a level ${level} ship. Crates overboard!`);
     } else {
+      dropPlayerDeathCrates(deathPos);
       const lostGold = Math.floor(state.gold * 0.25);
       state.gold = Math.max(0, state.gold - lostGold);
       state.leviathanGrabbed = false;
@@ -4029,10 +4064,15 @@ function botAimedTargetPoint(origin, targetPosition, targetVelocity = null, maxR
   baseOffset.y = 0;
   const distance = baseOffset.length();
   if (targetVelocity && distance > 0.01) {
-    const leadTime = clamp((distance / CANNONBALL_SPEED) * 0.35, 0, 0.9);
+    const leadTime = clamp(distance / CANNONBALL_SPEED, 0, 1.35);
     const lead = targetVelocity.clone();
     lead.y = 0;
-    target.add(lead.multiplyScalar(leadTime));
+    target.add(lead.multiplyScalar(leadTime * 0.82));
+  }
+  if (distance > 0.01) {
+    const jitter = clamp(0.45 + distance * 0.012, 0.45, 1.4);
+    target.x += (Math.random() - 0.5) * jitter;
+    target.z += (Math.random() - 0.5) * jitter;
   }
   const offset = target.clone().sub(origin);
   offset.y = 0;
@@ -4528,8 +4568,9 @@ function updateHud() {
   ui.playerName.textContent = captainName();
   ui.modeLabel.textContent = state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
-  ui.xpBar.style.width = `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
-  ui.statsLine.textContent = `Lv.${state.level} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}`;
+  ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
+  const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
+  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
   const island = currentIsland();
@@ -4927,6 +4968,15 @@ function applyCrateReward(crate) {
   toast(`${crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate"} recovered: repairs, gold, and XP.`);
 }
 
+function applyRemotePlayerSunk(message) {
+  if (multiplayer.serverWorld) return;
+  const x = Number(message.x);
+  const z = Number(message.z);
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+  const count = clamp(Math.floor(Number(message.count) || 1), 1, 15);
+  dropCrates(new THREE.Vector3(x, 0, z), count);
+}
+
 function spawnRemoteShot(data) {
   if (!data || data.owner === playerId || data.owner === multiplayer.networkId) return;
   const sentAt = Number(data.sentAt);
@@ -4967,6 +5017,8 @@ function handleMultiplayerMessage(message) {
     applyCrateReward(message.crate);
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
+  } else if (message.type === "playerSunk") {
+    applyRemotePlayerSunk(message);
   } else if (message.type === "krakenAttack") {
     applyKrakenAttack(message.attack);
   } else if (message.type === "krakenDefeated") {
