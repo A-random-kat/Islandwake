@@ -86,6 +86,30 @@
     <div id="shopBody"></div>
   </aside>
 
-  <script type="module" src="game.js?v=89"></script>
+  <script>
+    (() => {
+      function pendingJoin(event) {
+        const gate = document.querySelector("#nameGate");
+        if (!gate || gate.classList.contains("hidden")) return;
+        if (event.type === "click" && !event.target.closest("#setSailButton, #nameForm button")) return;
+        if (event.type === "keydown" && event.key !== "Enter") return;
+        const input = document.querySelector("#captainNameInput");
+        const name = input?.value?.trim().replace(/\s+/g, " ").slice(0, 18);
+        if (!name) return;
+        event.preventDefault();
+        window.ISLANDWAKE_PENDING_JOIN = name;
+        try {
+          localStorage.setItem("islandwakeName", name);
+        } catch {}
+        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(name);
+      }
+      document.addEventListener("click", pendingJoin, true);
+      document.addEventListener("submit", pendingJoin, true);
+      document.addEventListener("keydown", (event) => {
+        if (event.target?.id === "captainNameInput") pendingJoin(event);
+      }, true);
+    })();
+  </script>
+  <script type="module" src="game.js?v=91"></script>
 </body>
 </html>

@@ -1087,7 +1087,11 @@ const server = http.createServer((req, res) => {
       res.end("Not found");
       return;
     }
-    res.writeHead(200, { "Content-Type": types[path.extname(filePath)] || "application/octet-stream" });
+    const ext = path.extname(filePath);
+    res.writeHead(200, {
+      "Content-Type": types[ext] || "application/octet-stream",
+      "Cache-Control": ext === ".html" ? "no-store" : "no-cache",
+    });
     res.end(data);
   });
 });
