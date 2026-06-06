@@ -1,4 +1,4 @@
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import * as THREE from "./vendor/three.module.js";
 
 const canvas = document.querySelector("#game");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -58,6 +58,10 @@ const ui = {
 const keys = new Set();
 const goods = ["Silk", "Spice", "Iron", "Tea", "Pearls"];
 const STARTER_SHIP = "skiff";
+const TRADE_SELL_RATE = 0.85;
+const CRATE_DROP_MULTIPLIER = 1.2;
+const KRAKEN_ATTACK_LIFE = 6.8;
+const KRAKEN_SLAM_DELAY_MS = 5200;
 const MAP_LIMIT = 280;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
 const SEA_SIZE = 2400;
@@ -214,6 +218,7 @@ localStorage.islandwakeId = captainId;
 const playerId = crypto.randomUUID();
 const state = {
   name: localStorage.islandwakeName || "",
+  joined: false,
   level: 1,
   xp: 0,
   gold: 240,
@@ -235,6 +240,7 @@ const state = {
   walkHeight: 0,
   walkVelocityY: 0,
   grounded: true,
+  leviathanGrabbed: false,
   cameraYaw: 0,
   fishing: null,
   spyTarget: null,
@@ -257,6 +263,7 @@ const islands = [];
 const bots = [];
 const remotePlayers = new Map();
 const projectiles = [];
+const seenRemoteShots = new Set();
 const impactEffects = [];
 const fish = [];
 const crates = [];
@@ -264,9 +271,11 @@ const labels = [];
 const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
+const SHOT_REPLAY_MAX_AGE_MS = 3200;
 const CRATE_LIFETIME = 120;
 const CRATE_SINK_TIME = 5;
 const MAX_TREASURES = 3;
+const CENTER_BOT_CLEAR_RADIUS = 88;
 const minimapCtx = ui.minimap.getContext("2d");
 const shipPreviewCache = new Map();
 let shipPreviewRenderer;
@@ -279,10 +288,7 @@ let leviathanCooldown = 0;
 let krakenBoss = null;
 let treasureSpawnTimer = 10 + Math.random() * 18;
 const leviathanAttacks = [
-  { id: "eat", label: "swallows your ship whole" },
-  { id: "ram", label: "rams through your hull" },
-  { id: "tail", label: "smashes your ship with its tail" },
-  { id: "spikes", label: "cuts your ship apart with its spikes" },
+  { id: "breach", label: "breaches over the waves and smashes your ship" },
 ];
 
 function setCylinderBetween(mesh, start, end) {
@@ -362,7 +368,8 @@ function shipTier(type) {
 function crateDropCount(target) {
   const level = target.level || 1;
   const tier = target.isBot ? shipTier(target.shipType) : shipTier(state.shipType);
-  return Math.max(1, Math.min(12, Math.floor((level + 1) / 4) + Math.max(0, tier)));
+  const base = Math.floor((level + 1) / 4) + Math.max(0, tier);
+  return Math.max(1, Math.min(15, Math.ceil(base * CRATE_DROP_MULTIPLIER)));
 }
 
 function shipHitRadius(type = state.shipType) {
@@ -499,6 +506,14 @@ function cargoCount() {
 
 function cargoCapacity() {
   return getShipStats().capacity || 8;
+}
+
+function marketBuyPrice(island, name) {
+  return island?.goods?.[name] || 0;
+}
+
+function marketSellPrice(island, name) {
+  return Math.max(1, Math.floor(marketBuyPrice(island, name) * TRADE_SELL_RATE));
 }
 
 function cannonDamage() {
@@ -935,6 +950,15 @@ function pointInAnyIsland(point, margin = 0) {
   return islands.some((island) => dist2(point, island.group.position) < island.radius + margin);
 }
 
+function starterIslandCenter() {
+  return islands[0]?.group?.position || new THREE.Vector3(islandData[0].x, 0, islandData[0].z);
+}
+
+function nearStarterIsland(point, margin = CENTER_BOT_CLEAR_RADIUS) {
+  const center = starterIslandCenter();
+  return dist2(point, center) < margin;
+}
+
 function randomWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
   const point = new THREE.Vector3();
   for (let i = 0; i < 80; i++) {
@@ -950,7 +974,7 @@ function randomTravelWaterPoint(range = MAP_LIMIT * 0.92) {
     const angle = Math.random() * Math.PI * 2;
     const radius = range * (0.42 + Math.random() * 0.55);
     point.set(Math.sin(angle) * radius, SHIP_WATERLINE_Y, Math.cos(angle) * radius);
-    if (!pointInAnyIsland(point, 22)) return point.clone();
+    if (!pointInAnyIsland(point, 22) && !nearStarterIsland(point, CENTER_BOT_CLEAR_RADIUS)) return point.clone();
   }
   return randomWaterPoint(range, 92);
 }
@@ -2073,7 +2097,22 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     damage,
     targetKind: options.targetKind || "any",
     arcHeight: clamp(distance * 0.16, 3.2, 10.5),
+    createdWallAt: Date.now(),
+    maxWallAge: Math.max(2200, (distance / CANNONBALL_SPEED + 1.2) * 1000),
   });
+}
+
+function removeProjectile(shot, impact = "none") {
+  if (!shot) return;
+  if (impact === "hit") makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
+  if (impact === "splash") makeSplashEffect(shot.target);
+  scene.remove(shot.mesh, shot.trail);
+  shot.mesh.geometry.dispose();
+  shot.mesh.material.dispose();
+  shot.trail.geometry.dispose();
+  shot.trail.material.dispose();
+  const index = projectiles.indexOf(shot);
+  if (index >= 0) projectiles.splice(index, 1);
 }
 
 function addImpactEffect(group, life = 0.7) {
@@ -2129,109 +2168,415 @@ function makeSplinterEffect(position, dir) {
   addImpactEffect(group, 0.78);
 }
 
+function makeLeviathanSkullGeometry() {
+  const sections = [
+    { z: -2.6, w: 2.75, top: 3.45, mid: 2.55, bottom: 1.28 },
+    { z: -4.5, w: 3.35, top: 4.0, mid: 2.7, bottom: 1.05 },
+    { z: -6.5, w: 2.72, top: 3.72, mid: 2.42, bottom: 0.9 },
+    { z: -8.7, w: 1.68, top: 3.1, mid: 2.04, bottom: 0.78 },
+    { z: -10.9, w: 0.72, top: 2.48, mid: 1.68, bottom: 0.68 },
+  ];
+  const vertices = [];
+  const indices = [];
+  sections.forEach((section) => {
+    const { z, w, top, mid, bottom } = section;
+    vertices.push(
+      0, top, z,
+      w * 0.56, top - 0.34, z,
+      w, mid, z,
+      w * 0.62, bottom + 0.2, z,
+      0, bottom, z,
+      -w * 0.62, bottom + 0.2, z,
+      -w, mid, z,
+      -w * 0.56, top - 0.34, z,
+    );
+  });
+  const ringSize = 8;
+  for (let i = 0; i < sections.length - 1; i++) {
+    const ring = i * ringSize;
+    const nextRing = (i + 1) * ringSize;
+    for (let j = 0; j < ringSize; j++) {
+      const next = (j + 1) % ringSize;
+      indices.push(ring + j, nextRing + j, ring + next);
+      indices.push(ring + next, nextRing + j, nextRing + next);
+    }
+  }
+  const backCenter = vertices.length / 3;
+  vertices.push(0, 2.45, sections[0].z);
+  for (let j = 0; j < ringSize; j++) indices.push(backCenter, j, (j + 1) % ringSize);
+  const frontCenter = vertices.length / 3;
+  const frontRing = (sections.length - 1) * ringSize;
+  const lastSection = sections[sections.length - 1];
+  vertices.push(0, lastSection.mid, lastSection.z);
+  for (let j = 0; j < ringSize; j++) indices.push(frontCenter, frontRing + ((j + 1) % ringSize), frontRing + j);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeLeviathanJawGeometry(upper = true) {
+  const sections = [
+    { z: 0.9, w: 1.86, h: upper ? 0.36 : 0.3 },
+    { z: -1.35, w: 1.52, h: upper ? 0.3 : 0.26 },
+    { z: -3.75, w: 0.88, h: upper ? 0.24 : 0.2 },
+    { z: -5.05, w: 0.3, h: upper ? 0.16 : 0.14 },
+  ];
+  const vertices = [];
+  const indices = [];
+  sections.forEach(({ z, w, h }) => {
+    vertices.push(
+      0, h, z,
+      w, h * 0.28, z,
+      w * 0.82, -h, z,
+      0, -h * 1.12, z,
+      -w * 0.82, -h, z,
+      -w, h * 0.28, z,
+    );
+  });
+  const ringSize = 6;
+  for (let i = 0; i < sections.length - 1; i++) {
+    const ring = i * ringSize;
+    const nextRing = (i + 1) * ringSize;
+    for (let j = 0; j < ringSize; j++) {
+      const next = (j + 1) % ringSize;
+      indices.push(ring + j, nextRing + j, ring + next);
+      indices.push(ring + next, nextRing + j, nextRing + next);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 function makeLeviathanMesh() {
   const group = new THREE.Group();
-  const bodyMat = mat(0x223142, 0.82);
-  const bellyMat = mat(0x5c6f78, 0.9);
-  const spinePath = new THREE.CatmullRomCurve3(Array.from({ length: 11 }, (_, i) => (
-    new THREE.Vector3(Math.sin(i * 0.7) * 5.2, Math.sin(i * 0.42) * 0.9, i * 4.4)
-  )));
-  const body = new THREE.Mesh(new THREE.TubeGeometry(spinePath, 84, 2.25, 16, false), bodyMat);
-  body.scale.set(1.18, 0.68, 1);
+  const hide = mat(0x0b1719, 0.92);
+  const darkHide = mat(0x030607, 0.96);
+  const bellyMat = mat(0x243e45, 0.92);
+  const reptileHide = new THREE.MeshStandardMaterial({ color: 0x0b1719, roughness: 0.96, metalness: 0.03, flatShading: true });
+  const reptileDark = new THREE.MeshStandardMaterial({ color: 0x030607, roughness: 0.98, metalness: 0.02, flatShading: true });
+  const toothMat = mat(0xf0e2c6, 0.76);
+  const scarMat = new THREE.MeshStandardMaterial({ color: 0xb9372c, emissive: 0x5a0d08, emissiveIntensity: 0.45, roughness: 0.7, metalness: 0.02 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff6735, emissive: 0xff2f17, emissiveIntensity: 1.45, roughness: 0.45, metalness: 0 });
+  const bodyPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, -4.1, 7.1),
+    new THREE.Vector3(-1.05, -4.75, 17.5),
+    new THREE.Vector3(1.45, -5.8, 29.8),
+    new THREE.Vector3(-1.15, -7.05, 43.2),
+    new THREE.Vector3(0.35, -8.7, 61.5),
+  ], false, "catmullrom", 0.38);
+  const body = new THREE.Mesh(makeTaperedTubeGeometry(bodyPath, 3.15, 0.78, {
+    segments: 58,
+    radialSegments: 18,
+    oval: 0.76,
+  }), hide);
   body.castShadow = true;
   group.add(body);
-  const belly = new THREE.Mesh(new THREE.TubeGeometry(spinePath, 84, 1.28, 12, false), bellyMat);
-  belly.position.y = -0.92;
-  belly.scale.set(0.72, 0.35, 0.96);
-  group.add(belly);
-  const points = spinePath.getPoints(14);
-  for (let i = 1; i < points.length - 1; i++) {
-    const p = points[i];
-    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.68, 2.7, 5), mats.dark);
-    crest.position.set(p.x, p.y + 2.05, p.z);
-    crest.rotation.x = Math.PI;
-    crest.rotation.z = Math.sin(i) * 0.18;
-    crest.castShadow = true;
-    group.add(crest);
-    if (i % 2 === 0) {
-      [-1, 1].forEach((side) => {
-        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.7, 4.8, 4), bodyMat);
-        fin.position.set(p.x + side * 2.2, p.y - 0.2, p.z + 0.4);
-        fin.rotation.z = side * -1.25;
-        fin.rotation.y = Math.PI / 4;
-        fin.castShadow = true;
-        group.add(fin);
-      });
-    }
-  }
-  const head = new THREE.Mesh(new THREE.SphereGeometry(5.3, 24, 16), bodyMat);
-  head.position.set(0, 2.25, -5.4);
-  head.scale.set(1.38, 0.9, 1.24);
-  head.castShadow = true;
-  group.add(head);
-  const neck = new THREE.Mesh(new THREE.SphereGeometry(3.9, 16, 10), bodyMat);
-  neck.position.set(0, 1.35, -1.3);
-  neck.scale.set(1.35, 0.62, 1.35);
+  const backRidgePath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, -1.2, 7.7),
+    new THREE.Vector3(-1.18, -1.72, 18.6),
+    new THREE.Vector3(1.42, -2.55, 31.2),
+    new THREE.Vector3(-1.0, -3.72, 45.0),
+    new THREE.Vector3(0.2, -5.05, 58.0),
+  ], false, "catmullrom", 0.34);
+  const backRidge = new THREE.Mesh(makeTaperedTubeGeometry(backRidgePath, 1.55, 0.28, {
+    segments: 52,
+    radialSegments: 10,
+    oval: 0.42,
+  }), reptileDark);
+  backRidge.castShadow = true;
+  group.add(backRidge);
+  const bellyPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, -5.15, 7.0),
+    new THREE.Vector3(-0.9, -5.9, 17.4),
+    new THREE.Vector3(1.16, -6.95, 29.4),
+    new THREE.Vector3(-0.86, -8.1, 42.8),
+    new THREE.Vector3(0.25, -9.55, 58.0),
+  ], false, "catmullrom", 0.38);
+  const bodyBelly = new THREE.Mesh(makeTaperedTubeGeometry(bellyPath, 1.1, 0.22, {
+    segments: 48,
+    radialSegments: 10,
+    oval: 0.36,
+  }), bellyMat);
+  bodyBelly.castShadow = true;
+  group.add(bodyBelly);
+  const neckPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, -5.0, 7.8),
+    new THREE.Vector3(0.7, -2.9, 4.2),
+    new THREE.Vector3(-0.55, -0.4, 0.2),
+    new THREE.Vector3(0.15, 1.65, -3.15),
+  ]);
+  const neck = new THREE.Mesh(new THREE.TubeGeometry(neckPath, 42, 2.15, 18, false), hide);
+  neck.scale.set(0.78, 1.0, 1.08);
   neck.castShadow = true;
   group.add(neck);
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(2.75, 5.1, 12), bodyMat);
-  snout.position.set(0, 2.05, -9.25);
-  snout.rotation.x = -Math.PI / 2;
-  snout.scale.set(1.12, 0.78, 0.85);
-  snout.castShadow = true;
-  group.add(snout);
-  const jaw = new THREE.Mesh(new THREE.SphereGeometry(3.05, 16, 10), bellyMat);
-  jaw.position.set(0, 0.92, -7.35);
-  jaw.scale.set(1.9, 0.28, 0.78);
-  group.add(jaw);
+  const throat = new THREE.Mesh(new THREE.TubeGeometry(neckPath, 42, 1.04, 12, false), bellyMat);
+  throat.position.y = -0.58;
+  throat.position.z = -0.32;
+  throat.scale.set(0.35, 0.34, 0.95);
+  group.add(throat);
+
+  const head = new THREE.Mesh(makeLeviathanSkullGeometry(), reptileHide);
+  head.castShadow = true;
+  group.add(head);
+
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.42, 1.15), reptileDark);
+  brow.position.set(0, 3.54, -7.04);
+  brow.rotation.x = -0.12;
+  brow.castShadow = true;
+  group.add(brow);
+
+  const snoutRidge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 5.4), reptileDark);
+  snoutRidge.position.set(0, 3.0, -8.15);
+  snoutRidge.rotation.x = -0.1;
+  snoutRidge.castShadow = true;
+  group.add(snoutRidge);
+
+  const upperJaw = new THREE.Mesh(makeLeviathanJawGeometry(true), reptileDark);
+  upperJaw.position.set(0, 1.72, -6.65);
+  upperJaw.rotation.x = 0.04;
+  upperJaw.scale.set(1.18, 1.0, 1.0);
+  upperJaw.userData.leviathanUpperJaw = true;
+  upperJaw.userData.baseRotationX = upperJaw.rotation.x;
+  upperJaw.castShadow = true;
+  group.add(upperJaw);
+  const lowerJaw = new THREE.Mesh(makeLeviathanJawGeometry(false), bellyMat);
+  lowerJaw.position.set(0, 0.82, -6.4);
+  lowerJaw.rotation.x = -0.16;
+  lowerJaw.scale.set(1.08, 0.95, 0.96);
+  lowerJaw.userData.leviathanLowerJaw = true;
+  lowerJaw.userData.baseRotationX = lowerJaw.rotation.x;
+  lowerJaw.castShadow = true;
+  group.add(lowerJaw);
+
   for (let side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8), mats.gold);
-    eye.position.set(side * 2.65, 3.35, -8.55);
+    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(0.82, 12, 7), darkHide);
+    eyeSocket.scale.set(1.72, 0.42, 0.32);
+    eyeSocket.position.set(side * 2.18, 3.62, -7.82);
+    eyeSocket.rotation.y = side * 0.36;
+    eyeSocket.rotation.z = side * -0.2;
+    eyeSocket.castShadow = true;
+    group.add(eyeSocket);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 7), eyeMat);
+    eye.scale.set(1.35, 0.34, 0.18);
+    eye.position.set(side * 2.24, 3.6, -8.1);
+    eye.rotation.y = side * 0.34;
+    eye.rotation.z = side * -0.1;
     group.add(eye);
-    const brow = new THREE.Mesh(new THREE.ConeGeometry(0.36, 1.8, 5), mats.dark);
-    brow.position.set(side * 2.25, 3.82, -8.05);
-    brow.rotation.z = side * 1.1;
-    brow.castShadow = true;
-    group.add(brow);
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.65, 3.2, 7), mats.rock);
-    horn.position.set(side * 1.85, 4.25, -6.45);
+
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.38, 2.65, 7), mats.rock);
+    horn.position.set(side * 1.54, 4.62, -5.52);
     horn.rotation.x = -0.72;
-    horn.rotation.z = side * 0.22;
+    horn.rotation.z = side * 0.38;
     horn.castShadow = true;
     group.add(horn);
-    for (let i = 0; i < 3; i++) {
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 5), mats.white);
-      tooth.position.set(side * (0.85 + i * 0.48), 0.56, -8.0 - i * 0.34);
-      tooth.rotation.x = Math.PI;
-      group.add(tooth);
+    const cheekFin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3.9, 4), darkHide);
+    cheekFin.position.set(side * 3.12, 1.65, -5.72);
+    cheekFin.rotation.z = side * -1.1;
+    cheekFin.rotation.y = side * 0.54;
+    cheekFin.castShadow = true;
+    group.add(cheekFin);
+
+    const nostril = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.48), darkHide);
+    nostril.position.set(side * 0.54, 2.32, -10.42);
+    nostril.rotation.y = side * 0.18;
+    nostril.rotation.x = -0.18;
+    group.add(nostril);
+
+    for (let i = 0; i < 7; i++) {
+      const topTooth = new THREE.Mesh(new THREE.ConeGeometry(0.12 + i * 0.014, 0.78 + i * 0.07, 6), toothMat);
+      topTooth.position.set(side * (0.18 + i * 0.34), 1.42, -7.2 - i * 0.36);
+      topTooth.rotation.x = Math.PI;
+      topTooth.userData.leviathanUpperJaw = true;
+      topTooth.userData.baseRotationX = topTooth.rotation.x;
+      group.add(topTooth);
+      const bottomTooth = new THREE.Mesh(new THREE.ConeGeometry(0.11 + i * 0.012, 0.62 + i * 0.05, 6), toothMat);
+      bottomTooth.position.set(side * (0.2 + i * 0.32), 1.22, -6.96 - i * 0.3);
+      bottomTooth.rotation.x = 0.1;
+      bottomTooth.userData.leviathanLowerJaw = true;
+      bottomTooth.userData.baseRotationX = bottomTooth.rotation.x;
+      group.add(bottomTooth);
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const gill = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.56 - i * 0.035, 0.16), scarMat);
+      gill.position.set(side * 3.45, 2.25 - i * 0.32, -4.9 + i * 0.18);
+      gill.rotation.y = side * 0.86;
+      gill.rotation.z = side * 0.14;
+      group.add(gill);
     }
   }
+
+  for (let i = 0; i < 12; i++) {
+    const t = i / 11;
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.22 + Math.sin(t * Math.PI) * 0.3, 1.25 + Math.sin(t * Math.PI) * 1.25, 6), i % 3 === 0 ? mats.rock : darkHide);
+    crest.position.set(0, 2.7 + t * 2.15, 3.6 - t * 11.2);
+    crest.rotation.x = Math.PI - 0.1;
+    crest.castShadow = true;
+    group.add(crest);
+  }
+
+  for (let i = 0; i < 18; i++) {
+    const t = i / 17;
+    const side = i % 2 ? 1 : -1;
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62 - t * 0.25, 0.12, 0.38 + t * 0.18), reptileDark);
+    plate.position.set(side * (0.55 + Math.sin(t * Math.PI) * 1.18), 3.25 + Math.sin(t * Math.PI) * 0.55, -3.6 - t * 6.25);
+    plate.rotation.set(-0.22, side * 0.42, side * 0.18);
+    plate.castShadow = true;
+    group.add(plate);
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const slash = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.92 + (i % 3) * 0.24), scarMat);
+    slash.position.set((i % 2 ? 1 : -1) * (0.55 + (i % 4) * 0.38), 3.2 + Math.sin(i) * 0.5, -5.4 - i * 0.38);
+    slash.rotation.set(0.2, (i % 2 ? 0.6 : -0.6), (i % 2 ? 0.45 : -0.45));
+    group.add(slash);
+  }
+
+  for (let i = 0; i < 22; i++) {
+    const t = i / 21;
+    const p = bodyPath.getPoint(t);
+    const spine = new THREE.Mesh(
+      new THREE.ConeGeometry(0.72 - t * 0.44, 2.85 - t * 1.45, 6),
+      i % 4 === 0 ? mats.rock : darkHide
+    );
+    spine.position.copy(p);
+    spine.position.y += 3.25 - t * 1.65;
+    spine.rotation.x = Math.PI - 0.22 + Math.sin(t * Math.PI * 3) * 0.1;
+    spine.rotation.z = Math.sin(t * Math.PI * 2) * 0.22;
+    spine.castShadow = true;
+    group.add(spine);
+  }
+
+  for (let side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const whiskerPath = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * (1.0 + i * 0.25), 1.65 - i * 0.18, -8.2),
+        new THREE.Vector3(side * (2.8 + i * 0.7), 1.2 - i * 0.35, -8.8 - i * 0.2),
+        new THREE.Vector3(side * (4.4 + i * 0.9), 0.35 - i * 0.25, -8.25 + i * 0.22),
+      ]);
+      const whisker = new THREE.Mesh(new THREE.TubeGeometry(whiskerPath, 12, 0.055, 6, false), darkHide);
+      whisker.castShadow = true;
+      group.add(whisker);
+    }
+  }
+
+  const waterMask = new THREE.Mesh(new THREE.RingGeometry(3.8, 6.8, 36), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+  waterMask.rotation.x = -Math.PI / 2;
+  waterMask.position.y = -2.8;
+  group.add(waterMask);
+
   return group;
+}
+
+function setLeviathanJawOpen(group, open, crush = 0) {
+  const amount = clamp(open, 0, 1);
+  group.traverse((child) => {
+    if (child.userData?.leviathanUpperJaw) {
+      child.rotation.x = (child.userData.baseRotationX ?? child.rotation.x) - amount * 0.48 + crush * 0.1;
+    }
+    if (child.userData?.leviathanLowerJaw) {
+      child.rotation.x = (child.userData.baseRotationX ?? child.rotation.x) + amount * 0.78 - crush * 0.16;
+    }
+  });
+}
+
+function makeLeviathanMouthDebris(shipType = state.shipType) {
+  const group = new THREE.Group();
+  const ship = getShipStats(shipType);
+  const plankMat = mat(0x8b5a32);
+  const darkWood = mat(0x4d2f1d);
+  const sailMat = new THREE.MeshBasicMaterial({ color: ship.color || 0xd9c3a0, transparent: true, opacity: 0.86, side: THREE.DoubleSide });
+  for (let i = 0; i < 9; i++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.4 + Math.random() * 1.2), i % 3 ? plankMat : darkWood);
+    plank.position.set((Math.random() - 0.5) * 3.0, (Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 2.0);
+    plank.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    plank.castShadow = true;
+    group.add(plank);
+  }
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 7), darkWood);
+  mast.position.set(-0.65, 0.15, -0.25);
+  mast.rotation.set(0.8, 0.35, -1.05);
+  mast.castShadow = true;
+  group.add(mast);
+  const sailGeo = new THREE.BufferGeometry();
+  sailGeo.setAttribute("position", new THREE.Float32BufferAttribute([
+    0, 0.85, 0,
+    1.55, -0.45, 0.08,
+    -0.95, -0.72, -0.05,
+  ], 3));
+  sailGeo.setIndex([0, 1, 2]);
+  sailGeo.computeVertexNormals();
+  const sail = new THREE.Mesh(sailGeo, sailMat);
+  sail.position.set(0.15, 0.05, -0.55);
+  sail.rotation.set(-0.35, 0.4, 0.25);
+  group.add(sail);
+  group.visible = false;
+  return group;
+}
+
+function makeTaperedTubeGeometry(curve, baseRadius, tipRadius, options = {}) {
+  const segments = options.segments || 14;
+  const radialSegments = options.radialSegments || 7;
+  const oval = options.oval || 0.88;
+  const frames = curve.computeFrenetFrames(segments, false);
+  const vertices = [];
+  const indices = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const point = curve.getPointAt(t);
+    const radius = baseRadius + (tipRadius - baseRadius) * t;
+    const normal = frames.normals[i];
+    const binormal = frames.binormals[i];
+    for (let j = 0; j < radialSegments; j++) {
+      const angle = (j / radialSegments) * Math.PI * 2;
+      const radial = normal.clone().multiplyScalar(Math.cos(angle) * radius)
+        .add(binormal.clone().multiplyScalar(Math.sin(angle) * radius * oval));
+      vertices.push(point.x + radial.x, point.y + radial.y, point.z + radial.z);
+    }
+  }
+  for (let i = 0; i < segments; i++) {
+    const ring = i * radialSegments;
+    const nextRing = (i + 1) * radialSegments;
+    for (let j = 0; j < radialSegments; j++) {
+      const next = (j + 1) % radialSegments;
+      indices.push(ring + j, nextRing + j, ring + next);
+      indices.push(ring + next, nextRing + j, nextRing + next);
+    }
+  }
+  if (!options.openStart) {
+    const frontCenter = vertices.length / 3;
+    const start = curve.getPointAt(0);
+    vertices.push(start.x, start.y, start.z);
+    for (let j = 0; j < radialSegments; j++) {
+      indices.push(frontCenter, (j + 1) % radialSegments, j);
+    }
+  }
+  if (!options.openEnd) {
+    const backCenter = vertices.length / 3;
+    const end = curve.getPointAt(1);
+    vertices.push(end.x, end.y, end.z);
+    const backRing = segments * radialSegments;
+    for (let j = 0; j < radialSegments; j++) {
+      indices.push(backCenter, backRing + j, backRing + ((j + 1) % radialSegments));
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function makeTaperedTentacle(curve, baseRadius, tipRadius, material, options = {}) {
   const group = new THREE.Group();
-  const segments = options.segments || 14;
-  const radialSegments = options.radialSegments || 7;
-  const points = curve.getPoints(segments);
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    const t0 = i / (points.length - 1);
-    const t1 = (i + 1) / (points.length - 1);
-    const r0 = baseRadius + (tipRadius - baseRadius) * t0;
-    const r1 = baseRadius + (tipRadius - baseRadius) * t1;
-    const length = a.distanceTo(b);
-    const section = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, length, radialSegments, 1, false), material);
-    setCylinderBetween(section, a, b);
-    section.castShadow = true;
-    group.add(section);
-  }
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(tipRadius * 1.15, radialSegments, 5), material);
-  tip.position.copy(points[points.length - 1]);
-  tip.scale.y = 0.72;
-  tip.castShadow = true;
-  group.add(tip);
+  const tentacle = new THREE.Mesh(makeTaperedTubeGeometry(curve, baseRadius, tipRadius, options), material);
+  tentacle.castShadow = true;
+  group.add(tentacle);
   if (options.suckerMat) {
     const suckerTs = options.suckerTs || [0.32, 0.48, 0.64, 0.8];
     suckerTs.forEach((t, index) => {
@@ -2247,106 +2592,279 @@ function makeTaperedTentacle(curve, baseRadius, tipRadius, material, options = {
   return group;
 }
 
-function makeKrakenMesh() {
-  const group = new THREE.Group();
-  const lowMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.02, flatShading: true });
-  const skin = lowMat(0xb82724);
-  const darkSkin = lowMat(0x6d1516);
-  const underside = lowMat(0xf06a4e);
-  const suckerMat = lowMat(0xffb08a);
-  const eyeMat = lowMat(0xffe36b);
-  const pupilMat = lowMat(0x16112a);
+function makeKrakenCoreGeometry() {
+  const radialSegments = 20;
+  const rings = [
+    { z: -9.4, rx: 0.9, ry: 0.55, cy: 1.05 },
+    { z: -8.45, rx: 3.55, ry: 1.75, cy: 1.62 },
+    { z: -7.2, rx: 5.9, ry: 2.9, cy: 2.08 },
+    { z: -5.65, rx: 7.45, ry: 3.85, cy: 2.45 },
+    { z: -3.55, rx: 8.25, ry: 4.75, cy: 2.72 },
+    { z: -1.1, rx: 8.55, ry: 5.28, cy: 2.96 },
+    { z: 1.25, rx: 7.55, ry: 5.45, cy: 3.15 },
+    { z: 3.35, rx: 5.65, ry: 4.92, cy: 3.42 },
+    { z: 5.05, rx: 3.25, ry: 3.42, cy: 3.84 },
+    { z: 6.3, rx: 0.65, ry: 0.85, cy: 4.05 },
+  ];
+  const upper = new THREE.Color(0x941517);
+  const belly = new THREE.Color(0xc83d2e);
+  const dark = new THREE.Color(0x3d080b);
+  const vertices = [];
+  const colors = [];
+  const indices = [];
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(8.8, 14, 10), skin);
-  head.scale.set(1.08, 0.76, 1.0);
-  head.position.set(0, 2.0, -4.0);
-  head.castShadow = true;
-  group.add(head);
+  rings.forEach((ring, i) => {
+    const t = i / (rings.length - 1);
+    const shoulder = Math.sin(t * Math.PI);
+    for (let j = 0; j < radialSegments; j++) {
+      const angle = (j / radialSegments) * Math.PI * 2;
+      const c = Math.cos(angle);
+      const s = Math.sin(angle);
+      const surfaceRipple = 1
+        + Math.sin(angle * 3 + t * 5.3) * 0.028
+        + Math.sin(angle * 7 - t * 4.1) * 0.014;
+      const topLift = Math.max(0, s) * shoulder * 0.28;
+      const bottomFlatten = s < 0 ? 0.58 : 1;
+      const x = c * ring.rx * surfaceRipple;
+      const y = ring.cy + s * ring.ry * bottomFlatten + topLift;
+      const z = ring.z + Math.sin(angle * 2 + i * 0.45) * 0.1 * (0.35 + shoulder);
+      vertices.push(x, y, z);
 
-  const mantle = new THREE.Mesh(new THREE.SphereGeometry(9.2, 14, 10), skin);
-  mantle.scale.set(0.86, 1.12, 0.74);
-  mantle.position.set(0, 4.7, 2.8);
-  mantle.rotation.x = 0.2;
-  mantle.castShadow = true;
-  group.add(mantle);
+      const undersideBlend = clamp((-s - 0.14) / 0.86, 0, 1) * (0.92 - t * 0.18);
+      const ridgeBlend = Math.max(0, s - 0.76) * 0.42 + Math.max(0, Math.abs(c) - 0.86) * 0.16;
+      const color = upper.clone().lerp(belly, undersideBlend).lerp(dark, clamp(ridgeBlend, 0, 0.34));
+      colors.push(color.r, color.g, color.b);
+    }
+  });
 
-  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(8.0, 12, 8), darkSkin);
-  shoulder.scale.set(1.28, 0.38, 0.7);
-  shoulder.position.set(0, 1.1, 0.4);
-  shoulder.castShadow = true;
-  group.add(shoulder);
-
-  const crown = new THREE.Mesh(new THREE.ConeGeometry(5.2, 5.8, 9), darkSkin);
-  crown.scale.set(0.92, 0.78, 0.78);
-  crown.position.set(0, 8.0, 1.9);
-  crown.rotation.x = Math.PI;
-  crown.castShadow = true;
-  group.add(crown);
-
-  const browPlate = new THREE.Mesh(new THREE.BoxGeometry(9.5, 1.2, 2.5), darkSkin);
-  browPlate.position.set(0, 4.05, -8.0);
-  browPlate.castShadow = true;
-  group.add(browPlate);
-
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(7.6, 12, 8), underside);
-  belly.scale.set(1.0, 0.2, 0.92);
-  belly.position.set(0, -1.25, -0.8);
-  group.add(belly);
-
-  const beakTop = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.4, 4), pupilMat);
-  beakTop.position.set(0, 0.95, -9.0);
-  beakTop.rotation.x = Math.PI / 2;
-  beakTop.rotation.z = Math.PI / 4;
-  group.add(beakTop);
-  const beakBottom = beakTop.clone();
-  beakBottom.position.y = 0.15;
-  beakBottom.rotation.x = -Math.PI / 2;
-  group.add(beakBottom);
-
-  for (let side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8), eyeMat);
-    eye.scale.set(1.0, 0.82, 0.58);
-    eye.position.set(side * 3.1, 3.75, -9.1);
-    group.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), pupilMat);
-    pupil.scale.set(0.78, 0.86, 0.32);
-    pupil.position.set(side * 3.1, 3.68, -9.78);
-    group.add(pupil);
-    const cheek = new THREE.Mesh(new THREE.ConeGeometry(1.15, 3.4, 5), darkSkin);
-    cheek.position.set(side * 5.7, 1.75, -5.9);
-    cheek.rotation.z = side * -1.1;
-    cheek.rotation.y = side * 0.35;
-    cheek.castShadow = true;
-    group.add(cheek);
+  for (let i = 0; i < rings.length - 1; i++) {
+    const ring = i * radialSegments;
+    const nextRing = (i + 1) * radialSegments;
+    for (let j = 0; j < radialSegments; j++) {
+      const next = (j + 1) % radialSegments;
+      indices.push(ring + j, nextRing + j, ring + next);
+      indices.push(ring + next, nextRing + j, nextRing + next);
+    }
   }
 
-  const tentacleOffsets = [-0.95, -0.68, -0.42, -0.16, 0.16, 0.42, 0.68, 0.95];
-  tentacleOffsets.forEach((offset, i) => {
-    const angle = Math.PI + offset;
-    const reach = i % 2 ? 31 : 25;
-    const curl = (i % 4 < 2 ? -1 : 1) * 0.34;
+  const frontCenter = vertices.length / 3;
+  vertices.push(0, rings[0].cy, rings[0].z);
+  colors.push(upper.r, upper.g, upper.b);
+  for (let j = 0; j < radialSegments; j++) {
+    indices.push(frontCenter, j, (j + 1) % radialSegments);
+  }
+
+  const backCenter = vertices.length / 3;
+  const lastRing = rings[rings.length - 1];
+  vertices.push(0, lastRing.cy, lastRing.z);
+  colors.push(dark.r, dark.g, dark.b);
+  const backRing = (rings.length - 1) * radialSegments;
+  for (let j = 0; j < radialSegments; j++) {
+    indices.push(backCenter, backRing + ((j + 1) % radialSegments), backRing + j);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeKrakenMesh() {
+  const group = new THREE.Group();
+  const lowMat = (color, options = {}) => new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.88,
+    metalness: 0.02,
+    flatShading: options.flatShading ?? false,
+    vertexColors: options.vertexColors || false,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
+    side: options.side || THREE.DoubleSide,
+  });
+  const bodyMat = lowMat(0xffffff, { vertexColors: true });
+  const skin = lowMat(0xb3201c);
+  const darkSkin = lowMat(0x3d080b);
+  const suckerMat = lowMat(0xf06a50);
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: 0xfff15a,
+    emissive: 0xffd400,
+    emissiveIntensity: 1.65,
+    roughness: 0.34,
+    metalness: 0,
+  });
+  const pupilMat = lowMat(0x16112a);
+
+  const core = new THREE.Mesh(makeKrakenCoreGeometry(), bodyMat);
+  core.castShadow = true;
+  group.add(core);
+
+  const mantleCap = new THREE.Mesh(new THREE.SphereGeometry(6.65, 24, 12), darkSkin);
+  mantleCap.scale.set(1.02, 0.34, 0.62);
+  mantleCap.position.set(0, 5.05, -1.25);
+  mantleCap.castShadow = true;
+  group.add(mantleCap);
+
+  for (let side of [-1, 1]) {
+    const sideMantle = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 9), skin);
+    sideMantle.scale.set(0.52, 0.42, 1.18);
+    sideMantle.position.set(side * 5.15, 2.55, -3.35);
+    sideMantle.rotation.z = side * -0.18;
+    sideMantle.castShadow = true;
+    group.add(sideMantle);
+  }
+
+  const faceBulge = new THREE.Mesh(new THREE.SphereGeometry(5.25, 22, 12), skin);
+  faceBulge.scale.set(1.03, 0.5, 0.5);
+  faceBulge.position.set(0, 2.25, -6.9);
+  faceBulge.castShadow = true;
+  group.add(faceBulge);
+
+  const cheekMantle = new THREE.Mesh(new THREE.SphereGeometry(5.8, 18, 10), darkSkin);
+  cheekMantle.scale.set(1.1, 0.18, 0.36);
+  cheekMantle.position.set(0, 1.3, -5.7);
+  cheekMantle.castShadow = true;
+  group.add(cheekMantle);
+
+  const beakUpper = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.55, 9), pupilMat);
+  beakUpper.position.set(0, 1.56, -9.0);
+  beakUpper.rotation.x = -Math.PI / 2;
+  beakUpper.scale.set(1.35, 0.72, 0.92);
+  beakUpper.castShadow = true;
+  group.add(beakUpper);
+  const beakLower = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.25, 9), pupilMat);
+  beakLower.position.set(0, 0.86, -8.72);
+  beakLower.rotation.x = Math.PI / 2;
+  beakLower.scale.set(1.15, 0.62, 0.85);
+  beakLower.castShadow = true;
+  group.add(beakLower);
+
+  const mouthShadow = new THREE.Mesh(new THREE.SphereGeometry(1.65, 12, 7), pupilMat);
+  mouthShadow.scale.set(1.35, 0.32, 0.32);
+  mouthShadow.position.set(0, 1.16, -8.78);
+  group.add(mouthShadow);
+
+  for (let side of [-1, 1]) {
+    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(1.08, 14, 8), darkSkin);
+    eyeSocket.scale.set(1.6, 0.58, 0.36);
+    eyeSocket.position.set(side * 2.85, 3.18, -8.48);
+    eyeSocket.rotation.y = side * 0.22;
+    eyeSocket.rotation.z = side * -0.08;
+    eyeSocket.castShadow = true;
+    group.add(eyeSocket);
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 8), eyeMat);
+    eye.scale.set(1.25, 0.52, 0.2);
+    eye.position.set(side * 2.9, 3.2, -8.96);
+    eye.rotation.y = side * 0.2;
+    group.add(eye);
+
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.76, 14, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffe64d, transparent: true, opacity: 0.38 })
+    );
+    glow.scale.set(1.45, 0.6, 0.24);
+    glow.position.copy(eye.position);
+    glow.rotation.copy(eye.rotation);
+    group.add(glow);
+
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.54, 0.08), pupilMat);
+    pupil.position.set(side * 2.92, 3.2, -9.08);
+    pupil.rotation.y = side * 0.2;
+    group.add(pupil);
+
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.25, 0.3), darkSkin);
+    brow.position.set(side * 2.76, 3.68, -8.84);
+    brow.rotation.y = side * 0.2;
+    brow.rotation.z = side * 0.28;
+    brow.castShadow = true;
+    group.add(brow);
+
+    const cheekGroove = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 1.6), darkSkin);
+    cheekGroove.position.set(side * 3.85, 2.3, -6.92);
+    cheekGroove.rotation.y = side * 0.7;
+    cheekGroove.rotation.z = side * -0.28;
+    group.add(cheekGroove);
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const t = i / 6;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.52 - Math.abs(t - 0.5) * 0.28, 2.1 - Math.abs(t - 0.5) * 0.65, 7), darkSkin);
+    spike.position.set((t - 0.5) * 5.9, 6.15 + Math.sin(t * Math.PI) * 1.05, -3.6 + Math.cos(t * Math.PI) * 1.4);
+    spike.rotation.x = Math.PI;
+    spike.rotation.z = (t - 0.5) * -0.45;
+    spike.castShadow = true;
+    group.add(spike);
+  }
+
+  for (let side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const hook = new THREE.Mesh(new THREE.ConeGeometry(0.14 + i * 0.018, 0.52 + i * 0.05, 6), lowMat(0xf0d9b7));
+      hook.position.set(side * (0.44 + i * 0.34), 0.86 + i * 0.08, -8.18 - i * 0.18);
+      hook.rotation.x = Math.PI * 0.86;
+      hook.rotation.z = side * 0.08;
+      hook.castShadow = true;
+      group.add(hook);
+    }
+  }
+
+  const tentacleAngles = Array.from({ length: 8 }, (_, i) => -Math.PI + i * (Math.PI / 4));
+  tentacleAngles.forEach((angle, i) => {
+    const outward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+    const tangent = new THREE.Vector3(Math.cos(angle), 0, -Math.sin(angle));
+    const root = new THREE.Vector3(outward.x * 10.2, -12.5, outward.z * 9.0 - 0.4);
+    const surface = new THREE.Vector3(outward.x * 10.7, -0.62, outward.z * 9.7 - 0.4);
+    const lift = 13.5 + (i % 2) * 3.6 + Math.abs(outward.z) * 1.8;
+    const curl = (i % 2 ? 1 : -1) * (1.25 + (i % 3) * 0.32);
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(Math.sin(angle) * 5.5, -0.9, Math.cos(angle) * 4.0 - 3.5),
-      new THREE.Vector3(Math.sin(angle + curl * 0.35) * 12.5, 0.85 + (i % 2) * 0.45, Math.cos(angle + curl * 0.35) * 11.5 - 3.5),
-      new THREE.Vector3(Math.sin(angle + curl) * reach, 0.05, Math.cos(angle + curl) * reach - 2.8),
-      new THREE.Vector3(Math.sin(angle + curl * 1.25) * (reach + 4.5), -0.55, Math.cos(angle + curl * 1.25) * (reach + 4.5) - 2.4),
-    ]);
-    const tentacle = makeTaperedTentacle(curve, i < 4 ? 1.12 : 0.92, i < 4 ? 0.38 : 0.28, skin, {
-      segments: 13,
-      radialSegments: 7,
+      root,
+      surface.clone().add(new THREE.Vector3(0, -1.8, 0)),
+      surface.clone().add(outward.clone().multiplyScalar(1.7)).add(tangent.clone().multiplyScalar(curl * 0.16)).add(new THREE.Vector3(0, lift * 0.34, 0)),
+      surface.clone().add(outward.clone().multiplyScalar(3.1)).add(tangent.clone().multiplyScalar(curl * 0.34)).add(new THREE.Vector3(0, lift * 0.82, 0)),
+      surface.clone().add(outward.clone().multiplyScalar(3.75)).add(tangent.clone().multiplyScalar(curl * 0.18)).add(new THREE.Vector3(0, lift * 1.15, 0)),
+    ], false, "catmullrom", 0.34);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 2.05, 22), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.48, side: THREE.DoubleSide }));
+    ring.position.copy(surface);
+    ring.position.y = -0.38;
+    ring.rotation.x = -Math.PI / 2;
+    ring.userData.krakenWaterRing = true;
+    ring.userData.phase = i * 0.7;
+    group.add(ring);
+
+    const tentacle = makeTaperedTentacle(curve, i < 4 ? 1.12 : 0.92, i < 4 ? 0.34 : 0.24, skin, {
+      segments: 18,
+      radialSegments: 9,
       suckerMat,
     });
     tentacle.userData.tentacle = true;
     tentacle.userData.phase = i * 0.74;
+    tentacle.userData.anchor = surface.clone();
+    tentacle.userData.homeY = 0;
     group.add(tentacle);
+
+    for (let j = 0; j < 4; j++) {
+      const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.62 - j * 0.045, 0.025, 5, 12), darkSkin);
+      const p = curve.getPoint(0.34 + j * 0.12);
+      stripe.position.copy(p);
+      stripe.rotation.x = Math.PI / 2;
+      stripe.scale.set(1.25, 0.55, 1);
+      tentacle.add(stripe);
+    }
   });
 
-  for (let i = 0; i < 9; i++) {
-    const spot = new THREE.Mesh(new THREE.SphereGeometry(0.42 - (i % 3) * 0.05, 7, 5), darkSkin);
-    spot.position.set(Math.sin(i * 2.1) * (2.2 + (i % 3) * 1.2), 5.1 + Math.sin(i) * 1.2, 1.4 + Math.cos(i * 1.3) * 2.0);
+  for (let i = 0; i < 15; i++) {
+    const spot = new THREE.Mesh(new THREE.SphereGeometry(0.38 - (i % 3) * 0.045, 7, 5), i % 4 ? darkSkin : suckerMat);
+    spot.position.set(Math.sin(i * 2.1) * (2.2 + (i % 3) * 1.15), 4.4 + Math.sin(i) * 1.55, 0.9 + Math.cos(i * 1.3) * 2.45);
     spot.scale.y = 0.32;
     group.add(spot);
   }
+
+  const waterShadow = new THREE.Mesh(new THREE.RingGeometry(8.2, 14.8, 42), new THREE.MeshBasicMaterial({ color: 0x0c4655, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
+  waterShadow.rotation.x = -Math.PI / 2;
+  waterShadow.position.y = -0.52;
+  group.add(waterShadow);
 
   group.userData.radius = 25;
   return group;
@@ -2384,8 +2902,77 @@ function syncKraken(data) {
 
 function projectileHitsKraken(shot) {
   if (!krakenBoss?.alive || !krakenBoss.group.visible) return false;
-  const radius = krakenBoss.radius || 25;
-  return dist2(shot.mesh.position, krakenBoss.group.position) <= radius + 2.5 && shot.mesh.position.y < 14;
+  const localPoint = krakenBoss.group.worldToLocal(shot.mesh.position.clone());
+  const headCenter = new THREE.Vector3(0, 2.75, -6.55);
+  const dx = (localPoint.x - headCenter.x) / 5.8;
+  const dy = (localPoint.y - headCenter.y) / 4.5;
+  const dz = (localPoint.z - headCenter.z) / 4.0;
+  return dx * dx + dy * dy + dz * dz <= 1 && shot.mesh.position.y < 12;
+}
+
+function submergeKrakenTentacleNear(worldPoint) {
+  if (!krakenBoss?.group) return;
+  let closest = null;
+  let closestDistance = Infinity;
+  krakenBoss.group.children.forEach((child) => {
+    if (!child.userData?.tentacle || !child.userData.anchor) return;
+    const anchor = krakenBoss.group.localToWorld(child.userData.anchor.clone());
+    const distance = dist2(anchor, worldPoint);
+    if (distance < closestDistance) {
+      closest = child;
+      closestDistance = distance;
+    }
+  });
+  if (!closest) return;
+  closest.userData.submergeStart = clock.elapsedTime;
+  closest.userData.submergeUntil = clock.elapsedTime + KRAKEN_ATTACK_LIFE * 0.82;
+  closest.userData.submergeDepth = 72;
+}
+
+function krakenAttackCurve(data, t) {
+  const ease = (value) => value * value * (3 - 2 * value);
+  const rise = ease(clamp(t / 0.36, 0, 1));
+  const curl = ease(clamp((t - 0.18) / 0.42, 0, 1));
+  const slam = ease(clamp((t - 0.64) / 0.18, 0, 1));
+  const retreat = ease(clamp((t - 0.84) / 0.16, 0, 1));
+  const target = data.target;
+  const dir = data.dir;
+  const side = data.side;
+  const surface = data.surface;
+  const root = data.root;
+
+  const tipHidden = surface.clone().add(dir.clone().multiplyScalar(1.2));
+  tipHidden.y = -30;
+  const tipRaised = target.clone().add(dir.clone().multiplyScalar(-5.5)).add(side.clone().multiplyScalar(2.2));
+  tipRaised.y = 22;
+  const tipHover = target.clone().add(dir.clone().multiplyScalar(-2)).add(side.clone().multiplyScalar(0.7));
+  tipHover.y = 18;
+  const tipStrike = target.clone().add(new THREE.Vector3(0, 0.9, 0));
+  const tipGone = surface.clone().add(dir.clone().multiplyScalar(2.4));
+  tipGone.y = -28;
+  const tip = tipHidden.clone()
+    .lerp(tipRaised, rise)
+    .lerp(tipHover, curl * 0.55)
+    .lerp(tipStrike, slam)
+    .lerp(tipGone, retreat);
+
+  const base = surface.clone();
+  base.y = -9 + rise * 9 - retreat * 9;
+  const lower = surface.clone().add(dir.clone().multiplyScalar(1.8));
+  lower.y = -16 + rise * 19 - retreat * 11;
+  const upper = target.clone().add(dir.clone().multiplyScalar(-7.5)).add(side.clone().multiplyScalar(2.8));
+  upper.y = -5 + rise * 23 + curl * 4 - slam * 8 - retreat * 8;
+  const bend = target.clone().add(dir.clone().multiplyScalar(-3.8)).add(side.clone().multiplyScalar(1.2));
+  bend.y = 5 + rise * 13 + curl * 4 - slam * 14 - retreat * 7;
+
+  return new THREE.CatmullRomCurve3([
+    root.clone(),
+    base,
+    lower,
+    upper,
+    bend,
+    tip,
+  ], false, "catmullrom", 0.45);
 }
 
 function makeKrakenAttackEffect(attack) {
@@ -2397,29 +2984,49 @@ function makeKrakenAttackEffect(attack) {
   dir.normalize();
   const side = new THREE.Vector3(dir.z, 0, -dir.x);
   group.userData.krakenAttack = true;
-  const attackMat = new THREE.MeshStandardMaterial({ color: 0xb82724, roughness: 0.86, metalness: 0.02, flatShading: true, transparent: true, opacity: 0.96 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x6d1516, roughness: 0.9, metalness: 0.02, flatShading: true, transparent: true, opacity: 0.96 });
+  const attackMat = new THREE.MeshStandardMaterial({
+    color: 0xb82724,
+    roughness: 0.86,
+    metalness: 0.02,
+    flatShading: false,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
+    side: THREE.DoubleSide,
+  });
 
-  const base = target.clone().add(dir.clone().multiplyScalar(-13)).add(side.clone().multiplyScalar(-5));
-  const tentacleCurve = new THREE.CatmullRomCurve3([
-    base.clone().add(new THREE.Vector3(0, -2.4, 0)),
-    target.clone().add(dir.clone().multiplyScalar(-15)).add(side.clone().multiplyScalar(4)).add(new THREE.Vector3(0, 5.5, 0)),
-    target.clone().add(dir.clone().multiplyScalar(-8)).add(side.clone().multiplyScalar(9)).add(new THREE.Vector3(0, 14.5, 0)),
-    target.clone().add(dir.clone().multiplyScalar(-2)).add(side.clone().multiplyScalar(5)).add(new THREE.Vector3(0, 19.5, 0)),
-  ]);
-  const tentacle = makeTaperedTentacle(tentacleCurve, attack.kind === "slam" ? 1.72 : 1.46, 0.58, attackMat.clone(), { segments: 18, radialSegments: 9 });
+  const attackData = {
+    target,
+    source,
+    dir,
+    side,
+    surface: target.clone().add(dir.clone().multiplyScalar(-6.5)).add(side.clone().multiplyScalar(2.2)),
+    root: target.clone().add(dir.clone().multiplyScalar(-6.8)).add(side.clone().multiplyScalar(2.2)).add(new THREE.Vector3(0, -44, 0)),
+  };
+  attackData.surface.y = 0;
+  const tubeOptions = {
+    segments: 44,
+    radialSegments: 13,
+    openStart: true,
+    openEnd: false,
+    oval: 0.82,
+  };
+  const tentacle = new THREE.Mesh(makeTaperedTubeGeometry(krakenAttackCurve(attackData, 0), 2.2, 0.28, tubeOptions), attackMat.clone());
+  tentacle.castShadow = true;
   tentacle.userData.krakenAttackTentacle = true;
-  tentacle.userData.slamOffset = target.clone().add(side.clone().multiplyScalar(1.6)).sub(tentacleCurve.getPoint(1));
-  tentacle.userData.slamRotation = -0.95 * Math.sign(side.x || 1);
+  tentacle.userData.attackData = attackData;
+  tentacle.userData.baseRadius = 2.2;
+  tentacle.userData.tipRadius = 0.28;
+  tentacle.userData.tubeOptions = tubeOptions;
   group.add(tentacle);
 
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(1.9, 10, 8), darkMat.clone());
-  tip.position.copy(tentacleCurve.getPoint(1));
-  tip.castShadow = true;
-  tip.userData.krakenTip = true;
-  tip.userData.curlPoint = tentacleCurve.getPoint(1).clone();
-  tip.userData.slamPoint = target.clone().add(new THREE.Vector3(0, 1.2, 0));
-  group.add(tip);
+  for (let i = 0; i < 11; i++) {
+    const sucker = new THREE.Mesh(new THREE.SphereGeometry(0.28 - i * 0.015, 8, 5), new THREE.MeshStandardMaterial({ color: 0xd76b55, roughness: 0.86, metalness: 0.02 }));
+    sucker.scale.y = 0.28;
+    sucker.userData.krakenAttackSucker = true;
+    sucker.userData.curveT = 0.2 + i * 0.06;
+    group.add(sucker);
+  }
 
   const splash = new THREE.Mesh(new THREE.RingGeometry(2.6, 5.2, 32), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.78, side: THREE.DoubleSide }));
   splash.position.copy(target);
@@ -2429,80 +3036,104 @@ function makeKrakenAttackEffect(attack) {
   splash.visible = false;
   splash.userData.krakenSplash = true;
   group.add(splash);
-  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(2.2, 4.0, 28), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.58, side: THREE.DoubleSide }));
-  riseSplash.position.copy(base);
+  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(3.0, 5.4, 30), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
+  riseSplash.position.copy(attackData.surface);
   riseSplash.position.y = 0.1;
   riseSplash.rotation.x = -Math.PI / 2;
   riseSplash.userData.krakenRiseSplash = true;
   group.add(riseSplash);
-  addImpactEffect(group, 5.4);
+  addImpactEffect(group, KRAKEN_ATTACK_LIFE);
 }
 
 function applyKrakenAttack(attack) {
   if (!attack) return;
+  const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  submergeKrakenTentacleNear(slamPoint);
   makeKrakenAttackEffect(attack);
-  const isTarget = attack.target && attack.target === multiplayer.networkId;
+  const isTarget = (attack.targetKind || "player") === "player" && attack.target && attack.target === multiplayer.networkId;
   if (isTarget && state.mode === "ship") {
-    const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
     setTimeout(() => {
       if (state.mode !== "ship") return;
       if (dist2(playerShip.position, slamPoint) > shipHitRadius(state.shipType) + 11) return;
       damageTarget(state, maxHp() * 4);
-    }, 3650);
+    }, KRAKEN_SLAM_DELAY_MS);
   }
 }
 
 function makeLeviathanAttackEffect(position, outward, attackId) {
   const group = new THREE.Group();
   group.position.copy(position);
-  group.position.y = 0.35;
+  group.position.y = 0.08;
   const side = new THREE.Vector3(outward.z, 0, -outward.x).normalize();
-  if (attackId === "tail") {
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.65, 34, 12), mat(0x223142));
-    setCylinderBetween(tail, side.clone().multiplyScalar(-18).add(new THREE.Vector3(0, 8, 0)), side.clone().multiplyScalar(18).add(new THREE.Vector3(0, 0.45, 0)));
-    tail.castShadow = true;
-    group.add(tail);
-  } else if (attackId === "spikes") {
-    for (let i = -4; i <= 4; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.85, 7.8, 5), mats.dark);
-      spike.position.copy(side.clone().multiplyScalar(i * 2.7)).add(outward.clone().multiplyScalar(1.4));
-      spike.position.y = 3.8;
-      spike.rotation.x = Math.PI;
-      spike.castShadow = true;
-      group.add(spike);
-    }
-  } else if (attackId === "ram") {
-    const wave = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 3.4, 36, 14), mat(0x5c6f78));
-    setCylinderBetween(wave, outward.clone().multiplyScalar(-22).add(new THREE.Vector3(0, 1.2, 0)), outward.clone().multiplyScalar(14).add(new THREE.Vector3(0, 1.2, 0)));
-    wave.castShadow = true;
-    group.add(wave);
-  } else {
-    const jaws = new THREE.Mesh(new THREE.TorusGeometry(6.2, 0.7, 12, 30, Math.PI), mat(0x223142));
-    jaws.position.y = 3.0;
-    jaws.rotation.x = Math.PI / 2;
-    jaws.rotation.z = Math.atan2(outward.z, outward.x);
-    jaws.castShadow = true;
-    group.add(jaws);
+  const foamMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(4.4, 10.6, 42), foamMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.userData.baseScale = 1.0;
+  group.add(ring);
+  for (let i = 0; i < 3; i++) {
+    const wake = new THREE.Mesh(
+      new THREE.RingGeometry(1.2 + i * 0.8, 1.9 + i * 1.0, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.36 - i * 0.06, side: THREE.DoubleSide })
+    );
+    wake.position.copy(outward.clone().multiplyScalar(-2.4 - i * 2.7));
+    wake.rotation.x = -Math.PI / 2;
+    wake.scale.x = 1.8 + i * 0.35;
+    wake.scale.y = 0.55;
+    wake.userData.baseScale = 1;
+    group.add(wake);
   }
-  addImpactEffect(group, 4.4);
+  for (let i = 0; i < 24; i++) {
+    const spray = new THREE.Mesh(new THREE.SphereGeometry(0.14 + Math.random() * 0.2, 6, 5), new THREE.MeshBasicMaterial({ color: i % 4 ? 0xf1fdff : 0x9eddea, transparent: true, opacity: 0.86 }));
+    spray.position.copy(side.clone().multiplyScalar((Math.random() - 0.5) * 13)).add(outward.clone().multiplyScalar((Math.random() - 0.5) * 7));
+    spray.position.y = 0.3 + Math.random() * 0.8;
+    spray.userData.velocity = side.clone().multiplyScalar((Math.random() - 0.5) * 7)
+      .add(outward.clone().multiplyScalar(-2.4 - Math.random() * 4.4))
+      .add(new THREE.Vector3(0, 3 + Math.random() * 4.2, 0));
+    group.add(spray);
+  }
+  addImpactEffect(group, attackId === "crush" ? 1.25 : 1.75);
 }
 
 function summonLeviathan() {
-  if (clock.elapsedTime < leviathanCooldown || state.mode !== "ship") return;
+  if (leviathan || clock.elapsedTime < leviathanCooldown || state.mode !== "ship") return;
   leviathanCooldown = clock.elapsedTime + 10.2;
-  if (leviathan?.group) scene.remove(leviathan.group);
-  const outward = playerShip.position.clone();
-  outward.y = 0;
-  if (outward.lengthSq() < 0.01) outward.set(1, 0, 0);
+  const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
+  const outward = playerShip.position.clone().setY(0);
+  if (outward.lengthSq() < 0.01) outward.copy(forward);
   outward.normalize();
+  const sideDir = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
+  if (sideDir.dot(outward) < 0) sideDir.multiplyScalar(-1);
   const attack = leviathanAttacks[Math.floor(Math.random() * leviathanAttacks.length)];
   const group = makeLeviathanMesh();
-  const spawnDistance = Math.max(MINIMAP_VISIBLE_LIMIT + 90, Math.hypot(playerShip.position.x, playerShip.position.z) + 46);
-  group.position.set(outward.x * spawnDistance, -12.5, outward.z * spawnDistance);
-  group.rotation.y = Math.atan2(outward.x, outward.z) + Math.PI;
-  group.scale.setScalar(1.4);
+  const impactPoint = playerShip.position.clone();
+  impactPoint.y = 0;
+  const startPosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(64));
+  startPosition.y = -24;
+  const smashPosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(8.6));
+  smashPosition.y = 0.55;
+  const divePosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(-30));
+  divePosition.y = -24;
+  group.position.copy(startPosition);
+  group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
+  group.rotation.x = 0.48;
+  group.scale.setScalar(1.1);
+  setLeviathanJawOpen(group, 1);
   scene.add(group);
-  leviathan = { group, born: clock.elapsedTime, struck: false, outward: outward.clone(), attack };
+  makeLeviathanAttackEffect(startPosition.clone().setY(0), sideDir, "breach");
+  leviathan = {
+    group,
+    born: clock.elapsedTime,
+    grabbed: false,
+    crushed: false,
+    damaged: false,
+    sideDir: sideDir.clone(),
+    attack,
+    startPosition,
+    smashPosition,
+    divePosition,
+    impactPoint,
+    slamAt: 0,
+  };
   toast(`You left the charted sea. The Leviathan ${attack.label}.`);
 }
 
@@ -2615,6 +3246,7 @@ function nearestPickupTo(point, maxDistance = 125) {
   let best = null;
   let bestScore = maxDistance;
   crates.forEach((crate) => {
+    if (nearStarterIsland(crate.mesh.position, CENTER_BOT_CLEAR_RADIUS * 0.86)) return;
     const d = dist2(point, crate.mesh.position);
     const priority = crate.kind === "treasure" || crate.kind === "kraken" ? 0.45 : 1;
     const score = d * priority;
@@ -2732,6 +3364,7 @@ function damageTarget(target, amount) {
     } else {
       const lostGold = Math.floor(state.gold * 0.25);
       state.gold = Math.max(0, state.gold - lostGold);
+      state.leviathanGrabbed = false;
       target.mode = "ship";
       target.dockedAt = null;
       closeShop();
@@ -2795,6 +3428,15 @@ ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
 ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
 ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
 ui.closeShop.addEventListener("click", () => closeShop());
+ui.dockPrompt.addEventListener("click", () => {
+  if (nameGateOpen()) return;
+  if (state.mode === "land") {
+    setSail();
+    return;
+  }
+  const island = currentIsland();
+  if (island) dockAtIsland(island);
+});
 ui.closeMinimap.addEventListener("click", () => {
   ui.minimapPanel.classList.add("hidden");
   ui.minimapPanel.classList.remove("expanded");
@@ -2844,6 +3486,7 @@ function setupNameGate() {
       return;
     }
     state.name = nextName;
+    state.joined = true;
     localStorage.islandwakeName = nextName;
     ui.nameGate.classList.add("hidden");
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
@@ -2854,7 +3497,8 @@ function setupNameGate() {
 addEventListener("keydown", (event) => {
   if (nameGateOpen()) return;
   const key = event.key.toLowerCase();
-  if (key === "t" && state.mode === "ship") {
+  const code = event.code?.toLowerCase?.() || "";
+  if ((key === "t" || code === "keyt") && state.mode === "ship") {
     const island = currentIsland();
     if (island) {
       event.preventDefault();
@@ -2864,12 +3508,12 @@ addEventListener("keydown", (event) => {
     }
     return;
   }
-  if (key === "c" && state.mode === "land") {
+  if ((key === "c" || code === "keyc") && state.mode === "land") {
     event.preventDefault();
     setSail();
     return;
   }
-  if (key === "r" && state.mode === "land") {
+  if ((key === "r" || code === "keyr") && state.mode === "land") {
     event.preventDefault();
     openIslandShop();
     return;
@@ -2947,13 +3591,34 @@ function dockAtIsland(island) {
 
 function setSail() {
   if (state.mode !== "land") return;
+  const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
   closeShop();
+  ["w", "a", "s", "d", "c"].forEach((key) => keys.delete(key));
+  if (island) {
+    const away = playerShip.position.clone().sub(island.group.position);
+    away.y = 0;
+    if (away.lengthSq() < 0.001) {
+      away.set(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
+    }
+    away.normalize();
+    const minDistance = island.radius + shipHitRadius(state.shipType) + 2.5;
+    if (dist2(playerShip.position, island.group.position) < minDistance) {
+      playerShip.position.x = island.group.position.x + away.x * minDistance;
+      playerShip.position.z = island.group.position.z + away.z * minDistance;
+    }
+  }
   state.mode = "ship";
   state.dockedAt = null;
   character.visible = false;
+  playerShip.visible = true;
+  state.walkHeight = 0;
+  state.walkVelocityY = 0;
+  state.grounded = false;
+  state.velocity.set(0, 0, 0);
   state.position.copy(playerShip.position);
   state.position.y = SHIP_WATERLINE_Y;
   playerShip.position.y = SHIP_WATERLINE_Y;
+  multiplayer.lastSent = 0;
   toast("Sails raised.");
   updateHud();
 }
@@ -3172,8 +3837,9 @@ function renderShop() {
   if (state.shopTab === "goods") {
     ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}</p>` + goods.map((name) => {
       const owned = state.cargo[name] || 0;
-      const price = island.goods[name];
-      return `<div class="row"><div><h3>${name} <span class="price">${price}g</span></h3><p>Owned ${owned}. Prices vary by island, so buy low and sell high.</p></div><div class="actions"><button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button></div></div>`;
+      const buyPrice = marketBuyPrice(island, name);
+      const sellPrice = marketSellPrice(island, name);
+      return `<div class="row"><div><h3>${name} <span class="price">Buy ${buyPrice}g / Sell ${sellPrice}g</span></h3><p>Owned ${owned}. Prices vary by island, so buy low and sell high.</p></div><div class="actions"><button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button></div></div>`;
     }).join("");
   } else if (state.shopTab === "ships") {
     const ships = availableShipsForIsland(island);
@@ -3203,7 +3869,7 @@ ui.shopBody.addEventListener("click", (event) => {
   const island = islands.find((item) => item.name === state.dockedAt);
   if (button.dataset.buy) {
     const name = button.dataset.buy;
-    const price = island.goods[name];
+    const price = marketBuyPrice(island, name);
     if (state.gold < price) return toast("Not enough gold.");
     if (cargoCount() >= cargoCapacity()) return toast("Your hold is full. Upgrade ship capacity or sell cargo.");
     state.gold -= price;
@@ -3214,8 +3880,8 @@ ui.shopBody.addEventListener("click", (event) => {
     const name = button.dataset.sell;
     if (!state.cargo[name]) return toast("No cargo to sell.");
     state.cargo[name]--;
-    state.gold += island.goods[name];
-    addXP(6);
+    state.gold += marketSellPrice(island, name);
+    addXP(4);
     toast(`Sold ${name}.`);
   }
   if (button.dataset.ship) {
@@ -3241,6 +3907,11 @@ function updateShip(dt) {
   state.cooldown = Math.max(0, state.cooldown - dt);
   state.rodCooldown = Math.max(0, state.rodCooldown - dt);
   state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
+  if (state.leviathanGrabbed) {
+    state.velocity.set(0, 0, 0);
+    state.position.copy(playerShip.position);
+    return;
+  }
   const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
   const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
   state.rotation += turn * dt * (1.7 + spec.speed / 28);
@@ -3393,6 +4064,18 @@ function updateBots(dt) {
         const danger = island.radius + shipHitRadius(bot.shipType) * 1.8 + 12;
         if (distance > 0.001 && distance < danger) avoidance.add(away.normalize().multiplyScalar((danger - distance) / danger * 38));
       });
+      if (!aggressive && !fightingBot) {
+        const awayFromStarter = bot.group.position.clone().sub(starterIslandCenter());
+        awayFromStarter.y = 0;
+        const starterDistance = awayFromStarter.length();
+        if (starterDistance > 0.001 && starterDistance < CENTER_BOT_CLEAR_RADIUS) {
+          avoidance.add(awayFromStarter.normalize().multiplyScalar((CENTER_BOT_CLEAR_RADIUS - starterDistance) / CENTER_BOT_CLEAR_RADIUS * 64));
+          if (!pickupTarget && targetDistance < CENTER_BOT_CLEAR_RADIUS * 0.7) {
+            bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
+            bot.turn = Math.max(bot.turn, 2.5);
+          }
+        }
+      }
       const edgeMargin = 44;
       const edgeX = MAP_LIMIT - Math.abs(bot.group.position.x);
       const edgeZ = MAP_LIMIT - Math.abs(bot.group.position.z);
@@ -3474,7 +4157,12 @@ function updateBots(dt) {
 }
 
 function updateProjectiles(dt) {
+  const now = Date.now();
   projectiles.slice().forEach((shot) => {
+    if (now - (shot.createdWallAt || now) > (shot.maxWallAge || 4200)) {
+      removeProjectile(shot);
+      return;
+    }
     shot.traveled += shot.speed * dt;
     const progress = clamp(shot.traveled / shot.distance, 0, 1);
     shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
@@ -3519,51 +4207,43 @@ function updateProjectiles(dt) {
       });
     }
     if (progress >= 1 || hit) {
-      if (hit) makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
-      else makeSplashEffect(shot.target);
-      scene.remove(shot.mesh, shot.trail);
-      shot.mesh.geometry.dispose();
-      shot.trail.geometry.dispose();
-      shot.trail.material.dispose();
-      projectiles.splice(projectiles.indexOf(shot), 1);
+      removeProjectile(shot, hit ? "hit" : "splash");
     }
   });
 }
 
 function updateKrakenAttackEffect(effect, t) {
-  const curl = clamp(t / 0.48, 0, 1);
-  const hold = clamp((t - 0.42) / 0.18, 0, 1);
-  const slam = clamp((t - 0.62) / 0.18, 0, 1);
-  const after = clamp((t - 0.8) / 0.2, 0, 1);
+  const ease = (value) => value * value * (3 - 2 * value);
+  const rise = ease(clamp(t / 0.36, 0, 1));
+  const slam = ease(clamp((t - 0.64) / 0.18, 0, 1));
+  const after = ease(clamp((t - 0.76) / 0.24, 0, 1));
   effect.group.children.forEach((child) => {
     if (child.userData.krakenAttackTentacle) {
       child.visible = true;
-      child.position.y = -8.0 + curl * 8.0 + Math.sin(hold * Math.PI) * 1.2;
-      if (t >= 0.52) {
-        child.position.lerp(child.userData.slamOffset, slam);
-        child.position.y += 10.5 * (1 - slam);
-        child.rotation.z = child.userData.slamRotation * slam + Math.sin((1 - slam) * Math.PI) * 0.16;
-        child.scale.setScalar(0.96 + slam * 0.12);
-      } else {
-        child.rotation.z = Math.sin(curl * Math.PI) * 0.18;
-        child.scale.setScalar(0.76 + curl * 0.24);
-      }
+      const curve = krakenAttackCurve(child.userData.attackData, t);
+      child.geometry.dispose();
+      child.geometry = makeTaperedTubeGeometry(curve, child.userData.baseRadius, child.userData.tipRadius, child.userData.tubeOptions);
+      effect.group.userData.latestAttackCurve = curve;
+    }
+    if (child.userData.krakenAttackSucker) {
+      const curve = effect.group.userData.latestAttackCurve;
+      if (!curve) return;
+      const point = curve.getPoint(clamp(child.userData.curveT, 0, 1));
+      child.visible = t > 0.08 && point.y > -6;
+      child.position.copy(point);
+      child.position.y -= 0.42;
+      const scale = 0.68 + rise * 0.32;
+      child.scale.set(1, 0.28, 0.86).multiplyScalar(scale);
     }
     if (child.userData.krakenRiseSplash) {
-      child.visible = t < 0.55;
-      const scale = 0.8 + curl * 2.4;
+      child.visible = t < 0.52;
+      const scale = 0.8 + rise * 2.9;
       child.scale.set(scale, scale, scale);
-      child.material.opacity = Math.max(0, 0.58 * (1 - curl));
-    }
-    if (child.userData.krakenTip) {
-      child.visible = true;
-      child.position.lerpVectors(child.userData.curlPoint, child.userData.slamPoint, slam);
-      child.position.y += t < 0.52 ? -8.0 + curl * 8.0 : 11.2 * (1 - slam);
-      child.scale.setScalar(1 + Math.sin(after * Math.PI) * 0.25);
+      child.material.opacity = Math.max(0, 0.58 * (1 - rise));
     }
     if (child.userData.krakenSplash) {
-      child.visible = t >= 0.78;
-      const scale = 1 + after * 3.2;
+      child.visible = t >= 0.64;
+      const scale = 0.8 + slam * 1.2 + after * 3.0;
       child.scale.set(scale, scale, scale);
       child.material.opacity = Math.max(0, 0.82 * (1 - after));
     }
@@ -3579,8 +4259,8 @@ function updateImpactEffects(dt) {
     effect.group.children.forEach((child) => {
       if (effect.group.userData.krakenAttack && (
         child.userData.krakenAttackTentacle
+        || child.userData.krakenAttackSucker
         || child.userData.krakenRiseSplash
-        || child.userData.krakenTip
         || child.userData.krakenSplash
       )) return;
       if (child.userData.velocity) {
@@ -3673,16 +4353,76 @@ function updateFish(dt) {
 function updateLeviathan(dt) {
   if (!leviathan?.group) return;
   const age = clock.elapsedTime - leviathan.born;
-  const rise = Math.sin(clamp(age / 3.0, 0, 1) * Math.PI * 0.5);
-  leviathan.group.position.y = -13.5 + rise * 13.2;
-  leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 1.05) * 0.1;
-  leviathan.group.scale.setScalar(1.4 + rise * 3.6);
-  if (!leviathan.struck && age > 2.25) {
-    leviathan.struck = true;
-    makeLeviathanAttackEffect(playerShip.position.clone(), leviathan.outward, leviathan.attack.id);
+  const ease = (value) => value * value * (3 - 2 * value);
+  const sideDir = leviathan.sideDir || new THREE.Vector3(1, 0, 0);
+  const jawForward = sideDir.clone().multiplyScalar(-1);
+  leviathan.group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
+
+  const leapDuration = 3.15;
+  if (!leviathan.crushed) {
+    if (age < 2.75 && state.mode === "ship") {
+      const liveTarget = playerShip.position.clone();
+      liveTarget.y = 0;
+      leviathan.impactPoint.lerp(liveTarget, clamp(dt * 5.6, 0, 0.7));
+      leviathan.smashPosition.copy(leviathan.impactPoint).add(sideDir.clone().multiplyScalar(8.6));
+      leviathan.smashPosition.y = 0.55;
+      leviathan.divePosition.copy(leviathan.impactPoint).add(sideDir.clone().multiplyScalar(-30));
+      leviathan.divePosition.y = -24;
+    }
+
+    const leapT = ease(clamp(age / leapDuration, 0, 1));
+    const leapPosition = leviathan.startPosition.clone().lerp(leviathan.smashPosition, leapT);
+    leapPosition.y = leviathan.startPosition.y
+      + (leviathan.smashPosition.y - leviathan.startPosition.y) * leapT
+      + Math.sin(leapT * Math.PI) * 43;
+    leviathan.group.position.copy(leapPosition);
+    const arcLift = Math.sin(leapT * Math.PI);
+    const tipDown = ease(clamp((leapT - 0.12) / 0.82, 0, 1));
+    const slamLean = ease(clamp((age - 2.48) / 0.58, 0, 1));
+    leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 3.1) * 0.065 * (1 - slamLean);
+    leviathan.group.rotation.x = (0.48 * (1 - tipDown) - 1.0 * tipDown + arcLift * 0.14) * (1 - slamLean) - 1.18 * slamLean;
+    leviathan.group.scale.setScalar(1.06 + arcLift * 0.22 + slamLean * 0.12);
+    setLeviathanJawOpen(leviathan.group, 0.95 - slamLean * 0.28);
+
+    if (age >= leapDuration) {
+      leviathan.crushed = true;
+      leviathan.slamAt = clock.elapsedTime;
+      state.leviathanGrabbed = true;
+      state.velocity.set(0, 0, 0);
+      playerShip.position.copy(leviathan.impactPoint);
+      playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
+      state.position.copy(playerShip.position);
+      makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), jawForward);
+      makeLeviathanAttackEffect(playerShip.position.clone().setY(0), sideDir, "crush");
+      playerShip.visible = false;
+    }
+    return;
+  }
+
+  const slamAge = clock.elapsedTime - leviathan.slamAt;
+  const diveT = ease(clamp(slamAge / 2.25, 0, 1));
+  const divePosition = leviathan.smashPosition.clone().lerp(leviathan.divePosition, diveT);
+  divePosition.y = leviathan.smashPosition.y
+    + (leviathan.divePosition.y - leviathan.smashPosition.y) * diveT
+    + Math.sin(diveT * Math.PI) * 5.5;
+  leviathan.group.position.copy(divePosition);
+  leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 4.6) * 0.045 * (1 - diveT);
+  leviathan.group.rotation.x = -1.18 + diveT * 1.36;
+  leviathan.group.scale.setScalar(1.18 - diveT * 0.16);
+  setLeviathanJawOpen(leviathan.group, 0.67 - diveT * 0.26, diveT * 0.1);
+
+  if (state.leviathanGrabbed && !leviathan.damaged) {
+    state.velocity.set(0, 0, 0);
+    state.position.copy(playerShip.position);
+  }
+
+  if (!leviathan.damaged && slamAge > 0.48) {
+    leviathan.damaged = true;
     damageTarget(state, maxHp() * 4);
   }
-  if (age > 8.2) {
+
+  if (slamAge > 2.45 || age > 6.4) {
+    state.leviathanGrabbed = false;
     scene.remove(leviathan.group);
     leviathan = null;
   }
@@ -3690,13 +4430,38 @@ function updateLeviathan(dt) {
 
 function updateKraken(dt) {
   if (!krakenBoss?.group) return;
+  const ease = (value) => value * value * (3 - 2 * value);
+  const now = clock.elapsedTime;
   if (krakenBoss.alive) {
     krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.58) * 0.18;
   }
   krakenBoss.group.children.forEach((child) => {
-    if (!child.userData?.tentacle) return;
-    child.rotation.y = Math.sin(clock.elapsedTime * 0.7 + child.userData.phase) * 0.045;
-    child.rotation.z = Math.cos(clock.elapsedTime * 0.52 + child.userData.phase) * 0.025;
+    if (child.userData?.tentacle) {
+      const started = child.userData.submergeStart;
+      let dive = 0;
+      if (Number.isFinite(started)) {
+        const until = child.userData.submergeUntil || started + KRAKEN_ATTACK_LIFE * 0.82;
+        const down = ease(clamp((now - started) / 0.8, 0, 1));
+        const up = ease(clamp((now - until) / 1.25, 0, 1));
+        dive = down * (1 - up);
+        if (now > until + 1.35) {
+          delete child.userData.submergeStart;
+          delete child.userData.submergeUntil;
+          delete child.userData.submergeDepth;
+        }
+      }
+      child.visible = dive < 0.72;
+      const bob = Math.sin(now * 0.82 + child.userData.phase) * 0.22;
+      child.position.y = (child.userData.homeY || 0) + bob - dive * (child.userData.submergeDepth || 18);
+      child.rotation.x = Math.sin(now * 0.54 + child.userData.phase) * 0.04 + dive * 0.18;
+      child.rotation.y = Math.sin(now * 0.7 + child.userData.phase) * 0.08;
+      child.rotation.z = Math.cos(now * 0.52 + child.userData.phase) * 0.055;
+    }
+    if (child.userData?.krakenWaterRing) {
+      const pulse = 1 + Math.sin(clock.elapsedTime * 1.4 + child.userData.phase) * 0.12;
+      child.scale.set(pulse, pulse, pulse);
+      child.material.opacity = 0.35 + Math.sin(clock.elapsedTime * 1.8 + child.userData.phase) * 0.08;
+    }
   });
 }
 
@@ -4128,6 +4893,16 @@ function applyCrateReward(crate) {
 
 function spawnRemoteShot(data) {
   if (!data || data.owner === playerId || data.owner === multiplayer.networkId) return;
+  const sentAt = Number(data.sentAt);
+  if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
+  if (data.id) {
+    if (seenRemoteShots.has(data.id)) return;
+    seenRemoteShots.add(data.id);
+    if (seenRemoteShots.size > 220) {
+      const oldest = seenRemoteShots.values().next().value;
+      seenRemoteShots.delete(oldest);
+    }
+  }
   const pos = new THREE.Vector3(Number(data.x), 0, Number(data.z));
   const dir = new THREE.Vector3(Number(data.dirX), 0, Number(data.dirZ));
   if (![pos.x, pos.z, dir.x, dir.z].every(Number.isFinite) || dir.lengthSq() < 0.01) return;
@@ -4215,7 +4990,7 @@ function setupMultiplayer(reconnecting = false) {
       multiplayer.channel.close();
       multiplayer.channel = null;
     }
-    sendMultiplayer({ type: "hello", player: multiplayerPayload() });
+    if (state.joined) sendMultiplayer({ type: "hello", player: multiplayerPayload() });
     toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
   });
 
@@ -4250,7 +5025,9 @@ function publishShot(origin, dir, damage, range, target = null) {
   sendMultiplayer({
     type: "shot",
     shot: {
+      id: crypto.randomUUID(),
       owner: playerId,
+      sentAt: Date.now(),
       x: origin.x,
       z: origin.z,
       dirX: dir.x,
@@ -4265,6 +5042,7 @@ function publishShot(origin, dir, damage, range, target = null) {
 }
 
 function publishMultiplayer() {
+  if (!state.joined) return;
   if (clock.elapsedTime - multiplayer.lastSent >= 0.16) {
     multiplayer.lastSent = clock.elapsedTime;
     const player = multiplayerPayload();
@@ -4296,15 +5074,17 @@ function animateSea() {
 
 function frame() {
   const dt = Math.min(0.033, clock.getDelta());
-  if (state.mode === "ship") updateShip(dt);
-  else updateWalker(dt);
-  updateBots(dt);
-  resolveShipContacts();
-  updateProjectiles(dt);
-  updateImpactEffects(dt);
-  updateFish(dt);
-  updateLeviathan(dt);
-  updateKraken(dt);
+  if (state.joined) {
+    if (state.mode === "ship") updateShip(dt);
+    else updateWalker(dt);
+    updateBots(dt);
+    resolveShipContacts();
+    updateProjectiles(dt);
+    updateImpactEffects(dt);
+    updateFish(dt);
+    updateLeviathan(dt);
+    updateKraken(dt);
+  }
   updateCamera(dt);
   animateSea();
   publishMultiplayer();

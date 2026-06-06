@@ -354,6 +354,8 @@ button.active {
   color: white;
   box-shadow: 0 10px 24px rgba(16, 32, 42, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  user-select: none;
 }
 
 .hidden {
@@ -564,16 +566,16 @@ button.active {
   }
 
   .leaderboard {
-    top: auto;
+    top: 96px;
     right: 10px;
-    bottom: 222px;
+    bottom: auto;
     width: 150px;
   }
 
   .leaderboard-open {
-    top: auto;
+    top: 96px;
     right: 10px;
-    bottom: 222px;
+    bottom: auto;
   }
 
   .shop {
