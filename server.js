@@ -24,7 +24,8 @@ const krakenSpeed = 1;
 const krakenAttackDamage = 999999;
 const krakenBotFleeRadius = krakenAttackRadius + 46;
 const crateDropMultiplier = 1.2;
-const krakenSlamDelayMs = 5200;
+const krakenSlamDelayMs = 2900;
+const maxReloadUpgrades = 20;
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let kraken = null;
 
@@ -281,7 +282,14 @@ function botUpgradeLevels(botOrLevel = 1) {
     : focus === "range" ? ["range", "damage", "reload"]
       : ["damage", "reload", "range"];
   const upgrades = { damage: 0, reload: 0, range: 0 };
-  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) upgrades[order[i % order.length]]++;
+  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) {
+    for (let offset = 0; offset < order.length; offset++) {
+      const kind = order[(i + offset) % order.length];
+      if (kind === "reload" && upgrades.reload >= maxReloadUpgrades) continue;
+      upgrades[kind]++;
+      break;
+    }
+  }
   return upgrades;
 }
 
@@ -298,7 +306,7 @@ function botCannonRangeFor(botOrLevel = 1) {
 }
 
 function scaleDamageByRange(baseDamage, distance, range) {
-  return Math.round(baseDamage * (1 + clamp(distance / Math.max(1, range), 0, 1) * 0.35));
+  return Math.round(baseDamage * (1 + clamp(distance / Math.max(1, range), 0, 1) * 0.5));
 }
 
 function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
@@ -618,9 +626,46 @@ function startBotFeud(bot, enemy, duration = 9000) {
   }
 }
 
-function damageBot(bot, amount, rewardSocket = null) {
-  bot.hp -= clamp(Number(amount) || 0, 0, 240);
+function normalizedFire(fire) {
+  if (!fire || typeof fire !== "object") return null;
+  return {
+    dps: clamp(Number(fire.dps) || 0, 0, 2),
+    remaining: clamp(Number(fire.duration ?? fire.remaining) || 0, 0, 12),
+  };
+}
+
+function igniteBot(bot, fire, rewardSocket = null) {
+  const effect = normalizedFire(fire);
+  if (!effect || effect.dps <= 0 || effect.remaining <= 0) return;
+  bot.fire = {
+    dps: effect.dps,
+    remaining: Math.max(bot.fire?.remaining || 0, effect.remaining),
+  };
+  bot.fireSourceId = rewardSocket?.id || bot.fireSourceId || null;
+}
+
+function updateBotFire(bot, dt) {
+  if (!bot.fire) return false;
+  const movementWear = 1 + clamp(Math.hypot(bot.vx || 0, bot.vz || 0) / 32, 0, 0.9);
+  bot.fire.remaining -= dt * movementWear;
+  bot.hp -= (Number(bot.fire.dps) || 2) * dt;
+  if (bot.fire.remaining <= 0) {
+    bot.fire = null;
+    bot.fireSourceId = null;
+  }
   if (bot.hp > 0) return false;
+  const rewardSocket = bot.fireSourceId ? clients.get(bot.fireSourceId) : null;
+  bot.fire = null;
+  bot.fireSourceId = null;
+  return damageBot(bot, 0, rewardSocket);
+}
+
+function damageBot(bot, amount, rewardSocket = null, fire = null) {
+  bot.hp -= clamp(Number(amount) || 0, 0, 240);
+  if (bot.hp > 0) {
+    igniteBot(bot, fire, rewardSocket);
+    return false;
+  }
   const level = bot.level || 1;
   const tier = bot.tier || 0;
   spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
@@ -785,6 +830,10 @@ function botSnapshot(bot) {
     x: bot.x,
     z: bot.z,
     rotation: bot.rotation,
+    fire: bot.fire ? {
+      dps: bot.fire.dps,
+      remaining: Math.max(0, bot.fire.remaining),
+    } : null,
   };
 }
 
@@ -807,6 +856,8 @@ function worldSnapshot() {
 }
 
 function resetBot(bot) {
+  delete bot.fire;
+  delete bot.fireSourceId;
   Object.assign(bot, makeBot(bot.id));
 }
 
@@ -836,6 +887,7 @@ function updateWorld() {
   const dt = 0.1;
   const now = Date.now();
   for (const bot of bots) {
+    if (updateBotFire(bot, dt)) continue;
     if (bot.targetPlayer && bot.angerUntil && bot.angerUntil < now) bot.targetPlayer = null;
     let targetSocket = bot.targetPlayer ? playerSocket(bot.targetPlayer) : null;
     if (targetSocket?.player?.mode === "land") targetSocket = null;
@@ -1268,7 +1320,7 @@ function handleMessage(socket, text) {
     bot.targetBot = null;
     bot.botFightUntil = 0;
     bot.fireCooldown = Math.min(bot.fireCooldown, 1.35);
-    damageBot(bot, damage, socket);
+    damageBot(bot, damage, socket, message.fire);
     broadcast(worldSnapshot());
   }
   if (message.type === "playerSunk") {

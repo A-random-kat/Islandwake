@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=96" />
+  <link rel="stylesheet" href="styles.css?v=102" />
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -35,6 +35,8 @@
       <button id="toolRod" title="Fishing rod"><span>2</span></button>
       <button id="toolGlass" title="Spyglass"><span>G</span></button>
     </section>
+
+    <section id="ammoHotbar" class="panel ammo-hotbar"></section>
 
     <section class="panel cargo">
       <strong>Cargo</strong>
@@ -81,6 +83,7 @@
     <nav>
       <button class="tab active" data-tab="goods">Goods</button>
       <button class="tab" data-tab="ships">Ships</button>
+      <button class="tab" data-tab="ammo">Shot</button>
       <button class="tab" data-tab="upgrades">Upgrades</button>
     </nav>
     <div id="shopBody"></div>
@@ -110,6 +113,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=96"></script>
+  <script type="module" src="game.js?v=102"></script>
 </body>
 </html>

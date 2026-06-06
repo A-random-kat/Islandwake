@@ -44,6 +44,7 @@ const ui = {
   leaderboardList: document.querySelector("#leaderboardList"),
   closeLeaderboard: document.querySelector("#closeLeaderboard"),
   openLeaderboard: document.querySelector("#openLeaderboard"),
+  ammoHotbar: document.querySelector("#ammoHotbar"),
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
@@ -59,14 +60,23 @@ const ui = {
 const keys = new Set();
 const goods = ["Silk", "Spice", "Iron", "Tea", "Pearls"];
 const STARTER_SHIP = "skiff";
-const MAX_PLAYER_LEVEL = 20;
+const MAX_PLAYER_LEVEL = 100;
+const MAX_RELOAD_UPGRADES = 20;
 const TRADE_SELL_RATE = 0.85;
 const CRATE_DROP_MULTIPLIER = 1.2;
-const KRAKEN_ATTACK_LIFE = 6.8;
-const KRAKEN_SLAM_DELAY_MS = 5200;
+const KRAKEN_ATTACK_LIFE = 3.8;
+const KRAKEN_SLAM_DELAY_MS = 2900;
+const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
 const MAP_LIMIT = 280;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
 const SEA_SIZE = 2400;
+const CANNONBALL_TYPES = {
+  basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
+  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 32, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
+  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 46, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 2, duration: 12 } },
+};
+const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", null, null];
+const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
 const islandData = [
   { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
   { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
@@ -249,6 +259,12 @@ const state = {
   hp: shipBalance[STARTER_SHIP].hp,
   cargo: {},
   upgrades: { damage: 0, fireRate: 0, range: 0 },
+  ammo: { grapeshot: 0, hotshot: 0 },
+  ammoSlots: [...AMMO_SLOT_TYPES],
+  selectedAmmo: "basic",
+  selectedAmmoSlot: 0,
+  pendingAmmoAssign: null,
+  fire: null,
   cooldown: 0,
   rodCooldown: 0,
   position: new THREE.Vector3(-15, 0, -12),
@@ -296,6 +312,7 @@ const MAX_TREASURES = 3;
 const CENTER_BOT_CLEAR_RADIUS = 88;
 const minimapCtx = ui.minimap.getContext("2d");
 const shipPreviewCache = new Map();
+let ammoHotbarSignature = "";
 let shipPreviewRenderer;
 let shipPreviewScene;
 let shipPreviewCamera;
@@ -548,7 +565,7 @@ function cannonDamage() {
 }
 
 function cannonReload() {
-  return Math.max(0.36, 0.78 - state.upgrades.fireRate * 0.02);
+  return Math.max(0.36, 0.78 - Math.min(state.upgrades.fireRate, MAX_RELOAD_UPGRADES) * 0.02);
 }
 
 function cannonRange() {
@@ -556,11 +573,137 @@ function cannonRange() {
 }
 
 function rangeDamageMultiplier(distance, range) {
-  return 1 + clamp(distance / Math.max(1, range), 0, 1) * 0.35;
+  return 1 + clamp(distance / Math.max(1, range), 0, 1) * 0.5;
 }
 
 function scaleDamageByRange(baseDamage, distance, range) {
   return Math.round(baseDamage * rangeDamageMultiplier(distance, range));
+}
+
+function currentAmmoType() {
+  const slotType = state.ammoSlots[state.selectedAmmoSlot] || "basic";
+  return CANNONBALL_TYPES[slotType] || CANNONBALL_TYPES.basic;
+}
+
+function ammoCount(type) {
+  const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
+  return ammo.infinite ? Infinity : Math.max(0, Math.floor(state.ammo[type] || 0));
+}
+
+function selectAmmoSlot(index, announce = false) {
+  const slot = clamp(Math.floor(Number(index) || 0), 0, state.ammoSlots.length - 1);
+  const type = state.ammoSlots[slot];
+  if (!type) {
+    toast("That ammo slot is empty.");
+    return false;
+  }
+  const ammo = CANNONBALL_TYPES[type];
+  if (!ammo) return false;
+  if (!ammo.infinite && ammoCount(type) <= 0) {
+    toast(`${ammo.name} is empty.`);
+    return false;
+  }
+  state.selectedAmmoSlot = slot;
+  state.selectedAmmo = type;
+  updateAmmoHotbar();
+  if (announce) toast(`${ammo.name} equipped.`);
+  return true;
+}
+
+function selectAmmo(type) {
+  const slot = state.ammoSlots.findIndex((item) => item === type);
+  if (slot < 0) return toast("Put that shot in a hotbar slot first.");
+  selectAmmoSlot(slot);
+}
+
+function assignAmmoSlot(slot, type) {
+  const index = Math.floor(Number(slot));
+  if (!Number.isFinite(index) || index < 0 || index >= state.ammoSlots.length) return;
+  if (index === 0) return toast("Basic Shell stays in slot 1.");
+  if (type && !CANNONBALL_TYPES[type]) return;
+  const nextType = type || null;
+  const previousSelectedType = state.ammoSlots[state.selectedAmmoSlot];
+  if (nextType) {
+    state.ammoSlots.forEach((slotType, slotIndex) => {
+      if (slotIndex > 0 && slotIndex !== index && slotType === nextType) {
+        state.ammoSlots[slotIndex] = null;
+      }
+    });
+  }
+  state.ammoSlots[index] = nextType;
+  if (type && state.pendingAmmoAssign === type) state.pendingAmmoAssign = null;
+  if (nextType && (state.selectedAmmoSlot === index || previousSelectedType === nextType)) {
+    state.selectedAmmoSlot = index;
+    state.selectedAmmo = nextType;
+  }
+  if (state.selectedAmmoSlot === index && !nextType) {
+    state.selectedAmmoSlot = 0;
+    state.selectedAmmo = "basic";
+  }
+  updateAmmoHotbar();
+}
+
+function placeAmmoOnHotbar(type) {
+  if (!CANNONBALL_TYPES[type] || CANNONBALL_TYPES[type].infinite) return true;
+  if (state.ammoSlots.includes(type)) {
+    state.pendingAmmoAssign = null;
+    updateAmmoHotbar();
+    return true;
+  }
+  const openSlot = state.ammoSlots.findIndex((item, index) => index > 0 && !item);
+  if (openSlot > 0) {
+    assignAmmoSlot(openSlot, type);
+    return true;
+  }
+  state.pendingAmmoAssign = type;
+  updateAmmoHotbar();
+  return false;
+}
+
+function consumeAmmo(ammo) {
+  if (!ammo || ammo.infinite) return true;
+  if (ammoCount(ammo.id) <= 0) {
+    state.selectedAmmoSlot = 0;
+    state.selectedAmmo = "basic";
+    updateAmmoHotbar();
+    toast(`${ammo.name} is empty.`);
+    return false;
+  }
+  state.ammo[ammo.id] = ammoCount(ammo.id) - 1;
+  if (state.ammo[ammo.id] <= 0) {
+    state.selectedAmmoSlot = 0;
+    state.selectedAmmo = "basic";
+  }
+  updateAmmoHotbar();
+  return true;
+}
+
+function rotateFlatDirection(dir, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return new THREE.Vector3(dir.x * cos + dir.z * sin, 0, dir.z * cos - dir.x * sin).normalize();
+}
+
+function updateAmmoHotbar(force = false) {
+  if (!ui.ammoHotbar) return;
+  const signature = state.ammoSlots.map((type, index) => {
+    if (!type) return `${index}:empty`;
+    const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
+    return `${index}:${type}:${ammo.infinite ? "inf" : ammoCount(type)}:${state.selectedAmmoSlot === index ? "active" : ""}`;
+  }).join("|");
+  if (!force && signature === ammoHotbarSignature) return;
+  ammoHotbarSignature = signature;
+  ui.ammoHotbar.innerHTML = state.ammoSlots.map((type, index) => {
+    if (!type) {
+      const active = state.selectedAmmoSlot === index ? " active" : "";
+      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="Empty slot"><span>${index + 1}</span><strong>Empty</strong><em>-</em></button>`;
+    }
+    const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
+    const count = ammo.infinite ? "&infin;" : ammoCount(type);
+    const active = state.selectedAmmoSlot === index ? " active" : "";
+    const empty = !ammo.infinite && ammoCount(type) <= 0 ? " empty" : "";
+    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammo.name}"><span>${index + 1}</span><strong>${ammo.short}</strong><em>${count}</em></button>`;
+  }).join("");
 }
 
 function botUpgradeLevels(botOrLevel = 1) {
@@ -570,7 +713,14 @@ function botUpgradeLevels(botOrLevel = 1) {
     : focus === "range" ? ["range", "damage", "reload"]
       : ["damage", "reload", "range"];
   const upgrades = { damage: 0, reload: 0, range: 0 };
-  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) upgrades[order[i % order.length]]++;
+  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) {
+    for (let offset = 0; offset < order.length; offset++) {
+      const kind = order[(i + offset) % order.length];
+      if (kind === "reload" && upgrades.reload >= MAX_RELOAD_UPGRADES) continue;
+      upgrades[kind]++;
+      break;
+    }
+  }
   return upgrades;
 }
 
@@ -2094,6 +2244,7 @@ function makeCharacter() {
 }
 
 function makeProjectile(owner, pos, dir, damage, range, options = {}) {
+  const ammo = CANNONBALL_TYPES[options.ammoType] || CANNONBALL_TYPES.basic;
   const target = options.target
     ? options.target.clone()
     : pos.clone().add(dir.clone().normalize().multiplyScalar(range));
@@ -2101,13 +2252,16 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const start = pos.clone();
   start.y = 1.15;
   const distance = Math.max(1, dist2(start, target));
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), mats.dark);
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(ammo.radius || 0.35, 10, 8),
+    new THREE.MeshStandardMaterial({ color: ammo.color || 0x2f3342, roughness: 0.84, metalness: 0.04 })
+  );
   mesh.position.copy(start);
   mesh.castShadow = true;
   scene.add(mesh);
   const trail = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]),
-    new THREE.LineBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.62 })
+    new THREE.LineBasicMaterial({ color: ammo.trail || 0xd9fbff, transparent: true, opacity: 0.62 })
   );
   scene.add(trail);
   projectiles.push({
@@ -2123,6 +2277,8 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     distance,
     damage,
     targetKind: options.targetKind || "any",
+    ammoType: ammo.id,
+    fire: ammo.fire ? { ...ammo.fire } : null,
     arcHeight: clamp(distance * 0.16, 3.2, 10.5),
     createdWallAt: Date.now(),
     maxWallAge: Math.max(2200, (distance / CANNONBALL_SPEED + 1.2) * 1000),
@@ -2131,7 +2287,10 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
 
 function removeProjectile(shot, impact = "none") {
   if (!shot) return;
-  if (impact === "hit") makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
+  if (impact === "hit") {
+    if (shot.ammoType === "hotshot") makeFireImpactEffect(shot.mesh.position.clone(), shot.dir);
+    else makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
+  }
   if (impact === "splash") makeSplashEffect(shot.target);
   scene.remove(shot.mesh, shot.trail);
   shot.mesh.geometry.dispose();
@@ -2193,6 +2352,43 @@ function makeSplinterEffect(position, dir) {
   puff.userData.puff = true;
   group.add(puff);
   addImpactEffect(group, 0.78);
+}
+
+function makeFireImpactEffect(position, dir) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  const forward = dir.clone().normalize();
+  const side = new THREE.Vector3(forward.z, 0, -forward.x);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.38, 0.92, 28),
+    new THREE.MeshBasicMaterial({ color: 0xff3d1f, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.04;
+  group.add(ring);
+  for (let i = 0; i < 18; i++) {
+    const spark = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08 + Math.random() * 0.08, 7, 5),
+      new THREE.MeshBasicMaterial({
+        color: i % 3 === 0 ? 0xfff0a6 : i % 2 === 0 ? 0xff8b28 : 0xd61f15,
+        transparent: true,
+        opacity: 0.95,
+      })
+    );
+    const spread = forward.clone().multiplyScalar(0.8 + Math.random() * 1.6)
+      .add(side.clone().multiplyScalar((Math.random() - 0.5) * 3.4))
+      .add(new THREE.Vector3(0, 1.3 + Math.random() * 2.1, 0));
+    spark.userData.velocity = spread;
+    spark.userData.spin = new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7);
+    group.add(spark);
+  }
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(0.72, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff4b1f, transparent: true, opacity: 0.58 })
+  );
+  flash.userData.puff = true;
+  group.add(flash);
+  addImpactEffect(group, 0.72);
 }
 
 function makeLeviathanSkullGeometry() {
@@ -2960,8 +3156,8 @@ function krakenAttackCurve(data, t) {
   const ease = (value) => value * value * (3 - 2 * value);
   const rise = ease(clamp(t / 0.36, 0, 1));
   const curl = ease(clamp((t - 0.18) / 0.42, 0, 1));
-  const slam = ease(clamp((t - 0.64) / 0.18, 0, 1));
-  const retreat = ease(clamp((t - 0.84) / 0.16, 0, 1));
+  const slam = ease(clamp((t - (KRAKEN_SLAM_T - 0.18)) / 0.18, 0, 1));
+  const retreat = ease(clamp((t - (KRAKEN_SLAM_T + 0.08)) / 0.16, 0, 1));
   const target = data.target;
   const dir = data.dir;
   const side = data.side;
@@ -3055,14 +3251,27 @@ function makeKrakenAttackEffect(attack) {
     group.add(sucker);
   }
 
-  const splash = new THREE.Mesh(new THREE.RingGeometry(2.6, 5.2, 32), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.78, side: THREE.DoubleSide }));
+  const splash = new THREE.Mesh(new THREE.RingGeometry(2.0, 4.4, 36), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.78, side: THREE.DoubleSide }));
   splash.position.copy(target);
   splash.position.y = 0.12;
   splash.rotation.x = -Math.PI / 2;
-  splash.userData.baseScale = 0.9;
+  splash.userData.baseScale = 0.78;
   splash.visible = false;
   splash.userData.krakenSplash = true;
   group.add(splash);
+  for (let i = 0; i < 18; i++) {
+    const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.2;
+    const radius = 1.2 + Math.random() * 2.7;
+    const spray = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18 + Math.random() * 0.16, 6, 5),
+      new THREE.MeshBasicMaterial({ color: i % 4 ? 0xf1fdff : 0x9eddea, transparent: true, opacity: 0 })
+    );
+    spray.position.set(target.x + Math.cos(angle) * radius, 0.18, target.z + Math.sin(angle) * radius);
+    spray.userData.krakenSlamSpray = true;
+    spray.userData.start = spray.position.clone();
+    spray.userData.velocity = new THREE.Vector3(Math.cos(angle) * (3.8 + Math.random() * 2.8), 4.2 + Math.random() * 3.4, Math.sin(angle) * (3.8 + Math.random() * 2.8));
+    group.add(spray);
+  }
   const riseSplash = new THREE.Mesh(new THREE.RingGeometry(3.0, 5.4, 30), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
   riseSplash.position.copy(attackData.surface);
   riseSplash.position.y = 0.1;
@@ -3391,18 +3600,154 @@ function alertBot(bot, seconds = 12) {
   bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 1.25);
 }
 
-function damageTarget(target, amount) {
+function targetFireState(target) {
+  return target === state ? state.fire : target?.fire;
+}
+
+function setTargetFireState(target, fire) {
+  if (target === state) state.fire = fire;
+  else if (target) target.fire = fire;
+}
+
+function targetShipGroup(target) {
+  if (target === state) return playerShip;
+  return target?.group || null;
+}
+
+function disposeVisualMesh(mesh) {
+  if (!mesh) return;
+  mesh.geometry?.dispose?.();
+  if (Array.isArray(mesh.material)) mesh.material.forEach((item) => item?.dispose?.());
+  else mesh.material?.dispose?.();
+}
+
+function clearBurnVisual(target) {
+  const fire = targetFireState(target);
+  if (!fire?.scorch) return;
+  fire.scorch.parent?.remove(fire.scorch);
+  disposeVisualMesh(fire.scorch);
+  fire.scorch = null;
+}
+
+function addScorchMark(target, worldPosition = null) {
+  const fire = targetFireState(target);
+  const group = targetShipGroup(target);
+  if (!fire || !group) return;
+  if (!fire.scorch) {
+    fire.scorch = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 14, 8),
+      new THREE.MeshStandardMaterial({ color: 0x120807, roughness: 0.98, metalness: 0, transparent: true, opacity: 0.88 })
+    );
+    fire.scorch.userData.burnScorch = true;
+    group.add(fire.scorch);
+  }
+  const type = target === state ? state.shipType : target.shipType || STARTER_SHIP;
+  const radius = shipHitRadius(type);
+  const hit = worldPosition?.clone?.() || group.position.clone().add(new THREE.Vector3(0, 1.05, -radius * 0.16));
+  const local = group.worldToLocal(hit);
+  local.x = clamp(local.x, -radius * 0.72, radius * 0.72);
+  local.y = clamp(local.y, 0.45, 2.4);
+  local.z = clamp(local.z, -radius * 0.88, radius * 0.88);
+  const size = clamp(radius * 0.13, 0.4, 0.92);
+  fire.scorch.position.copy(local);
+  fire.scorch.rotation.set(-0.18 + Math.random() * 0.14, Math.random() * Math.PI, Math.random() * 0.3);
+  fire.scorch.scale.set(size * 1.35, size * 0.13, size * 0.72);
+}
+
+function makeBurnSmoke(position) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  for (let i = 0; i < 5; i++) {
+    const puff = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16 + Math.random() * 0.14, 8, 6),
+      new THREE.MeshBasicMaterial({ color: i % 2 ? 0x31343a : 0x5d5f62, transparent: true, opacity: 0.42 })
+    );
+    puff.position.set((Math.random() - 0.5) * 0.35, Math.random() * 0.22, (Math.random() - 0.5) * 0.35);
+    puff.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.45, 1.35 + Math.random() * 0.8, (Math.random() - 0.5) * 0.45);
+    puff.userData.puff = true;
+    group.add(puff);
+  }
+  addImpactEffect(group, 1.15);
+}
+
+function updateBurnVisual(target, dt) {
+  const fire = targetFireState(target);
+  const group = targetShipGroup(target);
+  if (!fire || !group) return;
+  if (!fire.scorch) addScorchMark(target);
+  if (fire.scorch?.material) {
+    const heat = clamp(fire.remaining / 12, 0, 1);
+    fire.scorch.material.opacity = 0.62 + heat * 0.24;
+  }
+  fire.smokeTimer = (fire.smokeTimer || 0) - dt;
+  if (fire.smokeTimer <= 0) {
+    fire.smokeTimer = 0.16 + Math.random() * 0.14;
+    const smokePoint = new THREE.Vector3();
+    if (fire.scorch?.parent) fire.scorch.getWorldPosition(smokePoint);
+    else smokePoint.copy(group.position).y += 1.25;
+    smokePoint.y += 0.38;
+    makeBurnSmoke(smokePoint);
+  }
+}
+
+function igniteTarget(target, fire, hitPosition = null, visualOnly = false) {
+  if (!fire) return;
+  const current = targetFireState(target);
+  const effect = {
+    dps: Number(fire.dps) || 2,
+    remaining: Number(fire.duration) || 12,
+  };
+  const next = {
+    dps: effect.dps,
+    remaining: Math.max(current?.remaining || 0, effect.remaining),
+    visualOnly: Boolean(visualOnly) && current?.visualOnly !== false,
+    scorch: current?.scorch || null,
+    smokeTimer: current?.smokeTimer || 0,
+  };
+  setTargetFireState(target, next);
+  addScorchMark(target, hitPosition);
+}
+
+function updateFireDamage(target, dt, speed = 0) {
+  const fire = targetFireState(target);
+  if (!fire) return;
+  const movementWear = 1 + clamp(speed / 32, 0, 0.9);
+  fire.remaining -= dt * movementWear;
+  updateBurnVisual(target, dt);
+  if (!fire.visualOnly) {
+    const damage = (Number(fire.dps) || 2) * dt;
+    target.hp -= damage;
+  }
+  if (fire.remaining <= 0) {
+    clearBurnVisual(target);
+    setTargetFireState(target, null);
+  }
+  if (!fire.visualOnly && target.hp <= 0) {
+    clearBurnVisual(target);
+    setTargetFireState(target, null);
+    if (target.isBot) {
+      damageTarget(target, 0);
+    } else {
+      damageTarget(state, maxHp() * 4);
+    }
+  }
+}
+
+function damageTarget(target, amount, options = {}) {
   if (target.serverId && multiplayer.serverWorld) {
-    sendMultiplayer({ type: "hitBot", id: target.serverId, damage: amount });
+    sendMultiplayer({ type: "hitBot", id: target.serverId, damage: amount, fire: options.fire || null });
     return;
   }
   const armor = target.isBot ? getShipStats(target.shipType).armor : getShipStats().armor;
   target.hp -= amount * (1 - armor);
+  if (target.hp > 0 && options.fire) igniteTarget(target, options.fire, options.hitPosition || null);
   if (target.isBot && target.hp > 0) alertBot(target);
   if (target.hp <= 0) {
     const level = target.level || 1;
     const deathPos = target.isBot ? target.group.position : playerShip.position;
     if (target.isBot) {
+      clearBurnVisual(target);
+      target.fire = null;
       dropCrates(deathPos, crateDropCount(target));
       target.hp = getShipStats(target.shipType).hp;
       target.group.position.copy(randomWaterPoint(MAP_LIMIT * 0.9, 82));
@@ -3416,6 +3761,8 @@ function damageTarget(target, amount) {
       dropPlayerDeathCrates(deathPos);
       const lostGold = Math.floor(state.gold * 0.25);
       state.gold = Math.max(0, state.gold - lostGold);
+      clearBurnVisual(state);
+      state.fire = null;
       state.leviathanGrabbed = false;
       target.mode = "ship";
       target.dockedAt = null;
@@ -3479,6 +3826,18 @@ function setTool(tool) {
 ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
 ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
 ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
+ui.ammoHotbar?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ammo-slot]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (selectAmmoSlot(button.dataset.ammoSlot, true)) setTool("cannon");
+});
+ui.ammoHotbar?.addEventListener("mousedown", (event) => {
+  if (!event.target.closest("[data-ammo-slot]")) return;
+  event.preventDefault();
+  event.stopPropagation();
+});
 ui.closeShop.addEventListener("click", () => closeShop());
 ui.dockPrompt.addEventListener("click", () => {
   if (nameGateOpen()) return;
@@ -3714,15 +4073,22 @@ function useTool() {
   if (state.tool === "cannon") {
     const fireDelay = cannonReload();
     if (state.cooldown > 0) return;
+    const ammo = currentAmmoType();
+    if (!consumeAmmo(ammo)) return;
     state.cooldown = fireDelay;
-    const range = cannonRange();
+    const range = cannonRange() * (ammo.rangeScale || 1);
     const targetDistance = clamp(dist2(playerShip.position, aimPoint), 4, range);
-    const damage = scaleDamageByRange(cannonDamage(), targetDistance, range);
-    const target = playerShip.position.clone().add(dir.clone().multiplyScalar(targetDistance));
-    target.y = 0;
-    const origin = playerShip.position.clone().add(dir.clone().multiplyScalar(3.8));
-    makeProjectile(playerId, origin, dir, damage, range, { target });
-    publishShot(origin, dir, damage, range, target);
+    const pellets = ammo.pellets || 1;
+    for (let i = 0; i < pellets; i++) {
+      const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
+      const shotDir = rotateFlatDirection(dir, spread);
+      const damage = scaleDamageByRange(cannonDamage() * (ammo.damageScale || 1), targetDistance, range);
+      const target = playerShip.position.clone().add(shotDir.clone().multiplyScalar(targetDistance));
+      target.y = 0;
+      const origin = playerShip.position.clone().add(shotDir.clone().multiplyScalar(3.8));
+      makeProjectile(playerId, origin, shotDir, damage, range, { target, ammoType: ammo.id });
+      publishShot(origin, shotDir, damage, range, target, ammo.id);
+    }
   } else if (state.tool === "rod") {
     if (state.rodCooldown > 0) return;
     state.rodCooldown = 1.1;
@@ -3922,6 +4288,22 @@ function renderShop() {
         : `<div class="ship-preview empty" aria-hidden="true"></div>`;
       return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p>${shipCompareMarkup(ship)}</div></div>`;
     }).join("");
+  } else if (state.shopTab === "ammo") {
+    const slotStatus = `<div class="ammo-slot-status">${state.ammoSlots.map((type, index) => {
+      const ammo = type ? CANNONBALL_TYPES[type] : null;
+      return `<span>${index + 1}: ${index === 0 ? "Basic" : ammo?.short || "Empty"}</span>`;
+    }).join("")}</div>`;
+    const replacePrompt = state.pendingAmmoAssign && CANNONBALL_TYPES[state.pendingAmmoAssign]
+      ? `<div class="row"><div><h3>Hotbar Full</h3><p>Replace one non-basic slot with ${CANNONBALL_TYPES[state.pendingAmmoAssign].name}.</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">Slot ${slot + 1}</button>`).join("")}</div></div>`
+      : "";
+    ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
+      const ammo = CANNONBALL_TYPES[id];
+      const owned = ammoCount(id);
+      const description = ammo.id === "hotshot"
+        ? "Normal shell damage plus 2 fire damage/s for 12s. Moving ships burn out faster."
+        : `${ammo.pellets} pellets per load, each at ${Math.round(ammo.damageScale * 100)}% damage.`;
+      return `<div class="row"><div><h3>${ammo.name} <span class="price">${ammo.price}g each</span></h3><p>Owned ${owned}. ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">Buy</button><button data-buy-ammo="${id}" data-amount="5">Buy 5</button></div></div>`;
+    }).join("");
   } else {
     const ups = [
       ["damage", "Cannon Damage", `${cannonDamage()} damage`],
@@ -3929,7 +4311,7 @@ function renderShop() {
       ["range", "Cannon Range", `${cannonRange()}m range`],
     ];
     ui.shopBody.innerHTML = `<p class="stats">Upgrade points: <b>${state.points}</b></p>` + ups.map(([id, name, desc]) => (
-      `<div class="row"><div><h3>${name} Lv.${state.upgrades[id]}</h3><p>${desc}</p></div><button data-upgrade="${id}">Spend</button></div>`
+      `<div class="row"><div><h3>${name} Lv.${state.upgrades[id]}${id === "fireRate" ? `/${MAX_RELOAD_UPGRADES}` : ""}</h3><p>${desc}</p></div><button data-upgrade="${id}" ${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "disabled" : ""}>${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "Max" : "Spend"}</button></div>`
     )).join("");
   }
 }
@@ -3963,8 +4345,26 @@ ui.shopBody.addEventListener("click", (event) => {
     replacePlayerShip(ship.id);
     toast(`${ship.name} launched.`);
   }
+  if (button.dataset.buyAmmo) {
+    const ammo = CANNONBALL_TYPES[button.dataset.buyAmmo];
+    if (!ammo || ammo.infinite) return;
+    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 20);
+    const cost = ammo.price * amount;
+    if (state.gold < cost) return toast("Not enough gold.");
+    state.gold -= cost;
+    state.ammo[ammo.id] = ammoCount(ammo.id) + amount;
+    const placed = placeAmmoOnHotbar(ammo.id);
+    toast(placed ? `Bought ${amount} ${ammo.name}.` : `Bought ${amount} ${ammo.name}. Replace a hotbar slot.`);
+  }
+  if (button.dataset.replaceAmmo) {
+    const ammo = CANNONBALL_TYPES[button.dataset.replaceAmmo];
+    if (!ammo) return;
+    assignAmmoSlot(button.dataset.slot, ammo.id);
+    toast(`${ammo.name} assigned to slot ${Number(button.dataset.slot) + 1}.`);
+  }
   if (button.dataset.upgrade) {
     if (state.points < 1) return toast("Level up to earn upgrade points.");
+    if (button.dataset.upgrade === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES) return toast("Reload upgrade is maxed.");
     state.points--;
     state.upgrades[button.dataset.upgrade]++;
     toast("Upgrade installed.");
@@ -3977,6 +4377,7 @@ function updateShip(dt) {
   const spec = getShipStats();
   state.cooldown = Math.max(0, state.cooldown - dt);
   state.rodCooldown = Math.max(0, state.rodCooldown - dt);
+  updateFireDamage(state, dt, state.velocity.length());
   state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
   if (state.leviathanGrabbed) {
     state.velocity.set(0, 0, 0);
@@ -4088,6 +4489,7 @@ function updateBots(dt) {
   if (multiplayer.serverWorld) {
     bots.forEach((bot, i) => {
       if (bot.serverPosition) {
+        bot.velocity.copy(bot.serverPosition).sub(bot.group.position).multiplyScalar(1 / Math.max(dt, 0.001));
         bot.group.position.lerp(bot.serverPosition, clamp(dt * 8, 0, 0.35));
       }
       if (Number.isFinite(bot.serverRotation)) {
@@ -4095,6 +4497,7 @@ function updateBots(dt) {
         bot.rotation = bot.group.rotation.y;
       }
       bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
+      updateFireDamage(bot, dt, bot.velocity.length());
     });
     return;
   }
@@ -4200,6 +4603,7 @@ function updateBots(dt) {
       bot.group.rotation.y = bot.rotation;
     }
     bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
+    updateFireDamage(bot, dt, bot.velocity.length());
     botCollectCrates(bot);
     const shotTarget = aggressive ? playerShip : fightingBot?.group;
     const shotDir = shotTarget ? shotTarget.position.clone().sub(bot.group.position) : new THREE.Vector3();
@@ -4251,10 +4655,12 @@ function updateProjectiles(dt) {
     if (shot.owner === playerId) {
       bots.forEach((bot) => {
         if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
+          const hitPosition = shot.mesh.position.clone();
           if (multiplayer.serverWorld && bot.serverId) {
-            sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage });
+            sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage, fire: shot.fire || null });
+            if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
           } else {
-            damageTarget(bot, shot.damage);
+            damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition });
           }
           addXP(1 + Math.floor(shot.damage / 27));
           hit = true;
@@ -4263,6 +4669,7 @@ function updateProjectiles(dt) {
       remotePlayers.forEach((remote) => {
         if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
           if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
+          if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
           hit = true;
         }
       });
@@ -4272,12 +4679,12 @@ function updateProjectiles(dt) {
         hit = true;
       }
     } else if (shot.targetKind !== "bot" && state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
-      damageTarget(state, shot.damage);
+      damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
       hit = true;
     } else if (!multiplayer.serverWorld && shot.targetKind !== "player") {
       bots.forEach((bot) => {
         if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-          damageTarget(bot, shot.damage);
+          damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
           hit = true;
         }
       });
@@ -4291,8 +4698,8 @@ function updateProjectiles(dt) {
 function updateKrakenAttackEffect(effect, t) {
   const ease = (value) => value * value * (3 - 2 * value);
   const rise = ease(clamp(t / 0.36, 0, 1));
-  const slam = ease(clamp((t - 0.64) / 0.18, 0, 1));
-  const after = ease(clamp((t - 0.76) / 0.24, 0, 1));
+  const slam = ease(clamp((t - (KRAKEN_SLAM_T - 0.06)) / 0.12, 0, 1));
+  const after = ease(clamp((t - KRAKEN_SLAM_T) / 0.22, 0, 1));
   effect.group.children.forEach((child) => {
     if (child.userData.krakenAttackTentacle) {
       child.visible = true;
@@ -4318,10 +4725,18 @@ function updateKrakenAttackEffect(effect, t) {
       child.material.opacity = Math.max(0, 0.58 * (1 - rise));
     }
     if (child.userData.krakenSplash) {
-      child.visible = t >= 0.64;
-      const scale = 0.8 + slam * 1.2 + after * 3.0;
+      child.visible = t >= KRAKEN_SLAM_T;
+      const scale = 0.78 + slam * 0.8 + after * 2.2;
       child.scale.set(scale, scale, scale);
       child.material.opacity = Math.max(0, 0.82 * (1 - after));
+    }
+    if (child.userData.krakenSlamSpray) {
+      const local = clamp((t - KRAKEN_SLAM_T) / 0.28, 0, 1);
+      child.visible = local > 0 && local < 1;
+      child.position.copy(child.userData.start);
+      child.position.addScaledVector(child.userData.velocity, local);
+      child.position.y = child.userData.start.y + child.userData.velocity.y * local - 8.5 * local * local;
+      child.material.opacity = Math.max(0, 0.9 * (1 - local));
     }
   });
 }
@@ -4338,6 +4753,7 @@ function updateImpactEffects(dt) {
         || child.userData.krakenAttackSucker
         || child.userData.krakenRiseSplash
         || child.userData.krakenSplash
+        || child.userData.krakenSlamSpray
       )) return;
       if (child.userData.velocity) {
         child.position.addScaledVector(child.userData.velocity, dt);
@@ -4570,7 +4986,8 @@ function updateHud() {
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
   ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
-  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}`;
+  const fireLabel = state.fire ? ` | Burning ${Math.ceil(state.fire.remaining)}s` : "";
+  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${fireLabel}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
   const island = currentIsland();
@@ -4582,6 +4999,7 @@ function updateHud() {
       : `Press <b>C</b> to set sail or <b>R</b> for the shop`;
   }
   updateSpyPanel();
+  updateAmmoHotbar();
   renderLeaderboard();
 }
 
@@ -4824,6 +5242,7 @@ function updateRemoteLabel(remote, name) {
 function removeRemotePlayer(id) {
   const remote = remotePlayers.get(id);
   if (!remote) return;
+  clearBurnVisual(remote);
   scene.remove(remote.group, remote.avatar, remote.label);
   remotePlayers.delete(id);
 }
@@ -4841,9 +5260,10 @@ function upsertRemotePlayer(data) {
     const avatar = makeRemoteCharacter();
     const label = makeLabel(data.name || "Captain");
     scene.add(group, avatar, label);
-    remote = { group, avatar, label, updated: 0, name: data.name || "Captain", shipType };
+    remote = { group, avatar, label, updated: 0, name: data.name || "Captain", shipType, velocity: new THREE.Vector3() };
     remotePlayers.set(data.id, remote);
   } else if (remote.shipType !== shipType) {
+    clearBurnVisual(remote);
     scene.remove(remote.group);
     remote.group = makeShip(shipType, true);
     scene.add(remote.group);
@@ -4856,6 +5276,8 @@ function upsertRemotePlayer(data) {
   remote.level = data.level || 1;
   remote.gold = Number(data.gold) || 0;
   remote.hp = data.hp || getShipStats(shipType).hp;
+  remote.velocity = remote.velocity || new THREE.Vector3();
+  remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
   remote.group.position.set(x, SHIP_WATERLINE_Y, z);
   remote.group.rotation.y = Number(data.rotation) || 0;
   remote.group.visible = true;
@@ -4876,6 +5298,7 @@ function upsertRemotePlayer(data) {
 
 function removeBot(bot) {
   if (!bot) return;
+  clearBurnVisual(bot);
   scene.remove(bot.group);
   const index = bots.indexOf(bot);
   if (index >= 0) bots.splice(index, 1);
@@ -4908,6 +5331,7 @@ function syncServerWorld(world) {
       bot.group.rotation.y = serverRotation;
       bots.push(bot);
     } else if (bot.shipType !== data.shipType) {
+      clearBurnVisual(bot);
       scene.remove(bot.group);
       bot.group = makeShip(data.shipType || "cog", true);
       bot.group.position.copy(serverPosition);
@@ -4921,6 +5345,19 @@ function syncServerWorld(world) {
     bot.serverMaxHp = Number(data.maxHp) || spec.hp;
     bot.serverPosition = serverPosition;
     bot.serverRotation = serverRotation;
+    if (data.fire) {
+      bot.fire = {
+        dps: Number(data.fire.dps) || 2,
+        remaining: Number(data.fire.remaining) || 0,
+        visualOnly: true,
+        scorch: bot.fire?.scorch || null,
+        smokeTimer: bot.fire?.smokeTimer || 0,
+      };
+      if (!bot.fire.scorch) addScorchMark(bot);
+    } else if (bot.fire) {
+      clearBurnVisual(bot);
+      bot.fire = null;
+    }
   });
   bots.slice().forEach((bot) => {
     if (!bot.serverId || !seenBots.has(bot.serverId)) removeBot(bot);
@@ -4998,6 +5435,7 @@ function spawnRemoteShot(data) {
   makeProjectile(data.owner || "remote", pos, dir.normalize(), Number(data.damage) || 20, Number(data.range) || 36, {
     target,
     targetKind: data.targetKind || "any",
+    ammoType: data.ammoType || "basic",
   });
 }
 
@@ -5109,7 +5547,7 @@ addEventListener("beforeunload", () => {
   if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
 });
 
-function publishShot(origin, dir, damage, range, target = null) {
+function publishShot(origin, dir, damage, range, target = null, ammoType = "basic") {
   sendMultiplayer({
     type: "shot",
     shot: {
@@ -5125,6 +5563,7 @@ function publishShot(origin, dir, damage, range, target = null) {
       damage,
       range,
       targetKind: "any",
+      ammoType,
     },
   });
 }
@@ -5166,6 +5605,7 @@ function frame() {
     if (state.mode === "ship") updateShip(dt);
     else updateWalker(dt);
     updateBots(dt);
+    remotePlayers.forEach((remote) => updateFireDamage(remote, dt, remote.velocity?.length?.() || 0));
     resolveShipContacts();
     updateProjectiles(dt);
     updateImpactEffects(dt);
