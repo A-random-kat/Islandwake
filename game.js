@@ -73,7 +73,7 @@ const SEA_SIZE = 2400;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 32, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
-  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 46, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 2, duration: 12 } },
+  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 46, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", null, null];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
@@ -3502,15 +3502,19 @@ function nearestTreasureTo(point, maxDistance = 150) {
   return best;
 }
 
-function nearestPickupTo(point, maxDistance = 125) {
+function nearestPickupTo(point, maxDistance = 215, bot = null) {
   let best = null;
-  let bestScore = maxDistance;
+  let bestScore = Infinity;
+  const healthNeed = bot?.shipType ? clamp((getShipStats(bot.shipType).hp - bot.hp) / getShipStats(bot.shipType).hp, 0, 1) : 0;
   crates.forEach((crate) => {
-    if (nearStarterIsland(crate.mesh.position, CENTER_BOT_CLEAR_RADIUS * 0.86)) return;
+    if (islands.some((island) => dist2(crate.mesh.position, island.group.position) < island.radius + 8)) return;
     const d = dist2(point, crate.mesh.position);
-    const priority = crate.kind === "treasure" || crate.kind === "kraken" ? 0.45 : 1;
-    const score = d * priority;
-    if (d < maxDistance && score < bestScore) {
+    const valuable = crate.kind === "treasure" || crate.kind === "kraken";
+    const searchDistance = valuable ? maxDistance * 1.35 : maxDistance;
+    if (d > searchDistance) return;
+    const priority = crate.kind === "kraken" ? 0.22 : crate.kind === "treasure" ? 0.3 : 1 - healthNeed * 0.38;
+    const score = d * priority - healthNeed * 36;
+    if (score < bestScore) {
       best = crate;
       bestScore = score;
     }
@@ -4268,25 +4272,70 @@ function shipPreviewImage(type) {
   }
 }
 
+function tradeDescription(island, name, owned, buyPrice, sellPrice) {
+  const markets = islandData
+    .map((item) => ({ name: item.name, sell: marketSellPrice(item, name) }))
+    .sort((a, b) => b.sell - a.sell);
+  const best = markets[0] || { name: island.name, sell: sellPrice };
+  const profit = best.sell - buyPrice;
+  const routeText = best.name === island.name
+    ? "This is one of the better places to sell it."
+    : `Best known resale is ${best.sell}g at ${best.name}.`;
+  const profitText = profit > 0
+    ? `${profit}g possible profit if you haul it there.`
+    : "Buying here is not a strong trade route right now.";
+  return `Owned ${owned}. Sell here for ${sellPrice}g. ${routeText} ${profitText}`;
+}
+
+function shipRoleDescription(ship) {
+  const speed = ship.speed >= 28 ? "very fast" : ship.speed >= 22 ? "quick" : ship.speed <= 12 ? "slow" : "steady";
+  const defense = ship.armor <= 0 ? "no armor" : ship.armor >= 0.14 ? "heavy armor" : ship.armor >= 0.08 ? "solid armor" : "light armor";
+  const hold = ship.capacity >= 38 ? "huge cargo hold" : ship.capacity >= 22 ? "large cargo hold" : ship.capacity <= 7 ? "small cargo hold" : "useful cargo hold";
+  const durability = ship.hp >= 2400 ? "massive hull HP" : ship.hp >= 1500 ? "high hull HP" : ship.hp <= 750 ? "light hull HP" : "good hull HP";
+  const handling = ship.speed > 22 && ship.armor <= 0 ? "Built for speed, not soaking hits." : ship.speed <= 12 ? "Heavy and hard to push, but slow to reposition." : "Balanced enough for trading and fights.";
+  return `${speed} ship with ${durability}, ${defense}, and a ${hold}. ${handling}`;
+}
+
+function ammoDescription(ammo) {
+  if (ammo.id === "hotshot") {
+    const fire = ammo.fire || { dps: 0, duration: 0 };
+    return `Same direct hit as Basic Shell, then burns for ${fire.dps}/s for ${fire.duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.`;
+  }
+  if (ammo.id === "grapeshot") {
+    return `${ammo.pellets} pellets in a wide spread. Each pellet does ${Math.round(ammo.damageScale * 100)}% direct damage and reaches ${Math.round(ammo.rangeScale * 100)}% of cannon range. Best up close.`;
+  }
+  return "Reliable single cannonball with infinite ammo.";
+}
+
+function upgradeDescription(id) {
+  if (id === "damage") {
+    return `Current ${cannonDamage()} direct damage. Each point adds +2 direct damage; Hotshot fire stays separate.`;
+  }
+  if (id === "fireRate") {
+    return `Current ${cannonReload().toFixed(2)}s reload. Each point lowers reload by 0.02s, up to Lv.${MAX_RELOAD_UPGRADES}.`;
+  }
+  return `Current ${cannonRange()}m range. Each point adds +4m. Farther hits also deal up to +50% direct damage.`;
+}
+
 function renderShop() {
   const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
   ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
   if (state.shopTab === "goods") {
-    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}</p>` + goods.map((name) => {
+    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}. Buy low, then sell where demand is higher.</p>` + goods.map((name) => {
       const owned = state.cargo[name] || 0;
       const buyPrice = marketBuyPrice(island, name);
       const sellPrice = marketSellPrice(island, name);
-      return `<div class="row"><div><h3>${name} <span class="price">Buy ${buyPrice}g / Sell ${sellPrice}g</span></h3><p>Owned ${owned}. Prices vary by island, so buy low and sell high.</p></div><div class="actions"><button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button></div></div>`;
+      return `<div class="row"><div><h3>${name} <span class="price">Buy ${buyPrice}g / Sell ${sellPrice}g</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions"><button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button></div></div>`;
     }).join("");
   } else if (state.shopTab === "ships") {
     const ships = availableShipsForIsland(island);
-    ui.shopBody.innerHTML = `<p class="stats">Ships sold at ${island.name}. Travel to other cultures for different hulls.</p>` + ships.map((ship) => {
+    ui.shopBody.innerHTML = `<p class="stats">${island.name} shipwrights sell ${island.culture} hulls. Faster ships usually have less armor; larger ships carry and push more.</p>` + ships.map((ship) => {
       const owned = ship.id === state.shipType;
       const preview = shipPreviewImage(ship.id);
       const previewMarkup = preview
         ? `<img class="ship-preview" src="${preview}" alt="${ship.name} preview">`
         : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p>${shipCompareMarkup(ship)}</div></div>`;
+      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>${shipRoleDescription(ship)}</p><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p>${shipCompareMarkup(ship)}</div></div>`;
     }).join("");
   } else if (state.shopTab === "ammo") {
     const slotStatus = `<div class="ammo-slot-status">${state.ammoSlots.map((type, index) => {
@@ -4299,16 +4348,14 @@ function renderShop() {
     ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
-      const description = ammo.id === "hotshot"
-        ? "Normal shell damage plus 2 fire damage/s for 12s. Moving ships burn out faster."
-        : `${ammo.pellets} pellets per load, each at ${Math.round(ammo.damageScale * 100)}% damage.`;
+      const description = ammoDescription(ammo);
       return `<div class="row"><div><h3>${ammo.name} <span class="price">${ammo.price}g each</span></h3><p>Owned ${owned}. ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">Buy</button><button data-buy-ammo="${id}" data-amount="5">Buy 5</button></div></div>`;
     }).join("");
   } else {
     const ups = [
-      ["damage", "Cannon Damage", `${cannonDamage()} damage`],
-      ["fireRate", "Fire Rate", `${cannonReload().toFixed(2)}s reload`],
-      ["range", "Cannon Range", `${cannonRange()}m range`],
+      ["damage", "Cannon Damage", upgradeDescription("damage")],
+      ["fireRate", "Fire Rate", upgradeDescription("fireRate")],
+      ["range", "Cannon Range", upgradeDescription("range")],
     ];
     ui.shopBody.innerHTML = `<p class="stats">Upgrade points: <b>${state.points}</b></p>` + ups.map(([id, name, desc]) => (
       `<div class="row"><div><h3>${name} Lv.${state.upgrades[id]}${id === "fireRate" ? `/${MAX_RELOAD_UPGRADES}` : ""}</h3><p>${desc}</p></div><button data-upgrade="${id}" ${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "disabled" : ""}>${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "Max" : "Spend"}</button></div>`
@@ -4504,7 +4551,8 @@ function updateBots(dt) {
   bots.forEach((bot, i) => {
     const spec = getShipStats(bot.shipType);
     const playerDistance = dist2(bot.group.position, playerShip.position);
-    const aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 34));
+    let aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 34));
+    const lowHealth = bot.hp < spec.hp * 0.58;
     let fightingBot = bot.targetBot && bot.botFightUntil > clock.elapsedTime
       ? bots.find((other) => other.localId === bot.targetBot && other.hp > 0)
       : null;
@@ -4512,7 +4560,20 @@ function updateBots(dt) {
       fightingBot = nearestBotEnemy(bot, 54);
       if (fightingBot) startBotFeud(bot, fightingBot, 8 + Math.random() * 8);
     }
-    const pickupTarget = !aggressive && !fightingBot ? nearestPickupTo(bot.group.position, 155) : null;
+    let pickupTarget = nearestPickupTo(bot.group.position, lowHealth ? 250 : 215, bot);
+    const pickupDistance = pickupTarget ? dist2(bot.group.position, pickupTarget.mesh.position) : Infinity;
+    const valuablePickup = pickupTarget && (pickupTarget.kind === "treasure" || pickupTarget.kind === "kraken");
+    if (pickupTarget && (lowHealth || (!aggressive && !fightingBot) || (valuablePickup && pickupDistance < 155))) {
+      if (lowHealth || valuablePickup) {
+        aggressive = false;
+        bot.agroUntil = 0;
+        fightingBot = null;
+        bot.targetBot = null;
+        bot.botFightUntil = 0;
+      }
+    } else {
+      pickupTarget = null;
+    }
     bot.turn -= dt;
     bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
     if (aggressive) {
@@ -4578,14 +4639,16 @@ function updateBots(dt) {
       const desired = Math.atan2(steerTarget.x, steerTarget.z);
       const delta = angleDelta(desired, bot.rotation);
       const inCombat = aggressive || Boolean(fightingBot);
-      const turnRate = inCombat ? 0.95 + spec.speed / 46 : 0.6 + spec.speed / 64;
+      const chasingPickup = Boolean(pickupTarget);
+      const turnRate = inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
       const turnStep = clamp(delta, -dt * turnRate, dt * turnRate);
       bot.rotation += turnStep;
       const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const arrive = clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
-      const desiredVelocity = forward.multiplyScalar(spec.speed * (inCombat ? 0.48 : 0.28) * facing * arrive);
-      bot.velocity.lerp(desiredVelocity, clamp(dt * (inCombat ? 1.5 : 1.0), 0, 0.18));
+      const arrive = chasingPickup ? clamp(targetDistance / 14, 0.24, 1) : clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
+      const pickupCruise = pickupTarget?.kind === "treasure" || pickupTarget?.kind === "kraken" ? 0.6 : 0.48;
+      const desiredVelocity = forward.multiplyScalar(spec.speed * (inCombat ? 0.48 : chasingPickup ? pickupCruise : 0.28) * facing * arrive);
+      bot.velocity.lerp(desiredVelocity, clamp(dt * (inCombat ? 1.5 : chasingPickup ? 1.35 : 1.0), 0, 0.18));
       bot.velocity.multiplyScalar(Math.pow(0.92, dt * 3));
       const next = bot.group.position.clone().add(bot.velocity.clone().multiplyScalar(dt));
       const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + shipHitRadius(bot.shipType) * 0.6 + 5);

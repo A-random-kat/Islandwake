@@ -542,15 +542,19 @@ function spawnTreasure(now = Date.now()) {
   return crate;
 }
 
-function nearestPickup(bot, maxDistance = 135) {
+function nearestPickup(bot, maxDistance = 220) {
   let best = null;
-  let bestScore = maxDistance;
+  let bestScore = Infinity;
+  const healthNeed = bot.maxHp ? clamp((bot.maxHp - bot.hp) / bot.maxHp, 0, 1) : 0;
   for (const crate of crates) {
-    if (isNearStarterIsland(crate, centerBotClearRadius * 0.86)) continue;
+    if (isInsideIsland(crate, 8)) continue;
     const distance = Math.hypot(crate.x - bot.x, crate.z - bot.z);
-    const priority = crate.kind === "treasure" || crate.kind === "kraken" ? 0.45 : 1;
-    const score = distance * priority;
-    if (distance < maxDistance && score < bestScore) {
+    const valuable = crate.kind === "treasure" || crate.kind === "kraken";
+    const searchDistance = valuable ? maxDistance * 1.35 : maxDistance;
+    if (distance > searchDistance) continue;
+    const priority = crate.kind === "kraken" ? 0.22 : crate.kind === "treasure" ? 0.3 : 1 - healthNeed * 0.38;
+    const score = distance * priority - healthNeed * 36;
+    if (score < bestScore) {
       best = crate;
       bestScore = score;
     }
@@ -629,8 +633,8 @@ function startBotFeud(bot, enemy, duration = 9000) {
 function normalizedFire(fire) {
   if (!fire || typeof fire !== "object") return null;
   return {
-    dps: clamp(Number(fire.dps) || 0, 0, 2),
-    remaining: clamp(Number(fire.duration ?? fire.remaining) || 0, 0, 12),
+    dps: clamp(Number(fire.dps) || 0, 0, 10),
+    remaining: clamp(Number(fire.duration ?? fire.remaining) || 0, 0, 3),
   };
 }
 
@@ -904,6 +908,26 @@ function updateWorld() {
       if (targetBot) startBotFeud(bot, targetBot, 8000 + Math.random() * 8000);
     }
     let pickupTarget = null;
+    const healthRatio = bot.maxHp ? bot.hp / bot.maxHp : 1;
+    const noticedPickup = nearestPickup(bot, healthRatio < 0.65 ? 250 : 220);
+    const pickupDistance = noticedPickup ? Math.hypot(noticedPickup.x - bot.x, noticedPickup.z - bot.z) : Infinity;
+    const valuablePickup = noticedPickup && (noticedPickup.kind === "treasure" || noticedPickup.kind === "kraken");
+    const shouldSeekPickup = noticedPickup && (
+      (!targetSocket && !targetBot)
+      || healthRatio < 0.58
+      || (valuablePickup && pickupDistance < 155)
+    );
+    if (shouldSeekPickup) {
+      pickupTarget = noticedPickup;
+      if (healthRatio < 0.58 || valuablePickup) {
+        targetSocket = null;
+        bot.targetPlayer = null;
+        bot.angerUntil = 0;
+        targetBot = null;
+        bot.targetBot = null;
+        bot.botFightUntil = 0;
+      }
+    }
     let fleeingKraken = false;
     if (kraken?.alive) {
       const dx = bot.x - kraken.x;
@@ -932,6 +956,7 @@ function updateWorld() {
         bot.botFightUntil = 0;
         targetSocket = null;
         targetBot = null;
+        pickupTarget = null;
       }
     }
     bot.fireCooldown = Math.max(0, bot.fireCooldown - dt);
@@ -955,7 +980,7 @@ function updateWorld() {
         bot.targetBot = null;
         bot.botFightUntil = 0;
       }
-    } else if ((pickupTarget = nearestPickup(bot, 165))) {
+    } else if (pickupTarget || (pickupTarget = nearestPickup(bot, healthRatio < 0.65 ? 250 : 220))) {
       bot.targetX = pickupTarget.x;
       bot.targetZ = pickupTarget.z;
       bot.turn = Math.max(bot.turn, 1.2);
@@ -1050,14 +1075,16 @@ function updateWorld() {
       const desired = Math.atan2(toTarget.x + avoidance.x, toTarget.z + avoidance.z);
       const delta = angleDelta(desired, bot.rotation);
       const inCombat = Boolean(targetSocket || targetBot);
-      const turnRate = fleeingKraken ? 1.25 + bot.speed / 40 : inCombat ? 0.95 + bot.speed / 46 : 0.6 + bot.speed / 64;
+      const chasingPickup = Boolean(pickupTarget);
+      const turnRate = fleeingKraken ? 1.25 + bot.speed / 40 : inCombat ? 0.95 + bot.speed / 46 : chasingPickup ? 0.86 + bot.speed / 52 : 0.6 + bot.speed / 64;
       bot.rotation += clamp(delta, -turnRate * dt, turnRate * dt);
       const forward = { x: Math.sin(bot.rotation), z: Math.cos(bot.rotation) };
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const cruise = fleeingKraken ? 0.72 : inCombat ? 0.48 : 0.28;
-      const arrive = fleeingKraken ? 1 : clamp(distance / (inCombat ? 20 : 34), 0.18, 1);
+      const pickupCruise = pickupTarget?.kind === "treasure" || pickupTarget?.kind === "kraken" ? 0.6 : 0.48;
+      const cruise = fleeingKraken ? 0.72 : inCombat ? 0.48 : chasingPickup ? pickupCruise : 0.28;
+      const arrive = fleeingKraken ? 1 : chasingPickup ? clamp(distance / 14, 0.24, 1) : clamp(distance / (inCombat ? 20 : 34), 0.18, 1);
       const desiredSpeed = bot.speed * cruise * facing * arrive;
-      const steer = clamp(dt * (fleeingKraken ? 2.0 : inCombat ? 1.5 : 1.0), 0, 0.24);
+      const steer = clamp(dt * (fleeingKraken ? 2.0 : inCombat ? 1.5 : chasingPickup ? 1.35 : 1.0), 0, 0.24);
       bot.vx += (forward.x * desiredSpeed - bot.vx) * steer;
       bot.vz += (forward.z * desiredSpeed - bot.vz) * steer;
       bot.vx *= 0.976;
