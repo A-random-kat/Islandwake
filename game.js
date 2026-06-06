@@ -47,7 +47,7 @@ const ui = {
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
-  nameButton: document.querySelector("#setSailButton"),
+  nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
   tabs: [...document.querySelectorAll(".tab")],
   toolButtons: {
     cannon: document.querySelector("#toolCannon"),
@@ -214,11 +214,27 @@ for (const ship of shipCatalog) {
   ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
 }
 
-const captainId = localStorage.islandwakeId || crypto.randomUUID();
-localStorage.islandwakeId = captainId;
+function readSavedValue(key, fallback = "") {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Joining the game should still work if browser storage is blocked.
+  }
+}
+
+const captainId = readSavedValue("islandwakeId") || crypto.randomUUID();
+saveValue("islandwakeId", captainId);
 const playerId = crypto.randomUUID();
 const state = {
-  name: localStorage.islandwakeName || "",
+  name: readSavedValue("islandwakeName"),
   joined: false,
   level: 1,
   xp: 0,
@@ -3464,8 +3480,11 @@ ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
 }));
 
 function setupNameGate() {
-  if (!ui.nameGate || !ui.nameForm || !ui.nameInput || !ui.nameButton) return;
-  const joinGame = () => {
+  if (!ui.nameGate || !ui.nameForm || !ui.nameInput) return;
+  const joinGame = (event = null) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (ui.nameGate.classList.contains("hidden")) return;
     const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
     if (!nextName) {
       ui.nameInput.focus();
@@ -3473,7 +3492,7 @@ function setupNameGate() {
     }
     state.name = nextName;
     state.joined = true;
-    localStorage.islandwakeName = nextName;
+    saveValue("islandwakeName", nextName);
     ui.nameGate.classList.add("hidden");
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
     updateHud();
@@ -3492,12 +3511,16 @@ function setupNameGate() {
     ui.nameInput.focus();
     ui.nameInput.select();
   });
-  ui.nameButton.addEventListener("click", joinGame);
+  ui.nameButton?.addEventListener("click", joinGame);
+  ui.nameForm.addEventListener("submit", joinGame);
+  ui.nameGate.addEventListener("click", (event) => {
+    const button = event.target?.closest?.("button");
+    if (!button || !ui.nameGate.contains(button)) return;
+    joinGame(event);
+  }, true);
   ui.nameInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
-    event.preventDefault();
-    event.stopPropagation();
-    joinGame();
+    joinGame(event);
   });
 }
 
