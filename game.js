@@ -47,6 +47,7 @@ const ui = {
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
+  nameButton: document.querySelector("#setSailButton"),
   tabs: [...document.querySelectorAll(".tab")],
   toolButtons: {
     cannon: document.querySelector("#toolCannon"),
@@ -3463,7 +3464,20 @@ ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
 }));
 
 function setupNameGate() {
-  if (!ui.nameGate || !ui.nameForm || !ui.nameInput) return;
+  if (!ui.nameGate || !ui.nameForm || !ui.nameInput || !ui.nameButton) return;
+  const joinGame = () => {
+    const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
+    if (!nextName) {
+      ui.nameInput.focus();
+      return;
+    }
+    state.name = nextName;
+    state.joined = true;
+    localStorage.islandwakeName = nextName;
+    ui.nameGate.classList.add("hidden");
+    sendMultiplayer({ type: "hello", player: multiplayerPayload() });
+    updateHud();
+  };
   ui.nameInput.value = state.name;
   ui.nameGate.classList.remove("hidden");
   setTimeout(() => {
@@ -3478,19 +3492,12 @@ function setupNameGate() {
     ui.nameInput.focus();
     ui.nameInput.select();
   });
-  ui.nameForm.addEventListener("submit", (event) => {
+  ui.nameButton.addEventListener("click", joinGame);
+  ui.nameInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
     event.preventDefault();
-    const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
-    if (!nextName) {
-      ui.nameInput.focus();
-      return;
-    }
-    state.name = nextName;
-    state.joined = true;
-    localStorage.islandwakeName = nextName;
-    ui.nameGate.classList.add("hidden");
-    sendMultiplayer({ type: "hello", player: multiplayerPayload() });
-    updateHud();
+    event.stopPropagation();
+    joinGame();
   });
 }
 
