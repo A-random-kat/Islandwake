@@ -78,13 +78,13 @@ const CANNONBALL_TYPES = {
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", null, null];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
 const islandData = [
-  { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
-  { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
+  { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "yawl", "balinger", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
+  { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger", "balinger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
   { name: "Seville", culture: "Spanish", x: 182, z: -138, radius: 24, color: 0xd4ad65, accent: 0xc94f3f, theme: "iberian", shipMarket: ["caravel", "carrack", "galleon", "merchantman"], goods: { Silk: 64, Spice: 38, Iron: 48, Tea: 68, Pearls: 112 } },
   { name: "Venice", culture: "Venetian", x: 116, z: 142, radius: 21, color: 0x82bd72, accent: 0xd7b44a, theme: "lagoon", shipMarket: ["galley", "tartane", "xebec", "brigantine"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
-  { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
+  { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
   { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "corvette", "frigate", "razee", "fourthrate", "manowar", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
-  { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "tartane", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
+  { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
   { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
   { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
   { name: "Brest", culture: "French", x: 104, z: -224, radius: 21, color: 0x91c96d, accent: 0x4c64a6, theme: "fort", shipMarket: ["brigantine", "snow", "barquentine", "corvette"], goods: { Silk: 69, Spice: 42, Iron: 62, Tea: 66, Pearls: 130 } },
@@ -101,6 +101,10 @@ const shipCatalog = [
   { id: "shallop", name: "Shallop", price: 380, hp: 165, armor: 0.02, speed: 17, regen: 1.7, color: 0xb86d3d, model: "skiff" },
   { id: "pinnace", name: "Pinnace", price: 520, hp: 185, armor: 0.03, speed: 20, regen: 1.8, color: 0x5b9eb5, model: "dart" },
   { id: "hoy", name: "Hoy", price: 680, hp: 220, armor: 0.04, speed: 11, regen: 1.9, color: 0xb0824a, model: "cog" },
+  { id: "yawl", name: "Yawl", price: 950, hp: 195, armor: 0.02, speed: 18, regen: 1.6, color: 0x7db0a6, model: "skiff" },
+  { id: "balinger", name: "Balinger", price: 1250, hp: 240, armor: 0.04, speed: 14, regen: 1.9, color: 0xb5894e, model: "cog" },
+  { id: "felucca", name: "Felucca", price: 1850, hp: 215, armor: 0.02, speed: 25, regen: 1.7, color: 0xe2bc55, model: "dhow" },
+  { id: "bilander", name: "Bilander", price: 2150, hp: 280, armor: 0.05, speed: 16, regen: 2.1, color: 0x84a76c, model: "snow" },
   { id: "cog", name: "Cog", price: 880, hp: 260, armor: 0.06, speed: 10, regen: 2.0, color: 0xa86e3a, model: "cog" },
   { id: "longship", name: "Longship", price: 980, hp: 205, armor: 0.03, speed: 24, regen: 1.8, color: 0xc84f3f, model: "longship" },
   { id: "dogger", name: "Dogger", price: 1120, hp: 230, armor: 0.04, speed: 18, regen: 1.9, color: 0x7c9a7e, model: "lugger" },
@@ -145,6 +149,10 @@ const shipBalance = {
   shallop: { name: "Shallop", price: 380, hp: 495, armor: 0, speed: 17, regen: 1, capacity: 5, hitbox: 2.5 },
   pinnace: { name: "Pinnace", price: 560, hp: 555, armor: 0, speed: 20, regen: 1, capacity: 4, hitbox: 2.6 },
   hoy: { name: "Hoy", price: 760, hp: 660, armor: 0.03, speed: 11, regen: 2, capacity: 10, hitbox: 2.9 },
+  yawl: { name: "Yawl", price: 950, fixedPrice: true, hp: 585, armor: 0, speed: 18, regen: 1, capacity: 5, hitbox: 2.6, weight: 62 },
+  balinger: { name: "Balinger", price: 1250, fixedPrice: true, hp: 720, armor: 0.02, speed: 14, regen: 2, capacity: 11, hitbox: 3.0, weight: 88 },
+  felucca: { name: "Felucca", price: 1850, fixedPrice: true, hp: 650, armor: 0, speed: 25, regen: 1, capacity: 6, hitbox: 3.0, weight: 72 },
+  bilander: { name: "Bilander", price: 2150, fixedPrice: true, hp: 840, armor: 0.04, speed: 16, regen: 2, capacity: 13, hitbox: 3.2, weight: 98 },
   cog: { name: "Cog", price: 980, hp: 780, armor: 0.05, speed: 10, regen: 2, capacity: 14, hitbox: 3.1 },
   longship: { name: "Longship", price: 1200, hp: 615, armor: 0, speed: 24, regen: 1, capacity: 6, hitbox: 3.2 },
   dogger: { name: "Dogger", price: 1320, hp: 690, armor: 0.03, speed: 18, regen: 2, capacity: 8, hitbox: 2.9 },
@@ -219,7 +227,7 @@ for (const ship of shipCatalog) {
   Object.assign(ship, balance);
   ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
-  ship.price = deriveFairShipPrice(ship);
+  ship.price = balance.fixedPrice ? balance.price : deriveFairShipPrice(ship);
   const tierScale = 1 + Math.max(0, shipTier(ship.id) - 2) * 0.045;
   ship.hitbox = Math.round((ship.hitbox || 3) * tierScale * 10) / 10;
   ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
@@ -428,6 +436,10 @@ function shipVisualScale(type = state.shipType) {
   const baseScale = {
     shallop: 0.86,
     pinnace: 0.88,
+    yawl: 0.9,
+    balinger: 0.96,
+    felucca: 0.98,
+    bilander: 1.02,
     dart: 0.82,
     cat: 0.92,
     longship: 0.92,
@@ -462,6 +474,10 @@ function shipHullDimensions(type = state.shipType) {
   const [length, width] = {
     shallop: [5.6, 1.85],
     pinnace: [6.5, 1.75],
+    yawl: [6.0, 1.85],
+    balinger: [6.4, 2.7],
+    felucca: [7.4, 1.95],
+    bilander: [6.8, 2.55],
     dart: [7.7, 1.75],
     clipper: [7.4, 2.35],
     galleon: [7.2, 3.25],
@@ -1266,6 +1282,27 @@ function pushShipOutOfIslands(position, shipType, velocity = null, padding = 4) 
   return pushed;
 }
 
+function pushShipOutOfKraken(position, shipType, velocity = null, padding = 1) {
+  if (!krakenBoss?.alive || !krakenBoss.group?.visible) return false;
+  const center = krakenBoss.group.position;
+  const minDistance = (krakenBoss.radius || 25) + shipHitRadius(shipType) * 0.72 + padding;
+  const dx = position.x - center.x;
+  const dz = position.z - center.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance >= minDistance) return false;
+  const normal = distance > 0.001
+    ? new THREE.Vector3(dx / distance, 0, dz / distance)
+    : new THREE.Vector3(1, 0, 0);
+  position.x = center.x + normal.x * minDistance;
+  position.z = center.z + normal.z * minDistance;
+  if (velocity) {
+    const inward = velocity.dot(normal);
+    if (inward < 0) velocity.add(normal.clone().multiplyScalar(-inward * 1.35));
+    velocity.multiplyScalar(0.58);
+  }
+  return true;
+}
+
 function resolveShipContacts() {
   if (state.mode === "ship" && playerShip) {
     bots.forEach((bot) => {
@@ -1276,13 +1313,18 @@ function resolveShipContacts() {
     remotePlayers.forEach((remote) => {
       if (remote.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0);
     });
+    remotePlayers.forEach((remote) => {
+      if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
+    });
     pushShipOutOfIslands(playerShip.position, state.shipType, state.velocity, 3);
+    pushShipOutOfKraken(playerShip.position, state.shipType, state.velocity, 1.2);
     playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
     state.position.copy(playerShip.position);
   }
   for (let i = 0; i < bots.length; i++) {
     const bot = bots[i];
     pushShipOutOfIslands(bot.group.position, bot.shipType, bot.velocity, 5);
+    pushShipOutOfKraken(bot.group.position, bot.shipType, bot.velocity, 1);
     for (let j = i + 1; j < bots.length; j++) {
       separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5);
     }
@@ -1290,6 +1332,9 @@ function resolveShipContacts() {
       if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0);
     });
   }
+  remotePlayers.forEach((remote) => {
+    if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
+  });
 }
 
 const DEFAULT_HULL_TUNING = { stern: 0.46, bow: 0.05, mid: 0.96, fullness: 0.72, bowLift: 0.18, sternLift: 0.09, keel: 0.6 };
@@ -3251,28 +3296,45 @@ function makeKrakenAttackEffect(attack) {
     group.add(sucker);
   }
 
-  const splash = new THREE.Mesh(new THREE.RingGeometry(2.0, 4.4, 36), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.78, side: THREE.DoubleSide }));
+  const splash = new THREE.Mesh(new THREE.RingGeometry(5.2, 14.0, 54), new THREE.MeshBasicMaterial({ color: 0xe9fdff, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false }));
   splash.position.copy(target);
   splash.position.y = 0.12;
   splash.rotation.x = -Math.PI / 2;
-  splash.userData.baseScale = 0.78;
+  splash.userData.baseScale = 0.9;
   splash.visible = false;
   splash.userData.krakenSplash = true;
   group.add(splash);
-  for (let i = 0; i < 18; i++) {
-    const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.2;
-    const radius = 1.2 + Math.random() * 2.7;
+  for (let i = 0; i < 42; i++) {
+    const angle = (i / 42) * Math.PI * 2 + Math.random() * 0.16;
+    const radius = 2.5 + Math.random() * 5.5;
     const spray = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18 + Math.random() * 0.16, 6, 5),
+      new THREE.SphereGeometry(0.24 + Math.random() * 0.22, 6, 5),
       new THREE.MeshBasicMaterial({ color: i % 4 ? 0xf1fdff : 0x9eddea, transparent: true, opacity: 0 })
     );
-    spray.position.set(target.x + Math.cos(angle) * radius, 0.18, target.z + Math.sin(angle) * radius);
+    spray.position.set(target.x + Math.cos(angle) * radius, 0.24, target.z + Math.sin(angle) * radius);
     spray.userData.krakenSlamSpray = true;
     spray.userData.start = spray.position.clone();
-    spray.userData.velocity = new THREE.Vector3(Math.cos(angle) * (3.8 + Math.random() * 2.8), 4.2 + Math.random() * 3.4, Math.sin(angle) * (3.8 + Math.random() * 2.8));
+    spray.userData.velocity = new THREE.Vector3(Math.cos(angle) * (5.5 + Math.random() * 6), 9 + Math.random() * 12, Math.sin(angle) * (5.5 + Math.random() * 6));
     group.add(spray);
   }
-  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(3.0, 5.4, 30), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
+  for (let i = 0; i < 22; i++) {
+    const angle = (i / 22) * Math.PI * 2;
+    const radius = 7.2 + Math.random() * 3.2;
+    const height = 8 + Math.random() * 10;
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1 + Math.random() * 0.7, height, 0.34),
+      new THREE.MeshBasicMaterial({ color: i % 3 ? 0xafeef8 : 0xffffff, transparent: true, opacity: 0, depthWrite: false })
+    );
+    wall.position.set(target.x + Math.cos(angle) * radius, height * 0.45, target.z + Math.sin(angle) * radius);
+    wall.rotation.y = -angle;
+    wall.userData.krakenWaterWall = true;
+    wall.userData.baseY = wall.position.y;
+    wall.userData.height = height;
+    wall.userData.radius = radius;
+    wall.userData.angle = angle;
+    group.add(wall);
+  }
+  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(4.8, 9.2, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false }));
   riseSplash.position.copy(attackData.surface);
   riseSplash.position.y = 0.1;
   riseSplash.rotation.x = -Math.PI / 2;
@@ -3810,6 +3872,7 @@ function initWorld() {
       rotation: group.rotation.y,
       agroUntil: 0,
       naturallyAggressive: Math.random() < 0.24,
+      courageous: Math.random() < 1 / 3,
       upgradeFocus: ["damage", "reload", "range"][i % 3],
       targetBot: null,
       botFightUntil: 0,
@@ -4789,16 +4852,26 @@ function updateKrakenAttackEffect(effect, t) {
     }
     if (child.userData.krakenSplash) {
       child.visible = t >= KRAKEN_SLAM_T;
-      const scale = 0.78 + slam * 0.8 + after * 2.2;
+      const scale = 0.9 + slam * 0.65 + after * 2.0;
       child.scale.set(scale, scale, scale);
-      child.material.opacity = Math.max(0, 0.82 * (1 - after));
+      child.material.opacity = Math.max(0, 0.92 * (1 - after));
+    }
+    if (child.userData.krakenWaterWall) {
+      const local = clamp((t - KRAKEN_SLAM_T) / 0.48, 0, 1);
+      child.visible = local > 0 && local < 1;
+      const surge = ease(clamp(local / 0.42, 0, 1));
+      const fall = ease(clamp((local - 0.32) / 0.68, 0, 1));
+      child.scale.y = 0.35 + surge * 1.35;
+      child.scale.x = 0.8 + local * 0.65;
+      child.position.y = child.userData.baseY + surge * 5.2 - fall * 7.8;
+      child.material.opacity = Math.max(0, 0.72 * (1 - fall));
     }
     if (child.userData.krakenSlamSpray) {
-      const local = clamp((t - KRAKEN_SLAM_T) / 0.28, 0, 1);
+      const local = clamp((t - KRAKEN_SLAM_T) / 0.44, 0, 1);
       child.visible = local > 0 && local < 1;
       child.position.copy(child.userData.start);
       child.position.addScaledVector(child.userData.velocity, local);
-      child.position.y = child.userData.start.y + child.userData.velocity.y * local - 8.5 * local * local;
+      child.position.y = child.userData.start.y + child.userData.velocity.y * local - 15.5 * local * local;
       child.material.opacity = Math.max(0, 0.9 * (1 - local));
     }
   });
@@ -4816,6 +4889,7 @@ function updateImpactEffects(dt) {
         || child.userData.krakenAttackSucker
         || child.userData.krakenRiseSplash
         || child.userData.krakenSplash
+        || child.userData.krakenWaterWall
         || child.userData.krakenSlamSpray
       )) return;
       if (child.userData.velocity) {
@@ -5389,6 +5463,7 @@ function syncServerWorld(world) {
         velocity: new THREE.Vector3(),
         turn: 0,
         fireCooldown: 0,
+        courageous: Boolean(data.courageous),
       };
       bot.group.position.copy(serverPosition);
       bot.group.rotation.y = serverRotation;
@@ -5405,6 +5480,7 @@ function syncServerWorld(world) {
     bot.shipType = data.shipType || "cog";
     bot.hp = Number(data.hp) || spec.hp;
     bot.level = Number(data.level) || 1;
+    bot.courageous = Boolean(data.courageous);
     bot.serverMaxHp = Number(data.maxHp) || spec.hp;
     bot.serverPosition = serverPosition;
     bot.serverRotation = serverRotation;
