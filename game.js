@@ -67,34 +67,49 @@ const CRATE_DROP_MULTIPLIER = 1.2;
 const KRAKEN_ATTACK_LIFE = 3.8;
 const KRAKEN_SLAM_DELAY_MS = 2900;
 const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
-const MAP_LIMIT = 280;
+const MAP_LIMIT = 400;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
+const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
+const ISLAND_RADIUS_SCALE = 2;
+const ISLAND_SPACING_SCALE = 1.35;
+const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
+const CHARACTER_SCALE = 0.5;
 const SEA_SIZE = 2400;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
-  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 32, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
-  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 46, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
+  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
+  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 23, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
+  harpoon: { id: "harpoon", name: "Harpoon", short: "Harpoon", price: 20, pellets: 1, fixedDamage: 20, whaleDamage: 100, rangeScale: 0.86, spread: 0, radius: 0.16, color: 0xd8d0bd, trail: 0xf8f4e5, noRangeDamage: true },
+  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: 0, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
 };
-const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", null, null];
+const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
+function spreadIslandData(data) {
+  return {
+    ...data,
+    x: ISLAND_SPACING_ANCHOR.x + (data.x - ISLAND_SPACING_ANCHOR.x) * ISLAND_SPACING_SCALE,
+    z: ISLAND_SPACING_ANCHOR.z + (data.z - ISLAND_SPACING_ANCHOR.z) * ISLAND_SPACING_SCALE,
+  };
+}
+
 const islandData = [
   { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "yawl", "balinger", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
   { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger", "balinger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
   { name: "Seville", culture: "Spanish", x: 182, z: -138, radius: 24, color: 0xd4ad65, accent: 0xc94f3f, theme: "iberian", shipMarket: ["caravel", "carrack", "galleon", "merchantman"], goods: { Silk: 64, Spice: 38, Iron: 48, Tea: 68, Pearls: 112 } },
   { name: "Venice", culture: "Venetian", x: 116, z: 142, radius: 21, color: 0x82bd72, accent: 0xd7b44a, theme: "lagoon", shipMarket: ["galley", "tartane", "xebec", "brigantine"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
-  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "corvette", "frigate", "razee", "fourthrate", "manowar", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
+  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "corvette", "frigate", "whaler", "razee", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
   { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
   { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
-  { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
+  { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop", "ballooner", "windrunner"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
   { name: "Brest", culture: "French", x: 104, z: -224, radius: 21, color: 0x91c96d, accent: 0x4c64a6, theme: "fort", shipMarket: ["brigantine", "snow", "barquentine", "corvette"], goods: { Silk: 69, Spice: 42, Iron: 62, Tea: 66, Pearls: 130 } },
   { name: "Lisbon", culture: "Portuguese", x: -232, z: -204, radius: 22, color: 0xbac96d, accent: 0xd2a94b, theme: "iberian", shipMarket: ["caravel", "pink", "carrack"], goods: { Silk: 52, Spice: 34, Iron: 60, Tea: 58, Pearls: 118 } },
   { name: "Calicut", culture: "Indian Ocean", x: 214, z: 210, radius: 22, color: 0x92d37e, accent: 0xda9c5c, theme: "market", shipMarket: ["dhow", "ketch", "merchantman", "eastindiaman"], goods: { Silk: 82, Spice: 44, Iron: 72, Tea: 36, Pearls: 120 } },
   { name: "Tonga", culture: "Polynesian", x: 4, z: 84, radius: 18, color: 0x5fa66a, accent: 0xef6f4f, theme: "atoll", shipMarket: ["cat", "sloop", "lugger"], goods: { Silk: 61, Spice: 64, Iron: 46, Tea: 75, Pearls: 94 } },
   { name: "Crown Harbor", culture: "Crown Colony", x: 164, z: -22, radius: 21, color: 0x82bd72, accent: 0xd99928, theme: "fort", shipMarket: ["dart", "storm", "bombketch", "frigate"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Blackreef", culture: "Privateer", x: -96, z: 216, radius: 20, color: 0x5fa66a, accent: 0x3f87a6, theme: "rocky", shipMarket: ["dart", "lugger", "brigantine", "xebec"], goods: { Silk: 78, Spice: 52, Iron: 101, Tea: 55, Pearls: 86 } },
-  { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "barque", "merchantman", "eastindiaman"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
-];
+  { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "barque", "merchantman", "whaler", "eastindiaman", "grandfrigate"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
+].map(spreadIslandData);
 
 const shipCatalog = [
   { id: "skiff", name: "Skiff", price: 0, hp: 145, armor: 0.02, speed: 15, regen: 1.6, color: 0xcc4e3f, model: "skiff" },
@@ -138,9 +153,13 @@ const shipCatalog = [
   { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
   { id: "carrack", name: "Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
   { id: "treasure", name: "Treasure Junk", price: 11800, hp: 900, armor: 0.14, speed: 9, regen: 3.5, color: 0xd6a83c, model: "treasure" },
+  { id: "whaler", name: "Whaler", price: 11500, hp: 500, armor: 0.05, speed: 10, regen: 2.0, color: 0x6f8792, model: "frigate" },
   { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
+  { id: "ballooner", name: "Ballooner", price: 14500, hp: 450, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
   { id: "fourthrate", name: "Fourth Rate", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
+  { id: "grandfrigate", name: "Grand Frigate", price: 28500, hp: 1060, armor: 0.12, speed: 18, regen: 5.2, color: 0x4f78b5, model: "frigate" },
   { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
+  { id: "windrunner", name: "Windrunner", price: 31500, hp: 1040, armor: 0.04, speed: 28, regen: 4.2, color: 0xe0b24a, model: "clipper" },
   { id: "firstrate", name: "First Rate", price: 20500, hp: 1320, armor: 0.2, speed: 9, regen: 4.0, color: 0xc9b05a, model: "manowar" },
 ];
 
@@ -186,9 +205,13 @@ const shipBalance = {
   galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
   eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
   treasure: { name: "Treasure Junk", price: 16800, hp: 2700, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 4.9 },
+  whaler: { name: "Whaler", price: 11500, fixedPrice: true, hp: 1500, armor: 0.05, speed: 10, regen: 2, capacity: 4, blubberCapacity: 40, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
+  ballooner: { name: "Ballooner", price: 14500, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
   fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
+  grandfrigate: { name: "Grand Frigate", price: 28500, fixedPrice: true, hp: 3150, armor: 0.12, speed: 18, regen: 6, capacity: 24, hitbox: 5.0, weight: 255 },
   manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
+  windrunner: { name: "Windrunner", price: 31500, fixedPrice: true, hp: 3000, armor: 0, speed: 28, regen: 5, capacity: 18, hitbox: 4.8, weight: 210 },
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
 };
 
@@ -228,6 +251,14 @@ for (const ship of shipCatalog) {
   ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
   ship.price = balance.fixedPrice ? balance.price : deriveFairShipPrice(ship);
+  if (ship.price < 2500) {
+    const progress = clamp(ship.price / 2500, 0, 1);
+    ship.hp = Math.min(ship.hp, Math.round(420 + progress * 380));
+    ship.speed = Math.min(ship.speed, Math.round(15 + progress * 9));
+    ship.regen = Math.min(ship.regen, ship.price < 1200 ? 1 : 2);
+    ship.capacity = Math.min(ship.capacity || 8, Math.round(5 + progress * 9));
+    ship.armor = Math.min(ship.armor, progress > 0.75 ? 0.04 : 0.02);
+  }
   const tierScale = 1 + Math.max(0, shipTier(ship.id) - 2) * 0.045;
   ship.hitbox = Math.round((ship.hitbox || 3) * tierScale * 10) / 10;
   ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
@@ -267,11 +298,18 @@ const state = {
   hp: shipBalance[STARTER_SHIP].hp,
   cargo: {},
   upgrades: { damage: 0, fireRate: 0, range: 0 },
-  ammo: { grapeshot: 0, hotshot: 0 },
+  ammo: { grapeshot: 0, hotshot: 0, harpoon: 0, airburst: 0 },
   ammoSlots: [...AMMO_SLOT_TYPES],
   selectedAmmo: "basic",
   selectedAmmoSlot: 0,
   pendingAmmoAssign: null,
+  docking: null,
+  fallingOffWorld: false,
+  fallingTimer: 0,
+  viewMode: "ship",
+  activeBalloonIndex: -1,
+  balloonStock: 0,
+  maxBalloons: 5,
   fire: null,
   cooldown: 0,
   rodCooldown: 0,
@@ -308,8 +346,15 @@ const projectiles = [];
 const seenRemoteShots = new Set();
 const impactEffects = [];
 const fish = [];
+const animals = [];
+const storms = [];
+const waveHazards = [];
+const activeKrakenAttacks = [];
+const balloons = [];
+const balloonBombs = [];
 const crates = [];
 const labels = [];
+const ramCooldowns = new Map();
 const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
@@ -330,6 +375,7 @@ let leviathan;
 let leviathanCooldown = 0;
 let krakenBoss = null;
 let treasureSpawnTimer = 10 + Math.random() * 18;
+let nextStormAt = 35 + Math.random() * 85;
 const leviathanAttacks = [
   { id: "breach", label: "breaches over the waves and smashes your ship" },
 ];
@@ -456,7 +502,11 @@ function shipVisualScale(type = state.shipType) {
     turtle: 1.22,
     corvette: 1.16,
     frigate: 1.22,
+    whaler: 1.28,
+    ballooner: 1.18,
     razee: 1.28,
+    grandfrigate: 1.38,
+    windrunner: 1.34,
     galleon: 1.28,
     merchantman: 1.28,
     eastindiaman: 1.34,
@@ -498,8 +548,12 @@ function shipHullDimensions(type = state.shipType) {
     pink: [6.6, 2.55],
     ketch: [6.9, 2.5],
     frigate: [8.2, 2.9],
+    whaler: [8.6, 3.05],
+    ballooner: [8.1, 2.9],
     corvette: [7.8, 2.65],
     razee: [8.5, 3.0],
+    grandfrigate: [8.9, 3.18],
+    windrunner: [9.4, 2.55],
     carrack: [7.4, 3.5],
     manowar: [8.4, 3.8],
     fourthrate: [8.3, 3.65],
@@ -561,18 +615,30 @@ function projectileHitsShip(shot, ship, type) {
 }
 
 function cargoCount() {
-  return Object.values(state.cargo).reduce((total, count) => total + count, 0);
+  return Object.entries(state.cargo).reduce((total, [name, count]) => (
+    name === "Whale Blubber" ? total : total + count
+  ), 0);
 }
 
 function cargoCapacity() {
   return getShipStats().capacity || 8;
 }
 
+function blubberCount() {
+  return state.cargo["Whale Blubber"] || 0;
+}
+
+function blubberCapacity() {
+  return getShipStats().blubberCapacity || 0;
+}
+
 function marketBuyPrice(island, name) {
+  if (name === "Whale Blubber") return 0;
   return island?.goods?.[name] || 0;
 }
 
 function marketSellPrice(island, name) {
+  if (name === "Whale Blubber") return island?.name === "Portsmouth" ? 200 : 0;
   return Math.max(1, Math.floor(marketBuyPrice(island, name) * TRADE_SELL_RATE));
 }
 
@@ -860,6 +926,22 @@ function addSea() {
     foam.userData.drift = Math.random() * 100;
     scene.add(foam);
   }
+  addWorldWaterfall();
+}
+
+function addWorldWaterfall() {
+  const matWaterfall = new THREE.MeshBasicMaterial({ color: 0xbdefff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false });
+  const makeWall = (x, z, width, rot) => {
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, 90, 16, 4), matWaterfall.clone());
+    wall.position.set(x, -22, z);
+    wall.rotation.y = rot;
+    wall.userData.waterfall = true;
+    scene.add(wall);
+  };
+  makeWall(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0);
+  makeWall(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI);
+  makeWall(WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, Math.PI / 2);
+  makeWall(-WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, -Math.PI / 2);
 }
 
 function makeCloud() {
@@ -897,7 +979,7 @@ function makePalm() {
 function makeIsland(data) {
   const group = new THREE.Group();
   group.position.set(data.x, 0, data.z);
-  const radius = data.radius || 20;
+  const radius = (data.radius || 20) * ISLAND_RADIUS_SCALE;
   const accent = data.accent || 0xd64f45;
   const shallows = new THREE.Mesh(new THREE.CylinderGeometry(radius + 7, radius + 10, 0.08, 24), mats.shallows);
   shallows.position.y = 0.08;
@@ -1258,6 +1340,46 @@ function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.
   return true;
 }
 
+function ramKey(a, b) {
+  return [a.id, b.id].sort().join(":");
+}
+
+function entityForward(entity) {
+  const rotation = entity.rotation ?? entity.group?.rotation?.y ?? 0;
+  return new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation));
+}
+
+function applyRamDamage(a, b) {
+  if (!a?.target || !b?.target || !a.velocity || !b.velocity) return;
+  const key = ramKey(a, b);
+  if ((ramCooldowns.get(key) || 0) > clock.elapsedTime) return;
+  const normal = a.position.clone().sub(b.position);
+  normal.y = 0;
+  if (normal.lengthSq() < 0.001) return;
+  normal.normalize();
+  const relativeVelocity = a.velocity.clone().sub(b.velocity);
+  const closing = -relativeVelocity.dot(normal);
+  if (closing < 2.2) return;
+  const baseWeight = shipWeight("skiff");
+  const base = 40 * clamp(closing / 15, 0.22, 2.2);
+  const aNose = entityForward(a).dot(normal.clone().multiplyScalar(-1));
+  const bNose = entityForward(b).dot(normal);
+  let damageToA = base * Math.sqrt(shipWeight(b.type) / baseWeight) * 0.42;
+  let damageToB = base * Math.sqrt(shipWeight(a.type) / baseWeight) * 0.42;
+  if (aNose > 0.58 && Math.abs(bNose) < 0.42) {
+    damageToB *= 1.35;
+    damageToA *= 0.55;
+  } else if (bNose > 0.58 && Math.abs(aNose) < 0.42) {
+    damageToA *= 1.35;
+    damageToB *= 0.55;
+  }
+  if (a.type === "whaler") damageToA *= getShipStats("whaler").ramTakenScale || 0.5;
+  if (b.type === "whaler") damageToB *= getShipStats("whaler").ramTakenScale || 0.5;
+  if (damageToA > 3 && a.canDamage !== false) damageTarget(a.target, damageToA);
+  if (damageToB > 3 && b.canDamage !== false) damageTarget(b.target, damageToB);
+  ramCooldowns.set(key, clock.elapsedTime + 1.15);
+}
+
 function pushShipOutOfIslands(position, shipType, velocity = null, padding = 4) {
   const radius = shipHitRadius(shipType) * 0.55 + padding;
   let pushed = false;
@@ -1282,10 +1404,16 @@ function pushShipOutOfIslands(position, shipType, velocity = null, padding = 4) 
   return pushed;
 }
 
+function krakenHeadWorldPosition() {
+  if (!krakenBoss?.group) return null;
+  return krakenBoss.group.localToWorld(new THREE.Vector3(0, 0, -6.55));
+}
+
 function pushShipOutOfKraken(position, shipType, velocity = null, padding = 1) {
   if (!krakenBoss?.alive || !krakenBoss.group?.visible) return false;
-  const center = krakenBoss.group.position;
-  const minDistance = (krakenBoss.radius || 25) + shipHitRadius(shipType) * 0.72 + padding;
+  const center = krakenHeadWorldPosition();
+  if (!center) return false;
+  const minDistance = 7.5 + shipHitRadius(shipType) * 0.72 + padding;
   const dx = position.x - center.x;
   const dz = position.z - center.z;
   const distance = Math.hypot(dx, dz);
@@ -1308,6 +1436,10 @@ function resolveShipContacts() {
     bots.forEach((bot) => {
       if (separateShipPositions(playerShip.position, state.shipType, state.velocity, bot.group.position, bot.shipType, bot.velocity, 0.42, 0.58)) {
         bot.agroUntil = Math.max(bot.agroUntil || 0, clock.elapsedTime + 1.2);
+        applyRamDamage(
+          { id: "player", target: state, position: playerShip.position, velocity: state.velocity, type: state.shipType, rotation: state.rotation },
+          { id: bot.localId || bot.serverId, target: bot, position: bot.group.position, velocity: bot.velocity, type: bot.shipType, rotation: bot.rotation ?? bot.group.rotation.y },
+        );
       }
     });
     remotePlayers.forEach((remote) => {
@@ -1326,7 +1458,12 @@ function resolveShipContacts() {
     pushShipOutOfIslands(bot.group.position, bot.shipType, bot.velocity, 5);
     pushShipOutOfKraken(bot.group.position, bot.shipType, bot.velocity, 1);
     for (let j = i + 1; j < bots.length; j++) {
-      separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5);
+      if (separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5)) {
+        applyRamDamage(
+          { id: bot.localId || bot.serverId, target: bot, position: bot.group.position, velocity: bot.velocity, type: bot.shipType, rotation: bot.rotation ?? bot.group.rotation.y },
+          { id: bots[j].localId || bots[j].serverId, target: bots[j], position: bots[j].group.position, velocity: bots[j].velocity, type: bots[j].shipType, rotation: bots[j].rotation ?? bots[j].group.rotation.y },
+        );
+      }
     }
     remotePlayers.forEach((remote) => {
       if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0);
@@ -2283,6 +2420,7 @@ function makeCharacter() {
   hat.position.y = 2.15;
   hat.castShadow = true;
   group.add(hat);
+  group.scale.setScalar(CHARACTER_SCALE);
   group.visible = false;
   scene.add(group);
   return group;
@@ -2370,6 +2508,42 @@ function makeSplashEffect(position) {
     group.add(drop);
   }
   addImpactEffect(group, 0.68);
+}
+
+function addWaveHazard(position, options = {}) {
+  waveHazards.push({
+    position: position.clone().setY(0),
+    born: clock.elapsedTime + (options.delay || 0),
+    life: options.life || 1.6,
+    radiusStart: options.radiusStart || 5,
+    radiusEnd: options.radiusEnd || 24,
+    thickness: options.thickness || 3,
+    dps: options.dps || 10,
+    force: options.force || 18,
+    damageShips: options.damageShips !== false,
+  });
+}
+
+function updateWaveHazards(dt) {
+  waveHazards.slice().forEach((hazard) => {
+    const age = clock.elapsedTime - hazard.born;
+    if (age < 0) return;
+    const t = clamp(age / hazard.life, 0, 1);
+    const radius = hazard.radiusStart + (hazard.radiusEnd - hazard.radiusStart) * t;
+    const applyTo = (target, position, velocity, type) => {
+      const d = dist2(position, hazard.position);
+      if (Math.abs(d - radius) > hazard.thickness + shipHitRadius(type) * 0.35) return;
+      const away = position.clone().sub(hazard.position);
+      away.y = 0;
+      if (away.lengthSq() < 0.001) away.set(1, 0, 0);
+      away.normalize();
+      if (hazard.damageShips) damageTarget(target, hazard.dps * dt);
+      if (velocity) velocity.add(away.multiplyScalar(hazard.force * dt));
+    };
+    if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
+    bots.forEach((bot) => applyTo(bot, bot.group.position, bot.velocity, bot.shipType));
+    if (age > hazard.life) waveHazards.splice(waveHazards.indexOf(hazard), 1);
+  });
 }
 
 function makeSplinterEffect(position, dir) {
@@ -2522,14 +2696,14 @@ function makeLeviathanJawGeometry(upper = true) {
 
 function makeLeviathanMesh() {
   const group = new THREE.Group();
-  const hide = mat(0x0b1719, 0.92);
-  const darkHide = mat(0x030607, 0.96);
-  const bellyMat = mat(0x243e45, 0.92);
-  const reptileHide = new THREE.MeshStandardMaterial({ color: 0x0b1719, roughness: 0.96, metalness: 0.03, flatShading: true });
-  const reptileDark = new THREE.MeshStandardMaterial({ color: 0x030607, roughness: 0.98, metalness: 0.02, flatShading: true });
+  const hide = mat(0x6d4d4a, 0.92);
+  const darkHide = mat(0x3e2e31, 0.96);
+  const bellyMat = mat(0x8a6860, 0.92);
+  const reptileHide = new THREE.MeshStandardMaterial({ color: 0x6d4d4a, roughness: 0.96, metalness: 0.03, flatShading: true });
+  const reptileDark = new THREE.MeshStandardMaterial({ color: 0x3e2e31, roughness: 0.98, metalness: 0.02, flatShading: true });
   const toothMat = mat(0xf0e2c6, 0.76);
   const scarMat = new THREE.MeshStandardMaterial({ color: 0xb9372c, emissive: 0x5a0d08, emissiveIntensity: 0.45, roughness: 0.7, metalness: 0.02 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff6735, emissive: 0xff2f17, emissiveIntensity: 1.45, roughness: 0.45, metalness: 0 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffa126, emissive: 0xff6b00, emissiveIntensity: 1.85, roughness: 0.45, metalness: 0 });
   const bodyPath = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0.0, -4.1, 7.1),
     new THREE.Vector3(-1.05, -4.75, 17.5),
@@ -3155,9 +3329,12 @@ function syncKraken(data) {
   krakenBoss.alive = data.alive !== false;
   krakenBoss.radius = Number(data.radius) || 25;
   krakenBoss.defeatedAt = Number(data.defeatedAt) || 0;
+  const lastPosition = krakenBoss.group.position.clone();
   krakenBoss.group.position.x = Number(data.x) || 0;
   krakenBoss.group.position.z = Number(data.z) || 0;
-  krakenBoss.group.rotation.y = Number(data.rotation) || 0;
+  const moved = krakenBoss.group.position.clone().sub(lastPosition);
+  moved.y = 0;
+  krakenBoss.group.rotation.y = moved.lengthSq() > 0.0025 ? Math.atan2(moved.x, moved.z) : Number(data.rotation) || 0;
   if (krakenBoss.alive) {
     krakenBoss.group.visible = true;
     krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.6) * 0.18;
@@ -3341,21 +3518,84 @@ function makeKrakenAttackEffect(attack) {
   riseSplash.userData.krakenRiseSplash = true;
   group.add(riseSplash);
   addImpactEffect(group, KRAKEN_ATTACK_LIFE);
+  addWaveHazard(target, { dps: 10, force: 22, radiusStart: 5.2, radiusEnd: 25, thickness: 3.4, life: 1.55, delay: KRAKEN_SLAM_DELAY_MS / 1000 });
+}
+
+function krakenAttackWallContains(position, attack, padding = 0) {
+  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
+  const dir = target.clone().sub(source);
+  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
+  dir.normalize();
+  const side = new THREE.Vector3(dir.z, 0, -dir.x);
+  const offset = position.clone().sub(target);
+  offset.y = 0;
+  const along = Math.abs(offset.dot(dir));
+  const across = Math.abs(offset.dot(side));
+  return along <= 7 + padding && across <= 17 + padding;
+}
+
+function krakenAttackSlamContains(position, attack, padding = 0) {
+  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  return dist2(position, target) <= 6.5 + padding;
+}
+
+function krakenAttackEvadePoint(position, attack, shipType = "skiff") {
+  if (!attack) return null;
+  const padding = shipHitRadius(shipType) + 5;
+  if (!krakenAttackSlamContains(position, attack, padding) && !krakenAttackWallContains(position, attack, padding * 0.45)) return null;
+  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
+  const dir = target.clone().sub(source);
+  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
+  dir.normalize();
+  const side = new THREE.Vector3(dir.z, 0, -dir.x);
+  const offset = position.clone().sub(target);
+  offset.y = 0;
+  const sideSign = offset.dot(side) >= 0 ? 1 : -1;
+  const away = position.clone().sub(target);
+  away.y = 0;
+  if (away.lengthSq() < 0.01) away.copy(side).multiplyScalar(sideSign);
+  away.normalize().multiplyScalar(70);
+  const dodge = side.multiplyScalar(sideSign * 105).add(away);
+  const point = position.clone().add(dodge);
+  point.x = clamp(point.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+  point.z = clamp(point.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+  point.y = 0;
+  return point;
+}
+
+function activeKrakenEvadePoint(position, shipType = "skiff") {
+  const now = clock.elapsedTime;
+  for (let i = activeKrakenAttacks.length - 1; i >= 0; i--) {
+    if ((activeKrakenAttacks[i].until || 0) < now) {
+      activeKrakenAttacks.splice(i, 1);
+      continue;
+    }
+    const evade = krakenAttackEvadePoint(position, activeKrakenAttacks[i], shipType);
+    if (evade) return evade;
+  }
+  return null;
 }
 
 function applyKrakenAttack(attack) {
   if (!attack) return;
   const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
+  activeKrakenAttacks.push({ ...attack, until: clock.elapsedTime + KRAKEN_ATTACK_LIFE });
   submergeKrakenTentacleNear(slamPoint);
   makeKrakenAttackEffect(attack);
-  const isTarget = (attack.targetKind || "player") === "player" && attack.target && attack.target === multiplayer.networkId;
-  if (isTarget && state.mode === "ship") {
-    setTimeout(() => {
-      if (state.mode !== "ship") return;
-      if (dist2(playerShip.position, slamPoint) > shipHitRadius(state.shipType) + 11) return;
+  setTimeout(() => {
+    if (state.mode === "ship" && (krakenAttackSlamContains(playerShip.position, attack, shipHitRadius(state.shipType)) || krakenAttackWallContains(playerShip.position, attack, shipHitRadius(state.shipType) * 0.4))) {
       damageTarget(state, maxHp() * 4);
-    }, KRAKEN_SLAM_DELAY_MS);
-  }
+    }
+    if (!multiplayer.serverWorld) {
+      bots.forEach((bot) => {
+        if (krakenAttackSlamContains(bot.group.position, attack, shipHitRadius(bot.shipType)) || krakenAttackWallContains(bot.group.position, attack, shipHitRadius(bot.shipType) * 0.4)) {
+          damageTarget(bot, getShipStats(bot.shipType).hp * 4);
+        }
+      });
+    }
+  }, KRAKEN_SLAM_DELAY_MS);
 }
 
 function makeLeviathanAttackEffect(position, outward, attackId) {
@@ -3390,6 +3630,17 @@ function makeLeviathanAttackEffect(position, outward, attackId) {
     group.add(spray);
   }
   addImpactEffect(group, attackId === "crush" ? 1.25 : 1.75);
+  addWaveHazard(position, { dps: 0, force: 30, radiusStart: 6, radiusEnd: 28, thickness: 4.5, life: 1.8, damageShips: false });
+}
+
+function leviathanAttackHits(position, impactPoint, sideDir, type = state.shipType) {
+  const offset = position.clone().sub(impactPoint);
+  offset.y = 0;
+  const forward = sideDir.clone().normalize();
+  const cross = new THREE.Vector3(forward.z, 0, -forward.x);
+  const along = Math.abs(offset.dot(forward));
+  const across = Math.abs(offset.dot(cross));
+  return along <= 11 + shipHitRadius(type) * 0.35 && across <= 8 + shipHitRadius(type) * 0.45;
 }
 
 function summonLeviathan() {
@@ -3448,14 +3699,182 @@ function makeFish() {
   const fishPoint = randomWaterPoint(MAP_LIMIT * 0.92, 18);
   group.position.set(fishPoint.x, 0.15, fishPoint.z);
   group.userData.phase = Math.random() * 20;
+  group.userData.kind = "fish";
+  group.userData.speed = 8;
+  group.userData.direction = Math.random() * Math.PI * 2;
   scene.add(group);
   fish.push(group);
+}
+
+function makeSquid() {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), mat(0xb24f5d));
+  body.scale.set(0.72, 0.45, 1.15);
+  body.position.y = 0.24;
+  group.add(body);
+  for (let i = 0; i < 6; i++) {
+    const tentacle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.025, 1.05, 5), mat(0xd06d71));
+    const angle = (i / 6) * Math.PI * 2;
+    tentacle.position.set(Math.cos(angle) * 0.22, 0.12, 0.55 + Math.sin(angle) * 0.12);
+    tentacle.rotation.x = Math.PI / 2 + Math.sin(angle) * 0.4;
+    tentacle.rotation.z = angle;
+    group.add(tentacle);
+  }
+  const point = randomWaterPoint(MAP_LIMIT * 0.92, 18);
+  group.position.set(point.x, 0.12, point.z);
+  group.userData.phase = Math.random() * 20;
+  group.userData.kind = "squid";
+  group.userData.speed = 8;
+  group.userData.direction = Math.random() * Math.PI * 2;
+  scene.add(group);
+  fish.push(group);
+}
+
+function makeWhale() {
+  const group = new THREE.Group();
+  const bodyMat = mat(0x315f89);
+  const darkMat = mat(0x234b6c);
+  const bellyMat = mat(0xb1d0df);
+  const grooveMat = mat(0x6f9ebb);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x071018 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), bodyMat);
+  body.scale.set(1.65, 0.46, 3.6);
+  body.position.set(0, 0.42, -0.55);
+  body.castShadow = true;
+  group.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 14), bodyMat);
+  head.scale.set(1.95, 0.48, 1.28);
+  head.position.set(0, 0.36, 2.55);
+  head.castShadow = true;
+  group.add(head);
+
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), bodyMat);
+  snout.scale.set(1.72, 0.34, 0.62);
+  snout.position.set(0, 0.31, 3.36);
+  snout.castShadow = true;
+  group.add(snout);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), bellyMat);
+  belly.scale.set(1.28, 0.12, 3.15);
+  belly.position.set(0, 0.08, 0.82);
+  group.add(belly);
+
+  for (let i = -3; i <= 3; i++) {
+    const groove = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.022, 2.2), grooveMat);
+    groove.position.set(i * 0.22, 0.02, 1.72);
+    groove.rotation.x = -0.08;
+    group.add(groove);
+  }
+
+  const tailStock = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.58, 2.4, 12), darkMat);
+  tailStock.position.set(0, 0.36, -4.05);
+  tailStock.rotation.x = Math.PI / 2;
+  tailStock.scale.x = 0.72;
+  tailStock.castShadow = true;
+  group.add(tailStock);
+
+  for (const side of [-1, 1]) {
+    const fluke = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.72, 4), darkMat);
+    fluke.position.set(side * 0.82, 0.36, -5.15);
+    fluke.rotation.z = side * Math.PI / 2;
+    fluke.rotation.y = side * 0.32;
+    fluke.scale.set(1.25, 0.48, 0.12);
+    fluke.castShadow = true;
+    group.add(fluke);
+  }
+
+  const dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.85, 4), darkMat);
+  dorsal.position.set(0, 0.88, -2.15);
+  dorsal.rotation.x = -0.22;
+  dorsal.scale.z = 0.7;
+  dorsal.castShadow = true;
+  group.add(dorsal);
+
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.34, 2.25, 4), darkMat);
+    fin.position.set(side * 1.82, 0.16, 1.05);
+    fin.rotation.z = side * -1.22;
+    fin.rotation.x = -0.38;
+    fin.rotation.y = side * 0.18;
+    fin.scale.set(0.62, 1, 0.16);
+    fin.castShadow = true;
+    group.add(fin);
+  }
+
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 5), eyeMat);
+    eye.position.set(side * 1.22, 0.56, 2.92);
+    group.add(eye);
+  }
+
+  for (const side of [-1, 1]) {
+    const blowhole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.018, 0.34), darkMat);
+    blowhole.position.set(side * 0.16, 0.84, 2.44);
+    blowhole.rotation.y = side * 0.12;
+    group.add(blowhole);
+  }
+
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.02, 4), darkMat);
+  tail.visible = false;
+  tail.position.set(0, 0.25, -4.4);
+  tail.rotation.x = Math.PI / 2;
+  group.add(tail);
+
+  const point = randomWaterPoint(MAP_LIMIT * 0.9, 70);
+  point.z = Math.abs(point.z) + 30;
+  group.position.set(point.x, 0.05, clamp(point.z, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.92));
+  group.rotation.y = Math.random() * Math.PI * 2;
+  scene.add(group);
+  animals.push({
+    kind: "whale",
+    group,
+    hp: 1000,
+    maxHp: 1000,
+    speed: 14,
+    direction: group.rotation.y,
+    turnAt: clock.elapsedTime + 3 + Math.random() * 5,
+    submergedUntil: 0,
+    ramCooldown: 0,
+  });
 }
 
 function makeCrateMesh(x, z, kind = "crate") {
   const group = new THREE.Group();
   group.position.set(x, 0.65, z);
   group.rotation.y = Math.random() * Math.PI;
+  if (kind === "whale") {
+    const bodyMat = mat(0x315f89);
+    const darkMat = mat(0x234b6c);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 12), bodyMat);
+    body.scale.set(1.55, 0.34, 2.75);
+    body.position.set(0, 0.22, -0.35);
+    body.castShadow = true;
+    group.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 9), bodyMat);
+    head.scale.set(1.72, 0.32, 0.88);
+    head.position.set(0, 0.18, 2.0);
+    group.add(head);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), mat(0xa8c9df));
+    belly.scale.set(1.12, 0.08, 2.35);
+    belly.position.set(0, -0.02, 0.48);
+    group.add(belly);
+    const tailStock = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.42, 1.7, 10), darkMat);
+    tailStock.position.set(0, 0.18, -3.15);
+    tailStock.rotation.x = Math.PI / 2;
+    group.add(tailStock);
+    for (const side of [-1, 1]) {
+      const fluke = new THREE.Mesh(new THREE.ConeGeometry(0.48, 1.08, 4), darkMat);
+      fluke.position.set(side * 0.54, 0.18, -3.95);
+      fluke.rotation.z = side * Math.PI / 2;
+      fluke.rotation.y = side * 0.3;
+      fluke.scale.set(1.2, 0.42, 0.12);
+      group.add(fluke);
+    }
+    scene.add(group);
+    return group;
+  }
   if (kind === "kraken") {
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-2.8, 0, -0.4),
@@ -3647,6 +4066,7 @@ function startFishing(dir) {
 
 function finishFishing() {
   const target = state.fishing?.target;
+  const kind = target?.userData?.kind === "squid" ? "Squid" : "Fish";
   if (target && fish.includes(target)) {
     scene.remove(target);
     fish.splice(fish.indexOf(target), 1);
@@ -3655,8 +4075,8 @@ function finishFishing() {
   state.fishing = null;
   state.gold += 16 + state.level * 3 + Math.floor(Math.random() * 14);
   addXP(22 + Math.floor(Math.random() * 10));
-  toast("Fish reeled in after a hard pull.");
-  makeFish();
+  toast(`${kind} reeled in after a hard pull.`);
+  kind === "Squid" ? makeSquid() : makeFish();
 }
 
 function alertBot(bot, seconds = 12) {
@@ -3799,6 +4219,186 @@ function updateFireDamage(target, dt, speed = 0) {
   }
 }
 
+function animalHitRadius(animal) {
+  return animal.kind === "whale" ? 5.7 : 1;
+}
+
+function projectileHitsAnimal(shot, animal) {
+  if (!animal || animal.hp <= 0 || animal.kind !== "whale") return false;
+  if (animal.submergedUntil > clock.elapsedTime && shot.ammoType !== "harpoon") return false;
+  const radius = animalHitRadius(animal);
+  return dist2(shot.mesh.position, animal.group.position) < radius && shot.mesh.position.y < 5;
+}
+
+function damageAnimal(animal, shot) {
+  if (animal.kind !== "whale") return false;
+  const damage = shot.ammoType === "harpoon" ? CANNONBALL_TYPES.harpoon.whaleDamage : shot.damage * 0.5;
+  animal.hp -= damage;
+  makeSplashEffect(animal.group.position);
+  if (animal.hp > 0) return false;
+  const pos = animal.group.position.clone();
+  scene.remove(animal.group);
+  animals.splice(animals.indexOf(animal), 1);
+  crates.push({
+    mesh: makeCrateMesh(pos.x, pos.z, "whale"),
+    kind: "whale",
+    born: clock.elapsedTime,
+    heal: 0,
+    xp: 0,
+    gold: 0,
+    blubber: 3 + Math.floor(Math.random() * 3),
+  });
+  toast("Whale down. A carcass surfaced.");
+  return true;
+}
+
+function updateAnimals(dt) {
+  animals.slice().forEach((animal) => {
+    if (animal.kind !== "whale") return;
+    animal.turnAt -= dt;
+    if (animal.turnAt <= 0) {
+      animal.turnAt = 3 + Math.random() * 6;
+      animal.direction += (Math.random() - 0.5) * 1.2;
+      if (Math.random() < 0.28) animal.submergedUntil = clock.elapsedTime + 4 + Math.random() * 5;
+    }
+    const submerged = animal.submergedUntil > clock.elapsedTime;
+    const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
+    animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
+    animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.direction, clamp(dt * 2, 0, 0.12));
+    const forward = new THREE.Vector3(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
+    animal.group.position.add(forward.multiplyScalar(animal.speed * dt * (submerged ? 0.82 : 1)));
+    if (Math.abs(animal.group.position.x) > MAP_LIMIT * 0.94 || Math.abs(animal.group.position.z) > MAP_LIMIT * 0.94 || pointInAnyIsland(animal.group.position, 10)) {
+      animal.direction += Math.PI * (0.8 + Math.random() * 0.4);
+      animal.group.position.x = clamp(animal.group.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+      animal.group.position.z = clamp(animal.group.position.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+    }
+    animal.group.traverse((child) => {
+      if (child.material) child.material.opacity = submerged ? 0.34 : 1;
+      if (child.material) child.material.transparent = submerged;
+    });
+    animal.ramCooldown = Math.max(0, animal.ramCooldown - dt);
+    if (!submerged && state.mode === "ship" && animal.ramCooldown <= 0 && dist2(animal.group.position, playerShip.position) < animalHitRadius(animal) + shipHitRadius(state.shipType) * 0.5) {
+      const away = playerShip.position.clone().sub(animal.group.position);
+      away.y = 0;
+      if (away.lengthSq() < 0.01) away.set(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
+      away.normalize();
+      const whaleScale = state.shipType === "whaler" ? getShipStats().whaleRamTakenScale || 0.25 : 1;
+      damageTarget(state, 50 * whaleScale);
+      state.velocity.add(away.multiplyScalar(10));
+      animal.submergedUntil = clock.elapsedTime + 5 + Math.random() * 3;
+      animal.ramCooldown = 9;
+      toast("A whale rammed your ship.");
+    }
+  });
+}
+
+function makeStormCloud() {
+  const group = new THREE.Group();
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x3c4148, roughness: 1, transparent: true, opacity: 0.9 });
+  for (let i = 0; i < 12; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 3.8, 8, 6), cloudMat);
+    puff.position.set((Math.random() - 0.5) * 56, Math.random() * 7, (Math.random() - 0.5) * 48);
+    group.add(puff);
+  }
+  group.position.y = 48;
+  return group;
+}
+
+function spawnStorm() {
+  const group = makeStormCloud();
+  const northBias = Math.random() < 0.72;
+  const x = (Math.random() - 0.5) * MAP_LIMIT * 1.4;
+  const z = northBias ? Math.random() * MAP_LIMIT * 0.9 : (Math.random() - 0.5) * MAP_LIMIT * 1.5;
+  group.position.x = x;
+  group.position.z = z;
+  scene.add(group);
+  const direction = Math.random() * Math.PI * 2;
+  storms.push({
+    group,
+    radius: 58 + Math.random() * 34,
+    velocity: new THREE.Vector3(Math.sin(direction), 0, Math.cos(direction)).multiplyScalar(4),
+    born: clock.elapsedTime,
+    life: 600,
+    strikeAt: clock.elapsedTime + 2 + Math.random() * 6,
+  });
+}
+
+function makeLightningBolt(start, end) {
+  const group = new THREE.Group();
+  const points = [];
+  const segments = 8;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const p = start.clone().lerp(end, t);
+    p.x += (Math.random() - 0.5) * 3.6 * (1 - Math.abs(t - 0.5));
+    p.z += (Math.random() - 0.5) * 3.6 * (1 - Math.abs(t - 0.5));
+    points.push(p);
+  }
+  const main = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.95 })
+  );
+  group.add(main);
+  for (let i = 2; i < points.length - 2; i += 2) {
+    const base = points[i];
+    const branchEnd = base.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, -3 - Math.random() * 5, (Math.random() - 0.5) * 8));
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([base, branchEnd]),
+      new THREE.LineBasicMaterial({ color: 0x89dfff, transparent: true, opacity: 0.72 })
+    ));
+  }
+  addImpactEffect(group, 0.28);
+}
+
+function lightningStrike(storm) {
+  const candidates = [];
+  if (state.mode === "ship" && dist2(playerShip.position, storm.group.position) < storm.radius) {
+    candidates.push({ kind: "player", position: playerShip.position, target: state, type: state.shipType });
+  }
+  bots.forEach((bot) => {
+    if (dist2(bot.group.position, storm.group.position) < storm.radius) {
+      candidates.push({ kind: "bot", position: bot.group.position, target: bot, type: bot.shipType });
+    }
+  });
+  islands.forEach((island) => {
+    if (dist2(island.group.position, storm.group.position) < storm.radius + island.radius) {
+      const angle = Math.random() * Math.PI * 2;
+      candidates.push({
+        kind: "island",
+        position: island.group.position.clone().add(new THREE.Vector3(Math.sin(angle) * island.radius * 0.45, 0, Math.cos(angle) * island.radius * 0.45)),
+      });
+    }
+  });
+  if (!candidates.length) return;
+  const hit = candidates[Math.floor(Math.random() * candidates.length)];
+  const start = new THREE.Vector3(hit.position.x, storm.group.position.y + 6, hit.position.z);
+  const end = hit.position.clone().setY(0.6);
+  makeLightningBolt(start, end);
+  makeFireImpactEffect(end.clone(), new THREE.Vector3(1, 0, 0));
+  if (hit.kind === "player" || hit.kind === "bot") {
+    damageTarget(hit.target, 50, { fire: { dps: 10, duration: 3 }, hitPosition: end });
+  }
+}
+
+function updateStorms(dt) {
+  if (clock.elapsedTime >= nextStormAt) {
+    nextStormAt = clock.elapsedTime + 130 + Math.random() * 220;
+    if (Math.random() < 0.65) spawnStorm();
+  }
+  storms.slice().forEach((storm) => {
+    storm.group.position.add(storm.velocity.clone().multiplyScalar(dt));
+    storm.group.rotation.y += dt * 0.04;
+    if (clock.elapsedTime >= storm.strikeAt) {
+      storm.strikeAt = clock.elapsedTime + 3 + Math.random() * 7;
+      lightningStrike(storm);
+    }
+    if (clock.elapsedTime - storm.born > storm.life) {
+      scene.remove(storm.group);
+      storms.splice(storms.indexOf(storm), 1);
+    }
+  });
+}
+
 function damageTarget(target, amount, options = {}) {
   if (target.serverId && multiplayer.serverWorld) {
     sendMultiplayer({ type: "hitBot", id: target.serverId, damage: amount, fire: options.fire || null });
@@ -3830,6 +4430,10 @@ function damageTarget(target, amount, options = {}) {
       clearBurnVisual(state);
       state.fire = null;
       state.leviathanGrabbed = false;
+      state.fallingOffWorld = false;
+      state.fallingTimer = 0;
+      state.viewMode = "ship";
+      state.activeBalloonIndex = -1;
       target.mode = "ship";
       target.dockedAt = null;
       closeShop();
@@ -3853,6 +4457,8 @@ function initWorld() {
   scene.add(playerShip);
   character = makeCharacter();
   for (let i = 0; i < 12; i++) makeFish();
+  for (let i = 0; i < 6; i++) makeSquid();
+  for (let i = 0; i < 5; i++) makeWhale();
   for (let i = 0; i < 15; i++) {
     const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
     const group = makeShip(spec.id, true);
@@ -3999,7 +4605,7 @@ addEventListener("keydown", (event) => {
     const island = currentIsland();
     if (island) {
       event.preventDefault();
-      dockAtIsland(island);
+      startDocking(island);
     } else {
       toast("Get closer to an island to dock.");
     }
@@ -4035,6 +4641,21 @@ addEventListener("keydown", (event) => {
     inspectWithSpyglass();
     return;
   }
+  if (key === "b") {
+    event.preventDefault();
+    launchBalloon();
+    return;
+  }
+  if (key === "v") {
+    event.preventDefault();
+    cycleViewMode();
+    return;
+  }
+  if (key === "l") {
+    event.preventDefault();
+    landActiveBalloon();
+    return;
+  }
   if (key === " ") {
     event.preventDefault();
   }
@@ -4067,8 +4688,32 @@ function currentIsland() {
   });
 }
 
+function startDocking(island) {
+  if (!island || state.mode !== "ship") return;
+  state.docking = { island: island.name, remaining: 5 };
+  state.velocity.multiplyScalar(0.25);
+  toast(`Docking at ${island.name}: 5 seconds.`);
+}
+
+function updateDocking(dt) {
+  if (!state.docking || state.mode !== "ship") return;
+  const island = islands.find((item) => item.name === state.docking.island);
+  if (!island || currentIsland() !== island) {
+    state.docking = null;
+    toast("Docking cancelled. Stay close to the island.");
+    return;
+  }
+  state.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
+  state.docking.remaining -= dt;
+  if (state.docking.remaining <= 0) {
+    state.docking = null;
+    dockAtIsland(island);
+  }
+}
+
 function dockAtIsland(island) {
   if (!island) return;
+  state.docking = null;
   state.mode = "land";
   state.dockedAt = island.name;
   const landing = landingPointForShip(island, playerShip.position);
@@ -4130,6 +4775,10 @@ function openIslandShop() {
 function useTool() {
   if (nameGateOpen()) return;
   if (ui.shop.classList.contains("hidden") === false) return;
+  if (state.viewMode === "balloon") {
+    dropBalloonBomb(activeBalloon());
+    return;
+  }
   if (state.mode !== "ship") return;
   raycaster.setFromCamera(mouse, camera);
   raycaster.ray.intersectPlane(aimPlane, aimPoint);
@@ -4149,7 +4798,8 @@ function useTool() {
     for (let i = 0; i < pellets; i++) {
       const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
       const shotDir = rotateFlatDirection(dir, spread);
-      const damage = scaleDamageByRange(cannonDamage() * (ammo.damageScale || 1), targetDistance, range);
+      const baseDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : cannonDamage() * (ammo.damageScale || 1);
+      const damage = ammo.noRangeDamage ? baseDamage : scaleDamageByRange(baseDamage, targetDistance, range);
       const target = playerShip.position.clone().add(shotDir.clone().multiplyScalar(targetDistance));
       target.y = 0;
       const origin = playerShip.position.clone().add(shotDir.clone().multiplyScalar(3.8));
@@ -4185,6 +4835,18 @@ function collectCrate(crate) {
     if (crate.pending) return;
     crate.pending = true;
     sendMultiplayer({ type: "collectCrate", id: crate.serverId });
+    return;
+  }
+  if (crate.kind === "whale") {
+    const amount = crate.blubber || (3 + Math.floor(Math.random() * 3));
+    const capacity = blubberCapacity();
+    if (!capacity) return toast("You need a Whaler to carry whale blubber.");
+    const room = Math.max(0, capacity - blubberCount());
+    if (room <= 0) return toast("Your whale blubber hold is full.");
+    const taken = Math.min(room, amount);
+    state.cargo["Whale Blubber"] = blubberCount() + taken;
+    removeCrate(crate);
+    toast(`Recovered ${taken} whale blubber.`);
     return;
   }
   state.hp = clamp(state.hp + crate.heal, 0, maxHp());
@@ -4336,6 +4998,9 @@ function shipPreviewImage(type) {
 }
 
 function tradeDescription(island, name, owned, buyPrice, sellPrice) {
+  if (name === "Whale Blubber") {
+    return `Owned ${owned}. Portsmouth pays 200g each; other ports will not buy it. Whalers can carry up to 40 blubber outside their normal hold.`;
+  }
   const markets = islandData
     .map((item) => ({ name: item.name, sell: marketSellPrice(item, name) }))
     .sort((a, b) => b.sell - a.sell);
@@ -4367,6 +5032,12 @@ function ammoDescription(ammo) {
   if (ammo.id === "grapeshot") {
     return `${ammo.pellets} pellets in a wide spread. Each pellet does ${Math.round(ammo.damageScale * 100)}% direct damage and reaches ${Math.round(ammo.rangeScale * 100)}% of cannon range. Best up close.`;
   }
+  if (ammo.id === "harpoon") {
+    return "Fixed 20 damage to ships. Whales take 100 damage from it, and cannon damage upgrades do not boost it.";
+  }
+  if (ammo.id === "airburst") {
+    return "Explodes high above the aim point. It does no ship damage, but deals 40-60 damage to hot air balloons in the blast.";
+  }
   return "Reliable single cannonball with infinite ammo.";
 }
 
@@ -4384,11 +5055,16 @@ function renderShop() {
   const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
   ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
   if (state.shopTab === "goods") {
-    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}. Buy low, then sell where demand is higher.</p>` + goods.map((name) => {
+    const marketGoods = [...goods];
+    if (island.name === "Portsmouth" || blubberCount() > 0) marketGoods.push("Whale Blubber");
+    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}${blubberCapacity() ? ` | Blubber ${blubberCount()}/${blubberCapacity()}` : ""}. Buy low, then sell where demand is higher.</p>` + marketGoods.map((name) => {
       const owned = state.cargo[name] || 0;
       const buyPrice = marketBuyPrice(island, name);
       const sellPrice = marketSellPrice(island, name);
-      return `<div class="row"><div><h3>${name} <span class="price">Buy ${buyPrice}g / Sell ${sellPrice}g</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions"><button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button></div></div>`;
+      const actions = name === "Whale Blubber"
+        ? `<button data-sell="${name}" ${sellPrice <= 0 ? "disabled" : ""}>Sell</button>`
+        : `<button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button>`;
+      return `<div class="row"><div><h3>${name} <span class="price">${buyPrice > 0 ? `Buy ${buyPrice}g / ` : ""}Sell ${sellPrice}g</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions">${actions}</div></div>`;
     }).join("");
   } else if (state.shopTab === "ships") {
     const ships = availableShipsForIsland(island);
@@ -4408,12 +5084,13 @@ function renderShop() {
     const replacePrompt = state.pendingAmmoAssign && CANNONBALL_TYPES[state.pendingAmmoAssign]
       ? `<div class="row"><div><h3>Hotbar Full</h3><p>Replace one non-basic slot with ${CANNONBALL_TYPES[state.pendingAmmoAssign].name}.</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">Slot ${slot + 1}</button>`).join("")}</div></div>`
       : "";
+    const balloonRow = `<div class="row"><div><h3>Hot Air Balloon <span class="price">450g each</span></h3><p>Owned ${state.balloonStock}/${state.maxBalloons}. Ballooners can launch them for scouting and bombing.</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>Buy</button></div></div>`;
     ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
       const description = ammoDescription(ammo);
       return `<div class="row"><div><h3>${ammo.name} <span class="price">${ammo.price}g each</span></h3><p>Owned ${owned}. ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">Buy</button><button data-buy-ammo="${id}" data-amount="5">Buy 5</button></div></div>`;
-    }).join("");
+    }).join("") + balloonRow;
   } else {
     const ups = [
       ["damage", "Cannon Damage", upgradeDescription("damage")],
@@ -4451,8 +5128,10 @@ ui.shopBody.addEventListener("click", (event) => {
     const ship = getShipStats(button.dataset.ship);
     if (state.gold < ship.price) return toast("Not enough gold.");
     if (cargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
+    if (blubberCount() > (ship.blubberCapacity || 0)) return toast(`${ship.name} cannot carry that much whale blubber.`);
     state.gold -= ship.price;
     replacePlayerShip(ship.id);
+    if (ship.id === "ballooner") state.balloonStock = Math.max(state.balloonStock, 3);
     toast(`${ship.name} launched.`);
   }
   if (button.dataset.buyAmmo) {
@@ -4472,6 +5151,13 @@ ui.shopBody.addEventListener("click", (event) => {
     assignAmmoSlot(button.dataset.slot, ammo.id);
     toast(`${ammo.name} assigned to slot ${Number(button.dataset.slot) + 1}.`);
   }
+  if (button.dataset.buyBalloon) {
+    if (state.balloonStock >= state.maxBalloons) return toast("You already have the maximum number of balloons.");
+    if (state.gold < 450) return toast("Not enough gold.");
+    state.gold -= 450;
+    state.balloonStock++;
+    toast("Hot air balloon purchased.");
+  }
   if (button.dataset.upgrade) {
     if (state.points < 1) return toast("Level up to earn upgrade points.");
     if (button.dataset.upgrade === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES) return toast("Reload upgrade is maxed.");
@@ -4483,14 +5169,242 @@ ui.shopBody.addEventListener("click", (event) => {
   updateHud();
 });
 
+function makeBalloonMesh() {
+  const group = new THREE.Group();
+  const envelope = new THREE.Mesh(new THREE.SphereGeometry(1.8, 18, 12), new THREE.MeshStandardMaterial({ color: 0xd85842, roughness: 0.82, metalness: 0.02 }));
+  envelope.scale.set(1.05, 1.22, 1.05);
+  envelope.position.y = 4.6;
+  envelope.castShadow = true;
+  group.add(envelope);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.055, 6, 24), mat(0xf3d178));
+  band.position.y = 4.2;
+  group.add(band);
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.72, 1.1), mats.plank);
+  basket.position.y = 1.9;
+  basket.castShadow = true;
+  group.add(basket);
+  for (const sx of [-0.45, 0.45]) {
+    for (const sz of [-0.4, 0.4]) {
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 5), mat(0x3b2d24));
+      rope.position.set(sx, 3.0, sz);
+      rope.rotation.x = sx * 0.08;
+      group.add(rope);
+    }
+  }
+  group.userData.balloon = true;
+  return group;
+}
+
+function activeBalloon() {
+  return state.viewMode === "balloon" ? balloons[state.activeBalloonIndex] : null;
+}
+
+function launchBalloon() {
+  if (state.mode !== "ship" || state.shipType !== "ballooner") return toast("Only a Ballooner can launch hot air balloons.");
+  if (balloons.filter((balloon) => !balloon.destroyed).length >= 3) return toast("Only 3 balloons can be launched at once.");
+  if (state.balloonStock <= 0) return toast("No spare hot air balloons.");
+  const group = makeBalloonMesh();
+  group.position.copy(playerShip.position).add(new THREE.Vector3(0, 22, 0));
+  group.rotation.y = state.rotation;
+  scene.add(group);
+  state.balloonStock--;
+  balloons.push({
+    group,
+    hp: 100,
+    velocity: new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation)).multiplyScalar(6),
+    rotation: state.rotation,
+    bomb: true,
+    landing: false,
+    destroyed: false,
+  });
+  toast("Balloon launched. Press V to switch view.");
+}
+
+function cycleViewMode() {
+  const usable = balloons.filter((balloon) => !balloon.destroyed);
+  if (!usable.length || state.viewMode !== "balloon") {
+    if (!usable.length) {
+      state.viewMode = "ship";
+      state.activeBalloonIndex = -1;
+      return toast("Ship view.");
+    }
+    state.viewMode = "balloon";
+    state.activeBalloonIndex = balloons.indexOf(usable[0]);
+    return toast("Balloon view.");
+  }
+  const current = usable.indexOf(balloons[state.activeBalloonIndex]);
+  if (current < usable.length - 1) {
+    state.activeBalloonIndex = balloons.indexOf(usable[current + 1]);
+    toast("Next balloon view.");
+  } else {
+    state.viewMode = "ship";
+    state.activeBalloonIndex = -1;
+    toast("Ship view.");
+  }
+}
+
+function landActiveBalloon() {
+  const balloon = activeBalloon();
+  if (!balloon || balloon.destroyed) return;
+  balloon.landing = true;
+  toast("Balloon descending. Keep it above the Ballooner.");
+}
+
+function destroyBalloon(balloon, cause = "crash") {
+  if (!balloon || balloon.destroyed) return;
+  balloon.destroyed = true;
+  balloon.fallVelocity = -4;
+  balloon.cause = cause;
+  if (state.activeBalloonIndex === balloons.indexOf(balloon)) {
+    state.viewMode = "ship";
+    state.activeBalloonIndex = -1;
+  }
+}
+
+function dropBalloonBomb(balloon) {
+  if (!balloon || balloon.destroyed) return;
+  if (!balloon.bomb) return toast("This balloon has already dropped its bomb.");
+  balloon.bomb = false;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), mat(0x2f2a24));
+  mesh.position.copy(balloon.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 3, -2.1, (Math.random() - 0.5) * 3));
+  mesh.castShadow = true;
+  scene.add(mesh);
+  balloonBombs.push({ mesh, velocity: new THREE.Vector3((Math.random() - 0.5) * 3.2, -10, (Math.random() - 0.5) * 3.2) });
+  toast("Bomb away.");
+}
+
+function detonateAirburst(shot) {
+  const center = shot.target.clone();
+  center.y = 24;
+  const group = new THREE.Group();
+  group.position.copy(center);
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.82 }));
+  flash.userData.puff = true;
+  group.add(flash);
+  addImpactEffect(group, 0.45);
+  balloons.forEach((balloon) => {
+    if (balloon.destroyed) return;
+    const d = balloon.group.position.distanceTo(center);
+    if (d > 17) return;
+    balloon.hp -= 40 + 20 * clamp(1 - d / 17, 0, 1);
+    if (balloon.hp <= 0) destroyBalloon(balloon, "airburst");
+  });
+}
+
+function detonateBalloonBomb(position) {
+  makeSplashEffect(position);
+  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: true });
+  const hitShip = (target, pos, type) => {
+    const d = dist2(position, pos);
+    if (d < shipHitRadius(type) + 4) damageTarget(target, 1000 * clamp(1 - d / 10, 0.35, 1));
+  };
+  if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
+  bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
+}
+
+function updateBalloons(dt) {
+  const controlled = activeBalloon();
+  balloons.slice().forEach((balloon, index) => {
+    if (balloon.destroyed) {
+      balloon.fallVelocity = (balloon.fallVelocity || -4) - 18 * dt;
+      balloon.group.position.y += balloon.fallVelocity * dt;
+      balloon.group.rotation.x += dt * 1.1;
+      if (balloon.group.position.y <= 0.4) {
+        makeSplashEffect(balloon.group.position.clone().setY(0));
+        if (state.mode === "ship" && dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 3) damageTarget(state, 50);
+        scene.remove(balloon.group);
+        balloons.splice(index, 1);
+      }
+      return;
+    }
+    if (balloon === controlled && !balloon.landing) {
+      const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
+      const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
+      balloon.rotation += turn * dt * 1.7;
+      const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
+      balloon.velocity.add(forward.multiplyScalar(throttle * 20 * dt));
+      balloon.velocity.multiplyScalar(Math.pow(0.9, dt * 6));
+    } else if (!balloon.landing) {
+      const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
+      balloon.velocity.lerp(forward.multiplyScalar(8), clamp(dt * 0.5, 0, 0.04));
+    }
+    if (balloon.landing) {
+      const toShip = playerShip.position.clone().sub(balloon.group.position);
+      toShip.y = 0;
+      if (toShip.lengthSq() > 0.01) {
+        toShip.normalize();
+        balloon.velocity.lerp(toShip.multiplyScalar(7), clamp(dt * 1.3, 0, 0.1));
+      }
+      balloon.velocity.x += Math.sin(clock.elapsedTime * 2.4 + index) * dt * 1.3;
+      balloon.velocity.z += Math.cos(clock.elapsedTime * 1.9 + index) * dt * 1.3;
+      balloon.group.position.y -= dt * 3.4;
+      if (balloon.group.position.y <= 4.6) {
+        if (dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 4 && state.shipType === "ballooner") {
+          scene.remove(balloon.group);
+          balloons.splice(index, 1);
+          state.balloonStock = Math.min(state.maxBalloons, state.balloonStock + 1);
+          toast("Balloon recovered.");
+        } else {
+          destroyBalloon(balloon, "bad landing");
+        }
+        return;
+      }
+    }
+    balloon.group.position.add(balloon.velocity.clone().multiplyScalar(dt));
+    balloon.group.position.y += (24 + Math.sin(clock.elapsedTime * 1.4 + index) * 1.2 - balloon.group.position.y) * clamp(dt * 0.8, 0, 0.05);
+    balloon.group.rotation.y = balloon.rotation;
+    if (Math.abs(balloon.group.position.x) > WATERFALL_LIMIT || Math.abs(balloon.group.position.z) > WATERFALL_LIMIT) destroyBalloon(balloon, "edge");
+  });
+  for (let i = 0; i < balloons.length; i++) {
+    for (let j = i + 1; j < balloons.length; j++) {
+      if (!balloons[i].destroyed && !balloons[j].destroyed && balloons[i].group.position.distanceTo(balloons[j].group.position) < 3.2) {
+        destroyBalloon(balloons[i], "collision");
+        destroyBalloon(balloons[j], "collision");
+      }
+    }
+  }
+  balloonBombs.slice().forEach((bomb) => {
+    bomb.velocity.y -= 18 * dt;
+    bomb.mesh.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    bomb.mesh.rotation.x += dt * 4;
+    if (bomb.mesh.position.y <= 0.2) {
+      const pos = bomb.mesh.position.clone().setY(0);
+      scene.remove(bomb.mesh);
+      balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
+      detonateBalloonBomb(pos);
+    }
+  });
+}
+
 function updateShip(dt) {
   const spec = getShipStats();
   state.cooldown = Math.max(0, state.cooldown - dt);
   state.rodCooldown = Math.max(0, state.rodCooldown - dt);
   updateFireDamage(state, dt, state.velocity.length());
   state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
+  updateDocking(dt);
+  if (state.fallingOffWorld) {
+    state.fallingTimer += dt;
+    state.velocity.multiplyScalar(0.97);
+    playerShip.position.y -= (6 + state.fallingTimer * 10) * dt;
+    playerShip.rotation.x += dt * 0.55;
+    playerShip.rotation.z += dt * 0.8;
+    state.position.copy(playerShip.position);
+    if (state.fallingTimer > 3.2) {
+      state.fallingOffWorld = false;
+      state.fallingTimer = 0;
+      damageTarget(state, maxHp() * 4);
+    }
+    return;
+  }
   if (state.leviathanGrabbed) {
     state.velocity.set(0, 0, 0);
+    state.position.copy(playerShip.position);
+    return;
+  }
+  if (state.viewMode === "balloon") {
+    state.velocity.multiplyScalar(Math.pow(0.82, dt * 6));
+    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
     state.position.copy(playerShip.position);
     return;
   }
@@ -4511,7 +5425,11 @@ function updateShip(dt) {
   playerShip.rotation.y = state.rotation;
   playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
   state.position.copy(playerShip.position);
-  if (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT) summonLeviathan();
+  if (Math.abs(playerShip.position.x) > WATERFALL_LIMIT || Math.abs(playerShip.position.z) > WATERFALL_LIMIT) {
+    state.fallingOffWorld = true;
+    state.fallingTimer = 0;
+    toast("You crossed the waterfall at the edge of the world.");
+  } else if (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT) summonLeviathan();
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
   });
@@ -4637,9 +5555,21 @@ function updateBots(dt) {
     } else {
       pickupTarget = null;
     }
+    const krakenEvade = activeKrakenEvadePoint(bot.group.position, bot.shipType);
+    if (krakenEvade) {
+      aggressive = false;
+      bot.agroUntil = 0;
+      fightingBot = null;
+      bot.targetBot = null;
+      bot.botFightUntil = 0;
+      pickupTarget = null;
+      bot.turn = Math.max(bot.turn, 2.4);
+    }
     bot.turn -= dt;
     bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
-    if (aggressive) {
+    if (krakenEvade) {
+      bot.target = krakenEvade;
+    } else if (aggressive) {
       bot.target = playerShip.position.clone();
     } else if (fightingBot) {
       bot.target = fightingBot.group.position.clone();
@@ -4698,20 +5628,41 @@ function updateBots(dt) {
       remotePlayers.forEach((remote) => {
         if (remote.group.visible) avoidShip(remote.group.position, remote.shipType, 0.8);
       });
+      if (krakenBoss?.alive && krakenBoss.group?.visible) {
+        const head = krakenHeadWorldPosition();
+        if (head) {
+          const away = bot.group.position.clone().sub(head);
+          away.y = 0;
+          const krakenDistance = away.length();
+          const danger = 48 + shipHitRadius(bot.shipType);
+          if (krakenDistance > 0.001 && krakenDistance < danger) {
+            avoidance.add(away.clone().normalize().multiplyScalar((danger - krakenDistance) / danger * (krakenEvade ? 130 : 54)));
+            if (!krakenEvade && krakenDistance < 30 + shipHitRadius(bot.shipType) * 0.5) {
+              aggressive = false;
+              fightingBot = null;
+              pickupTarget = null;
+              bot.target = bot.group.position.clone().add(away.normalize().multiplyScalar(105));
+              bot.turn = Math.max(bot.turn, 2.2);
+            }
+          }
+        }
+      }
       const steerTarget = toTarget.clone().add(avoidance);
       const desired = Math.atan2(steerTarget.x, steerTarget.z);
       const delta = angleDelta(desired, bot.rotation);
       const inCombat = aggressive || Boolean(fightingBot);
       const chasingPickup = Boolean(pickupTarget);
-      const turnRate = inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
+      const evadingKraken = Boolean(krakenEvade);
+      const turnRate = evadingKraken ? 1.25 + spec.speed / 40 : inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
       const turnStep = clamp(delta, -dt * turnRate, dt * turnRate);
       bot.rotation += turnStep;
       const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
       const facing = clamp(Math.cos(delta), 0.18, 1);
-      const arrive = chasingPickup ? clamp(targetDistance / 14, 0.24, 1) : clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
+      const arrive = evadingKraken ? 1 : chasingPickup ? clamp(targetDistance / 14, 0.24, 1) : clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
       const pickupCruise = pickupTarget?.kind === "treasure" || pickupTarget?.kind === "kraken" ? 0.6 : 0.48;
-      const desiredVelocity = forward.multiplyScalar(spec.speed * (inCombat ? 0.48 : chasingPickup ? pickupCruise : 0.28) * facing * arrive);
-      bot.velocity.lerp(desiredVelocity, clamp(dt * (inCombat ? 1.5 : chasingPickup ? 1.35 : 1.0), 0, 0.18));
+      const cruise = evadingKraken ? 0.74 : inCombat ? 0.48 : chasingPickup ? pickupCruise : 0.28;
+      const desiredVelocity = forward.multiplyScalar(spec.speed * cruise * facing * arrive);
+      bot.velocity.lerp(desiredVelocity, clamp(dt * (evadingKraken ? 2.1 : inCombat ? 1.5 : chasingPickup ? 1.35 : 1.0), 0, evadingKraken ? 0.26 : 0.18));
       bot.velocity.multiplyScalar(Math.pow(0.92, dt * 3));
       const next = bot.group.position.clone().add(bot.velocity.clone().multiplyScalar(dt));
       const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + shipHitRadius(bot.shipType) * 0.6 + 5);
@@ -4779,30 +5730,42 @@ function updateProjectiles(dt) {
     shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
     let hit = false;
     if (shot.owner === playerId) {
-      bots.forEach((bot) => {
-        if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
-          const hitPosition = shot.mesh.position.clone();
-          if (multiplayer.serverWorld && bot.serverId) {
-            sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage, fire: shot.fire || null });
-            if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
-          } else {
-            damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition });
-          }
-          addXP(1 + Math.floor(shot.damage / 27));
-          hit = true;
-        }
-      });
-      remotePlayers.forEach((remote) => {
-        if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
-          if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
-          if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
-          hit = true;
-        }
-      });
-      if (!hit && projectileHitsKraken(shot)) {
-        if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: shot.damage });
-        krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - shot.damage);
+      if (shot.ammoType === "airburst" && progress >= 0.92) {
+        detonateAirburst(shot);
         hit = true;
+      }
+      animals.forEach((animal) => {
+        if (!hit && projectileHitsAnimal(shot, animal)) {
+          damageAnimal(animal, shot);
+          hit = true;
+        }
+      });
+      if (shot.ammoType !== "airburst") {
+        bots.forEach((bot) => {
+          if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
+            const hitPosition = shot.mesh.position.clone();
+            if (multiplayer.serverWorld && bot.serverId) {
+              sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage, fire: shot.fire || null });
+              if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
+            } else {
+              damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition });
+            }
+            addXP(1 + Math.floor(shot.damage / 27));
+            hit = true;
+          }
+        });
+        remotePlayers.forEach((remote) => {
+          if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
+            if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
+            if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
+            hit = true;
+          }
+        });
+        if (!hit && projectileHitsKraken(shot)) {
+          if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: shot.damage });
+          krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - shot.damage);
+          hit = true;
+        }
       }
     } else if (shot.targetKind !== "bot" && state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
       damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
@@ -4924,9 +5887,30 @@ function updateImpactEffects(dt) {
 function updateFish(dt) {
   fish.forEach((item, i) => {
     item.userData.phase += dt;
-    item.position.x += Math.sin(item.userData.phase + i) * dt * 0.7;
-    item.position.z += Math.cos(item.userData.phase * 0.7 + i) * dt * 0.7;
-    item.rotation.y = item.userData.phase;
+    const bait = state.fishing?.phase === "waiting" ? fishingBobber?.position : null;
+    let direction = item.userData.direction || 0;
+    if (bait && dist2(item.position, bait) < (item.userData.kind === "squid" ? 45 : 30)) {
+      direction = Math.atan2(bait.x - item.position.x, bait.z - item.position.z);
+      item.userData.direction = lerpAngle(item.userData.direction || direction, direction, clamp(dt * 2.2, 0, 0.18));
+      if (dist2(item.position, bait) < 1.2 && state.fishing) {
+        state.fishing.target = item;
+        state.fishing.phase = "reeling";
+        state.fishing.timer = 0;
+        toast(`${item.userData.kind === "squid" ? "Squid" : "Fish"} on the line!`);
+      }
+    } else if (Math.random() < dt * 0.28) {
+      item.userData.direction += (Math.random() - 0.5) * 0.9;
+    }
+    direction = item.userData.direction || direction;
+    const speed = item.userData.speed || 8;
+    item.position.x += Math.sin(direction) * speed * dt;
+    item.position.z += Math.cos(direction) * speed * dt;
+    if (Math.abs(item.position.x) > MAP_LIMIT * 0.95 || Math.abs(item.position.z) > MAP_LIMIT * 0.95 || pointInAnyIsland(item.position, 7)) {
+      item.userData.direction += Math.PI * (0.85 + Math.random() * 0.3);
+      item.position.x = clamp(item.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+      item.position.z = clamp(item.position.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+    }
+    item.rotation.y = direction;
     const pulse = 1 + Math.sin(item.userData.phase * 5) * 0.12;
     item.scale.set(pulse, 1, pulse);
   });
@@ -4939,6 +5923,7 @@ function updateFish(dt) {
       fishingBobber.position.y = 0.2 + Math.sin(clock.elapsedTime * 9) * 0.12;
       if (state.fishing.timer >= state.fishing.biteTime) {
         state.fishing.phase = "reeling";
+        state.fishing.target = state.fishing.target || nearestFishTo(fishingBobber.position, 42);
         state.fishing.timer = 0;
         toast("Bite! Reeling in...");
       }
@@ -5016,14 +6001,19 @@ function updateLeviathan(dt) {
     if (age >= leapDuration) {
       leviathan.crushed = true;
       leviathan.slamAt = clock.elapsedTime;
-      state.leviathanGrabbed = true;
-      state.velocity.set(0, 0, 0);
-      playerShip.position.copy(leviathan.impactPoint);
-      playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
-      state.position.copy(playerShip.position);
-      makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), jawForward);
-      makeLeviathanAttackEffect(playerShip.position.clone().setY(0), sideDir, "crush");
-      playerShip.visible = false;
+      const hit = state.mode === "ship" && leviathanAttackHits(playerShip.position, leviathan.impactPoint, sideDir, state.shipType);
+      if (hit) {
+        state.leviathanGrabbed = true;
+        state.velocity.set(0, 0, 0);
+        playerShip.position.copy(leviathan.impactPoint);
+        playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
+        state.position.copy(playerShip.position);
+        makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), jawForward);
+        playerShip.visible = false;
+      } else {
+        leviathan.missed = true;
+      }
+      makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, hit ? "crush" : "miss");
     }
     return;
   }
@@ -5045,7 +6035,7 @@ function updateLeviathan(dt) {
     state.position.copy(playerShip.position);
   }
 
-  if (!leviathan.damaged && slamAge > 0.48) {
+  if (!leviathan.missed && !leviathan.damaged && slamAge > 0.48) {
     leviathan.damaged = true;
     damageTarget(state, maxHp() * 4);
   }
@@ -5080,11 +6070,18 @@ function updateKraken(dt) {
         }
       }
       child.visible = dive < 0.72;
-      const bob = Math.sin(now * 0.82 + child.userData.phase) * 0.22;
+      if (!Number.isFinite(child.userData.homeX)) {
+        child.userData.homeX = child.position.x;
+        child.userData.homeZ = child.position.z;
+      }
+      const sway = Math.sin(now * 0.46 + child.userData.phase) * 0.28;
+      const bob = Math.sin(now * 0.82 + child.userData.phase) * 0.34;
       child.position.y = (child.userData.homeY || 0) + bob - dive * (child.userData.submergeDepth || 18);
-      child.rotation.x = Math.sin(now * 0.54 + child.userData.phase) * 0.04 + dive * 0.18;
-      child.rotation.y = Math.sin(now * 0.7 + child.userData.phase) * 0.08;
-      child.rotation.z = Math.cos(now * 0.52 + child.userData.phase) * 0.055;
+      child.position.x = child.userData.homeX + Math.sin(now * 0.31 + child.userData.phase) * 0.18;
+      child.position.z = child.userData.homeZ + Math.cos(now * 0.28 + child.userData.phase) * 0.18;
+      child.rotation.x = Math.sin(now * 0.54 + child.userData.phase) * 0.07 + dive * 0.18;
+      child.rotation.y = Math.sin(now * 0.7 + child.userData.phase) * 0.13 + sway * 0.05;
+      child.rotation.z = Math.cos(now * 0.52 + child.userData.phase) * 0.09;
     }
     if (child.userData?.krakenWaterRing) {
       const pulse = 1 + Math.sin(clock.elapsedTime * 1.4 + child.userData.phase) * 0.12;
@@ -5108,6 +6105,15 @@ function updateCamera(dt) {
     return;
   }
   if (character) character.visible = false;
+  const balloon = activeBalloon();
+  if (balloon && !balloon.destroyed) {
+    const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
+    const desired = balloon.group.position.clone().add(forward.clone().multiplyScalar(-20)).add(new THREE.Vector3(0, 8, 0));
+    camera.position.lerp(desired, 0.12);
+    camera.lookAt(balloon.group.position.clone().add(forward.multiplyScalar(20)));
+    labels.forEach((label) => label.lookAt(camera.position));
+    return;
+  }
   const target = state.mode === "ship" ? playerShip.position : character.position;
   const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * 58, 46, Math.cos(state.cameraYaw) * 58);
   const desired = target.clone().add(offset);
@@ -5124,14 +6130,17 @@ function updateHud() {
   ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
   const fireLabel = state.fire ? ` | Burning ${Math.ceil(state.fire.remaining)}s` : "";
-  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${fireLabel}`;
+  const blubberLabel = blubberCapacity() ? ` | Blubber ${blubberCount()}/${blubberCapacity()}` : "";
+  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}${fireLabel}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
   const island = currentIsland();
   const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land");
   ui.dockPrompt.classList.toggle("hidden", !showPrompt);
   if (showPrompt) {
-    ui.dockPrompt.innerHTML = state.mode === "ship"
+    ui.dockPrompt.innerHTML = state.docking
+      ? `Docking ${state.docking.island}: <b>${Math.ceil(state.docking.remaining)}s</b>`
+      : state.mode === "ship"
       ? `Press <b>T</b> to dock at ${island.name}`
       : `Press <b>C</b> to set sail or <b>R</b> for the shop`;
   }
@@ -5748,7 +6757,11 @@ function frame() {
     resolveShipContacts();
     updateProjectiles(dt);
     updateImpactEffects(dt);
+    updateWaveHazards(dt);
     updateFish(dt);
+    updateAnimals(dt);
+    updateBalloons(dt);
+    updateStorms(dt);
     updateLeviathan(dt);
     updateKraken(dt);
   }
