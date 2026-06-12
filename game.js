@@ -75,20 +75,23 @@ const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
 const ISLAND_RADIUS_SCALE = 4;
 const ISLAND_SPACING_SCALE = 2.45;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
-const CHARACTER_SCALE = 0.34;
+const CHARACTER_SCALE = 0.17;
+const CHARACTER_EYE_HEIGHT = 0.62;
 const SEA_SIZE = 4200;
 const WIND_MARKER_COUNT = 18;
 const BALLOON_BOMB_GRAVITY = 18;
 const BALLOON_BOMB_DAMAGE = 500;
 const BALLOON_BOMB_BLAST_RADIUS = 12;
 const BALLOON_BOMB_KNOCKBACK = 22;
-const AIRBURST_RADIUS = 30;
+const AIRBURST_DAMAGE = 60;
+const AIRBURST_RADIUS = BALLOON_BOMB_BLAST_RADIUS * (2 / 3);
+const BALLOON_COST = 600;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
   hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 23, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
   harpoon: { id: "harpoon", name: "Harpoon", short: "Harpoon", price: 20, pellets: 1, fixedDamage: 20, whaleDamage: 100, rangeScale: 0.86, spread: 0, radius: 0.16, color: 0xd8d0bd, trail: 0xf8f4e5, noRangeDamage: true },
-  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: 0, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
+  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: 0.46, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
@@ -172,9 +175,9 @@ const shipCatalog = [
   { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
   { id: "carrack", name: "Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
   { id: "treasure", name: "Treasure Junk", price: 11800, hp: 900, armor: 0.14, speed: 9, regen: 3.5, color: 0xd6a83c, model: "treasure" },
-  { id: "whaler", name: "Whaler", price: 11500, hp: 500, armor: 0.05, speed: 10, regen: 2.0, color: 0x6f8792, model: "frigate" },
+  { id: "whaler", name: "Whaler", price: 10600, hp: 1650, armor: 0.05, speed: 12, regen: 2.0, color: 0x6f8792, model: "frigate" },
   { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
-  { id: "ballooner", name: "Ballooner", price: 14500, hp: 450, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
+  { id: "ballooner", name: "Ballooner", price: 15000, hp: 1350, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
   { id: "fourthrate", name: "Fourth Rate", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
   { id: "grandfrigate", name: "Grand Frigate", price: 28500, hp: 1060, armor: 0.12, speed: 18, regen: 5.2, color: 0x4f78b5, model: "frigate" },
   { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
@@ -224,9 +227,9 @@ const shipBalance = {
   galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
   eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
   treasure: { name: "Treasure Junk", price: 16800, hp: 2700, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 4.9 },
-  whaler: { name: "Whaler", price: 11500, fixedPrice: true, hp: 1500, armor: 0.05, speed: 10, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
+  whaler: { name: "Whaler", price: 10600, fixedPrice: true, hp: 1650, armor: 0.05, speed: 12, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
-  ballooner: { name: "Ballooner", price: 14500, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
+  ballooner: { name: "Ballooner", price: 15000, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
   fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
   grandfrigate: { name: "Grand Frigate", price: 28500, fixedPrice: true, hp: 3150, armor: 0.12, speed: 18, regen: 6, capacity: 24, hitbox: 5.0, weight: 255 },
   manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
@@ -331,6 +334,9 @@ const state = {
   activeBalloonIndex: -1,
   balloonStock: 0,
   maxBalloons: 5,
+  whalerNets: false,
+  whalerNetProgress: 0,
+  swimHp: 1,
   showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
   fire: null,
   cooldown: 0,
@@ -548,7 +554,7 @@ function shipVisualScale(type = state.shipType) {
     firstrate: 1.5,
     ironclad: 1.48,
   }[type] || 1;
-  return baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055);
+  return baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055) * 1.2;
 }
 
 function shipHullDimensions(type = state.shipType) {
@@ -645,6 +651,170 @@ function projectileHitsShip(shot, ship, type) {
     ? ship.worldToLocal(shot.mesh.position.clone())
     : shot.mesh.position.clone().sub(ship.position || ship);
   return projectileHitsHull(localPoint, type) || projectileHitsMast(localPoint, type);
+}
+
+function shipDeckLocalY(type = state.shipType) {
+  return 1.42 * shipVisualScale(type);
+}
+
+function localPointOnShipDeck(localPoint, type = state.shipType) {
+  const { length, width } = shipHullDimensions(type);
+  const halfLength = length * 0.46;
+  if (Math.abs(localPoint.z) > halfLength) return false;
+  const zT = Math.abs(localPoint.z) / Math.max(1, halfLength);
+  const taper = clamp(1 - Math.pow(zT, 1.85) * 0.72, 0.28, 1);
+  const halfWidth = width * 0.42 * taper;
+  return Math.abs(localPoint.x) <= halfWidth;
+}
+
+function shipStructureBoxes(type = state.shipType) {
+  const { length, width } = shipHullDimensions(type);
+  const scale = shipVisualScale(type);
+  const deckY = shipDeckLocalY(type);
+  const boxes = [];
+  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
+  if (largeTypes.has(type) || shipTier(type) >= 4) {
+    boxes.push({
+      id: "stern-castle",
+      z: -length * 0.34,
+      w: width * 0.68,
+      d: length * 0.17,
+      floorY: deckY + 0.02 * scale,
+      roofY: 2.08 * scale,
+      interior: type === "firstrate",
+    });
+    boxes.push({
+      id: "forecastle",
+      z: length * 0.34,
+      w: width * 0.48,
+      d: length * 0.12,
+      floorY: deckY + 0.02 * scale,
+      roofY: 1.72 * scale,
+    });
+  }
+  if (type === "whaler") {
+    boxes.push({ id: "whaler-cabin", z: -2.0 * scale, w: 2.1 * scale, d: 1.05 * scale, floorY: deckY, roofY: 1.98 * scale });
+    boxes.push({ id: "tryworks", x: 0.55 * scale, z: 0.1 * scale, w: 1.1 * scale, d: 0.8 * scale, floorY: deckY, roofY: 1.95 * scale });
+  } else if (type === "ballooner") {
+    boxes.push({ id: "ballooner-cabin", z: -1.55 * scale, w: 1.75 * scale, d: 0.92 * scale, floorY: deckY, roofY: 1.94 * scale });
+    boxes.push({ id: "balloon-platform", z: -length * 0.36, w: 3.35 * scale, d: 2.55 * scale, floorY: 1.82 * scale, roofY: 1.82 * scale });
+  } else if (type === "grandfrigate") {
+    boxes.push({ id: "command-deck", z: -2.55 * scale, w: 2.1 * scale, d: 1.05 * scale, floorY: deckY, roofY: 2.06 * scale });
+  } else if (type === "windrunner") {
+    boxes.push({ id: "low-cabin", z: -2.45 * scale, w: 1.85 * scale, d: 0.86 * scale, floorY: deckY, roofY: 1.9 * scale });
+  }
+  return boxes;
+}
+
+function localPointInShipBox(localPoint, box, pad = 0) {
+  const x = box.x || 0;
+  return Math.abs(localPoint.x - x) <= box.w * 0.5 + pad
+    && Math.abs(localPoint.z - box.z) <= box.d * 0.5 + pad;
+}
+
+function firstRateInteriorAllowed(localPoint, box) {
+  const scale = shipVisualScale("firstrate");
+  const wall = 0.18 * scale;
+  const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
+    && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
+  const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
+  const door = Math.abs(localPoint.x - (box.x || 0)) < 0.42 * scale
+    && Math.abs(localPoint.z - centerFacingZ) < 0.38 * scale;
+  return inner || door;
+}
+
+function shipWalkSurfaceAt(localPoint, type = state.shipType, currentLocalY = shipDeckLocalY(type)) {
+  const deckY = shipDeckLocalY(type);
+  const onHullDeck = localPointOnShipDeck(localPoint, type);
+  let surface = onHullDeck ? { y: deckY, kind: "deck" } : null;
+  for (const box of shipStructureBoxes(type)) {
+    if (!localPointInShipBox(localPoint, box)) continue;
+    if (box.id === "balloon-platform" || currentLocalY >= box.roofY - 0.34 || localPoint.y >= box.roofY - 0.24) {
+      surface = { y: box.roofY, kind: "roof" };
+      continue;
+    }
+    if (box.interior && firstRateInteriorAllowed(localPoint, box)) {
+      return { y: box.floorY, kind: "interior" };
+    }
+    return null;
+  }
+  return surface;
+}
+
+function deckWorldPosition(localX = 0, localZ = 0, type = state.shipType) {
+  return playerShip.localToWorld(new THREE.Vector3(localX, shipDeckLocalY(type), localZ));
+}
+
+function shipSurfaceWorldPosition(localX, localZ, surfaceY) {
+  return playerShip.localToWorld(new THREE.Vector3(localX, surfaceY, localZ));
+}
+
+function shipSwimBlockAt(worldPoint) {
+  const candidates = [];
+  if (playerShip) candidates.push({ group: playerShip, type: state.shipType });
+  bots.forEach((bot) => {
+    if (bot.group?.visible !== false) candidates.push({ group: bot.group, type: bot.shipType || "cog" });
+  });
+  remotePlayers.forEach((remote) => {
+    if (remote.group?.visible !== false) candidates.push({ group: remote.group, type: remote.shipType || "skiff" });
+  });
+  for (const candidate of candidates) {
+    if (!candidate.group || !candidate.type) continue;
+    const radius = shipHitRadius(candidate.type) + 1.1;
+    if (dist2(worldPoint, candidate.group.position) > radius) continue;
+    const local = candidate.group.worldToLocal(worldPoint.clone());
+    const waterPoint = local.clone();
+    waterPoint.y = 0.32 * shipVisualScale(candidate.type);
+    if (projectileHitsHull(waterPoint, candidate.type)) return { ...candidate, local };
+  }
+  return null;
+}
+
+function pushSwimmerAwayFromShip(block, dt) {
+  if (!block?.group) return;
+  const away = character.position.clone().sub(block.group.position);
+  away.y = 0;
+  if (away.lengthSq() < 0.001) away.set(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
+  away.normalize();
+  character.position.add(away.multiplyScalar(1.8 * dt));
+}
+
+
+function enterDeckMode() {
+  if (state.mode !== "ship" || state.viewMode === "balloon") return;
+  if (state.velocity.length() > 0.35) return toast("Stop your ship before walking around.");
+  state.viewMode = "deck";
+  state.swimHp = 1;
+  character.position.copy(deckWorldPosition(0, 0));
+  character.rotation.y = state.rotation;
+  character.visible = true;
+  state.walkHeight = 0;
+  state.walkVelocityY = 0;
+  state.grounded = true;
+  state.velocity.set(0, 0, 0);
+  toast("Deck view. Press C for sailing controls.");
+}
+
+function returnCharacterToShipDeck() {
+  if (!playerShip || state.mode !== "ship") return;
+  state.viewMode = "deck";
+  state.swimHp = 1;
+  character.position.copy(deckWorldPosition(0, 0));
+  character.rotation.y = state.rotation;
+  character.visible = true;
+  state.walkHeight = 0;
+  state.walkVelocityY = 0;
+  state.grounded = true;
+  toast("Returned to the deck.");
+}
+
+function exitDeckMode() {
+  if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
+  state.viewMode = "ship";
+  state.swimHp = 1;
+  character.visible = false;
+  state.velocity.set(0, 0, 0);
+  toast("Sailing controls restored.");
 }
 
 function regularCargoCount() {
@@ -896,7 +1066,12 @@ function replacePlayerShip(type, spawnPosition = null) {
   const rotation = old?.rotation?.clone();
   state.shipType = ship.id;
   state.hp = ship.hp;
+  if (ship.id !== "whaler") {
+    state.whalerNets = false;
+    state.whalerNetProgress = 0;
+  }
   playerShip = makeShip(ship.id);
+  updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
   playerShip.position.copy(position);
   playerShip.position.y = SHIP_WATERLINE_Y;
   if (rotation) playerShip.rotation.copy(rotation);
@@ -1174,15 +1349,17 @@ function makeIsland(data) {
   grass.castShadow = true;
   grass.receiveShadow = true;
   group.add(grass);
-  const dock = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.45, 11), mats.wood);
-  dock.position.set(0, 1.45, radius - 2);
+  const dockThemeSeed = (data.theme || "starter").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const dockLength = 16 + (dockThemeSeed % 4) * 1.35 + (["naval", "trade"].includes(data.theme) ? 2.4 : 0);
+  const dockWidth = 4.8 + (dockThemeSeed % 3) * 0.38 + (data.theme === "naval" ? 0.8 : 0);
+  const dockCenterZ = radius - 4;
+  const dock = new THREE.Mesh(new THREE.BoxGeometry(dockWidth, 0.45, dockLength), mats.wood);
+  dock.position.set(0, 1.45, dockCenterZ);
   dock.castShadow = true;
+  dock.receiveShadow = true;
   group.add(dock);
   const obstacles = [
     { x: data.x - radius * 0.24, z: data.z - radius * 0.05, r: 3.8 },
-    { x: data.x + 2.35, z: data.z + radius - 6, r: 0.8 },
-    { x: data.x - 2.35, z: data.z + radius - 3, r: 0.8 },
-    { x: data.x - 2.35, z: data.z + radius, r: 0.8 },
   ];
   const collisionBoxes = [
     { x: data.x - radius * 0.24, z: data.z - radius * 0.05, w: 5.8, d: 5.0 },
@@ -1195,11 +1372,19 @@ function makeIsland(data) {
   banner.position.set(2.7, 3.45, radius - 6.2);
   banner.castShadow = true;
   group.add(banner);
-  for (let i = 0; i < 3; i++) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.4, 6), mats.wood);
-    post.position.set(i % 2 ? 2.3 : -2.3, 2.2, radius - 6 + i * 3);
-    post.castShadow = true;
-    group.add(post);
+  [dockCenterZ - 6.2, dockCenterZ - 1.4, dockCenterZ + 3.4].forEach((z) => {
+    for (const side of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 2.35, 7), mats.wood);
+      post.position.set(side * (dockWidth * 0.36), 0.58, z);
+      post.castShadow = true;
+      group.add(post);
+    }
+  });
+  for (let i = 0; i < 5; i++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(dockWidth + 0.35, 0.08, 0.18), mats.hullDark);
+    plank.position.set(0, 1.72, dockCenterZ - dockLength * 0.42 + i * dockLength * 0.21);
+    plank.castShadow = true;
+    group.add(plank);
   }
   const shop = new THREE.Group();
   const hut = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3, 4.2), mat(0xd9a45e));
@@ -1468,6 +1653,7 @@ function makeIsland(data) {
       tower.castShadow = true;
       group.add(tower);
       obstacles.push({ x: data.x + side * 5.2, z: data.z - 5.2, r: 1.8 });
+      collisionBoxes.push({ x: data.x + side * 5.2, z: data.z - 5.2, w: 3.1, d: 3.1, pad: 0.18 });
     }
   }
   if (data.theme === "starter") {
@@ -1480,6 +1666,7 @@ function makeIsland(data) {
     group.add(lantern);
     addCone(6.8, -7.2, 1.55, 1.15, accent, 12.1, 10);
     obstacles.push({ x: data.x + 6.8, z: data.z - 7.2, r: 1.65 });
+    collisionBoxes.push({ x: data.x + 6.8, z: data.z - 7.2, w: 2.9, d: 2.9, pad: 0.15 });
   }
   if (data.theme === "iberian") {
     addBlock(4.7, -4.5, 3.2, 3.6, 3.0, 0xf4e5c9);
@@ -1571,6 +1758,7 @@ function makeIsland(data) {
     obstacles,
     collisionBoxes,
     terrainFeatures,
+    dockBox: { x: data.x, z: data.z + dockCenterZ, w: dockWidth + 0.25, d: dockLength + 0.4 },
     dock: new THREE.Vector3(data.x, 0, data.z + radius),
     shop: new THREE.Vector3(data.x - radius * 0.24, 0, data.z - radius * 0.05),
   };
@@ -1596,6 +1784,16 @@ function makeLabel(text) {
 }
 
 function islandGroundY(island, point) {
+  if (island.dockBox) {
+    const dx = point.x - island.dockBox.x;
+    const dz = point.z - island.dockBox.z;
+    const rot = island.dockBox.rot || 0;
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    if (Math.abs(localX) <= island.dockBox.w * 0.5 && Math.abs(localZ) <= island.dockBox.d * 0.5) return 1.72;
+  }
   const dockDistance = dist2(point, island.dock);
   if (dockDistance < 7.2) return 1.72;
   const distance = dist2(point, island.group.position);
@@ -2053,6 +2251,27 @@ function hullMesh(length, width, height, material = mats.hull, profile = "skiff"
   return mesh;
 }
 
+function addHullEndCaps(group, length, width, scale, material = mats.hull, profile = "skiff") {
+  const sternZ = length * 0.515 * scale;
+  const bowZ = -length * 0.565 * scale;
+  const sternWidth = Math.max(width * scale * 0.42, hullSideXAt(length, width, scale, sternZ, 1.12, profile) * 2.05);
+  const bowWidth = Math.max(width * scale * 0.22, hullSideXAt(length, width, scale, bowZ, 1.3, profile) * 1.9);
+  const stern = new THREE.Mesh(new THREE.BoxGeometry(sternWidth, 0.76 * scale, 0.18 * scale), material);
+  stern.position.set(0, 0.72 * scale, sternZ);
+  stern.castShadow = true;
+  stern.receiveShadow = true;
+  group.add(stern);
+  const sternCap = new THREE.Mesh(new THREE.BoxGeometry(sternWidth * 0.92, 0.12 * scale, 0.26 * scale), mats.hullDark);
+  sternCap.position.set(0, 1.12 * scale, sternZ + 0.03 * scale);
+  sternCap.castShadow = true;
+  group.add(sternCap);
+  const bow = new THREE.Mesh(new THREE.BoxGeometry(bowWidth, 0.52 * scale, 0.14 * scale), material);
+  bow.position.set(0, 0.66 * scale, bowZ);
+  bow.castShadow = true;
+  bow.receiveShadow = true;
+  group.add(bow);
+}
+
 function addMastBase(group, z, scale) {
   const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.24 * scale, 0.12 * scale, 10), mats.hullDark);
   collar.position.set(0, 1.34 * scale, z);
@@ -2485,6 +2704,82 @@ function addWindowRow(group, width, z, y, scale, color = 0xd99928, count = 5) {
   }
 }
 
+function addWhalerNetRig(group, side, scale) {
+  const rig = new THREE.Group();
+  rig.userData.whalerNetRig = true;
+  rig.userData.side = side;
+  rig.userData.scale = scale;
+  rig.userData.progress = 0;
+  rig.position.set(side * 1.92 * scale, 1.06 * scale, -0.1 * scale);
+
+  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, 4.85 * scale, 8), mats.wood);
+  hinge.rotation.x = Math.PI / 2;
+  hinge.castShadow = true;
+  rig.add(hinge);
+
+  const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.28 * scale, 0.32 * scale, 4.95 * scale), mats.dark);
+  bracket.position.set(-side * 0.08 * scale, 0.02 * scale, 0);
+  bracket.castShadow = true;
+  rig.add(bracket);
+
+  const frame = new THREE.Group();
+  frame.userData.whalerNetFrame = true;
+  rig.add(frame);
+
+  const netMaterial = new THREE.MeshBasicMaterial({ color: 0xd8d0bd, transparent: true, opacity: 0.44, wireframe: true });
+  const netPanel = new THREE.Mesh(new THREE.BoxGeometry(3.45 * scale, 0.34 * scale, 4.55 * scale), netMaterial);
+  netPanel.position.set(side * 1.72 * scale, -0.2 * scale, 0);
+  frame.add(netPanel);
+
+  const boomLength = 3.55 * scale;
+  [-2.28, 2.28].forEach((z) => {
+    const topBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.038 * scale, 0.038 * scale, boomLength, 7), mats.wood);
+    topBoom.rotation.z = Math.PI / 2;
+    topBoom.position.set(side * boomLength * 0.5, 0.08 * scale, z * scale);
+    topBoom.castShadow = true;
+    frame.add(topBoom);
+    const lowerBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, boomLength, 7), mats.rope);
+    lowerBoom.rotation.z = Math.PI / 2;
+    lowerBoom.position.set(side * boomLength * 0.5, -0.42 * scale, z * scale);
+    frame.add(lowerBoom);
+  });
+
+  const outerFloat = new THREE.Mesh(new THREE.CylinderGeometry(0.052 * scale, 0.052 * scale, 4.75 * scale, 8), mat(0xb98f5a));
+  outerFloat.rotation.x = Math.PI / 2;
+  outerFloat.position.set(side * 3.5 * scale, -0.28 * scale, 0);
+  outerFloat.castShadow = true;
+  frame.add(outerFloat);
+
+  addRope(frame, new THREE.Vector3(0, 0.12 * scale, -2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, -2.35 * scale), scale, 0.016);
+  addRope(frame, new THREE.Vector3(0, 0.12 * scale, 2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, 2.35 * scale), scale, 0.016);
+  group.add(rig);
+  updateWhalerNetRig(rig, 0);
+}
+
+function updateWhalerNetRig(rig, progress) {
+  const side = rig.userData.side || 1;
+  const scale = rig.userData.scale || 1;
+  rig.userData.progress = progress;
+  const frame = rig.children.find((child) => child.userData.whalerNetFrame);
+  if (!frame) return;
+  frame.scale.x = 0.08 + progress * 0.92;
+  frame.position.x = side * progress * 0.28 * scale;
+  frame.position.y = -progress * 0.12 * scale;
+  frame.rotation.z = side * (0.78 * (1 - progress));
+  frame.visible = progress > 0.015;
+}
+
+function updateWhalerNetVisuals(ship, extended, dt = 0.1) {
+  if (!ship) return;
+  const target = extended ? 1 : 0;
+  ship.traverse((obj) => {
+    if (!obj.userData?.whalerNetRig) return;
+    const current = obj.userData.progress || 0;
+    const next = current + (target - current) * clamp(dt * 4.8, 0, 1);
+    updateWhalerNetRig(obj, Math.abs(target - next) < 0.015 ? target : next);
+  });
+}
+
 function addLargeShipArchitecture(group, type, length, width, scale, spec, tier, profile = "skiff") {
   const actualLength = length * scale;
   const actualWidth = width * scale;
@@ -2500,6 +2795,29 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   sternRoof.castShadow = true;
   group.add(sternRoof);
   addWindowRow(group, width, sternZ + actualLength * 0.09, 1.68 * scale, scale, 0xd99928, type === "firstrate" ? 7 : 5);
+  if (type === "firstrate") {
+    const doorZ = sternZ - actualLength * 0.087;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.72 * scale, 0.62 * scale, 0.055 * scale), mats.dark);
+    door.position.set(0, 1.48 * scale, doorZ - 0.012 * scale);
+    door.castShadow = false;
+    group.add(door);
+    const threshold = new THREE.Mesh(new THREE.BoxGeometry(0.86 * scale, 0.045 * scale, 0.2 * scale), mats.plank);
+    threshold.position.set(0, 1.18 * scale, doorZ - 0.08 * scale);
+    threshold.castShadow = true;
+    group.add(threshold);
+    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.46, 0.035 * scale, actualLength * 0.08), mats.plank);
+    interiorFloor.position.set(0, 1.23 * scale, sternZ - actualLength * 0.005);
+    interiorFloor.receiveShadow = true;
+    group.add(interiorFloor);
+    const table = new THREE.Mesh(new THREE.BoxGeometry(0.74 * scale, 0.14 * scale, 0.48 * scale), mat(0x6b482f));
+    table.position.set(0, 1.42 * scale, sternZ + actualLength * 0.012);
+    table.castShadow = true;
+    group.add(table);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.32, 0.18 * scale, 0.16 * scale), mat(0x493425));
+    bench.position.set(0, 1.34 * scale, sternZ + actualLength * 0.05);
+    bench.castShadow = true;
+    group.add(bench);
+  }
 
   const quarterDepth = actualLength * 0.12;
   for (let side of [-1, 1]) {
@@ -2639,7 +2957,9 @@ function makeShip(type = "skiff", remote = false) {
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
   const darkHulled = ["brig", "brigantine", "corvette", "frigate", "razee", "grandfrigate", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
-  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, darkHulled ? mats.hullDark : mats.hull, profile));
+  const hullMaterial = darkHulled ? mats.hullDark : mats.hull;
+  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, hullMaterial, profile));
+  addHullEndCaps(group, hullSize[0], hullSize[1], scale, hullMaterial, profile);
   [-1, 1].forEach((side) => {
     addHullSideLine(
       group,
@@ -2870,6 +3190,8 @@ function makeShip(type = "skiff", remote = false) {
     harpoonRack.position.set(-1.1 * scale, 1.82 * scale, -1.1 * scale);
     harpoonRack.rotation.y = 0.35;
     group.add(harpoonRack);
+    addWhalerNetRig(group, -1, scale);
+    addWhalerNetRig(group, 1, scale);
   } else if (type === "ballooner") {
     addSquareSail(group, -0.62, -1.5, 0.78, 0xf2ead5, 1);
     addSail(group, 0.28, 0.45, 0.84, 0xf8efd8);
@@ -2948,14 +3270,44 @@ function makeShip(type = "skiff", remote = false) {
 
 function makeCharacter() {
   const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.1, 4, 8), mat(0x2c5f80));
-  body.position.y = 1.1;
-  body.castShadow = true;
-  group.add(body);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.55, 8), mat(0xd9a028));
-  hat.position.y = 2.15;
+  const skin = mat(0xc88b58);
+  const cloth = mat(0x2c5f80);
+  const trouser = mat(0x27364a);
+  const boot = mat(0x241a16);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.9, 0.34), cloth);
+  torso.position.y = 1.25;
+  torso.castShadow = true;
+  group.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 9), skin);
+  head.position.y = 1.94;
+  head.castShadow = true;
+  group.add(head);
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.08, 12), mats.dark);
+  hatBrim.position.y = 2.18;
+  hatBrim.castShadow = true;
+  group.add(hatBrim);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.34, 8), mat(0xd9a028));
+  hat.position.y = 2.4;
   hat.castShadow = true;
   group.add(hat);
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.18), cloth);
+    arm.position.set(side * 0.43, 1.25, 0.02);
+    arm.rotation.z = side * 0.12;
+    arm.castShadow = true;
+    group.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), skin);
+    hand.position.set(side * 0.46, 0.86, 0.03);
+    group.add(hand);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.72, 0.18), trouser);
+    leg.position.set(side * 0.16, 0.48, 0);
+    leg.castShadow = true;
+    group.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.36), boot);
+    foot.position.set(side * 0.16, 0.08, 0.06);
+    foot.castShadow = true;
+    group.add(foot);
+  }
   group.scale.setScalar(CHARACTER_SCALE);
   group.visible = false;
   scene.add(group);
@@ -3077,7 +3429,14 @@ function updateWaveHazards(dt) {
       if (hazard.damageShips) damageTarget(target, hazard.dps * dt);
       if (velocity) velocity.add(away.multiplyScalar(hazard.force * dt));
     };
-    if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
+    if (state.viewMode === "swim") {
+      const d = dist2(character.position, hazard.position);
+      if (Math.abs(d - radius) <= hazard.thickness + 0.5 && hazard.damageShips) {
+        state.swimHp = 0;
+        returnCharacterToShipDeck();
+        toast("You were knocked out in the water and respawned on deck.");
+      }
+    } else if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
     bots.forEach((bot) => applyTo(bot, bot.group.position, bot.velocity, bot.shipType));
     if (age > hazard.life) waveHazards.splice(waveHazards.indexOf(hazard), 1);
   });
@@ -4269,7 +4628,7 @@ function makeSquid() {
   fish.push(group);
 }
 
-function makeWhale() {
+function makeWhale(data = null) {
   const group = new THREE.Group();
   const bodyMat = mat(0x315f89);
   const darkMat = mat(0x234b6c);
@@ -4361,22 +4720,27 @@ function makeWhale() {
   tail.rotation.x = Math.PI / 2;
   group.add(tail);
 
-  const point = randomNorthernWaterPoint(MAP_LIMIT * 0.9, 70);
+  const point = data
+    ? new THREE.Vector3(Number(data.x) || 0, 0.05, Number(data.z) || WHALE_NORTH_CENTER_Z)
+    : randomNorthernWaterPoint(MAP_LIMIT * 0.9, 70);
   group.position.set(point.x, 0.05, clamp(point.z, WHALE_NORTH_MIN_Z, WHALE_NORTH_MAX_Z));
-  group.rotation.y = Math.random() * Math.PI * 2;
+  group.rotation.y = Number.isFinite(Number(data?.rotation)) ? Number(data.rotation) : Math.random() * Math.PI * 2;
   scene.add(group);
-  animals.push({
+  const animal = {
     kind: "whale",
+    serverId: data?.id || null,
     group,
-    hp: 1000,
-    maxHp: 1000,
+    hp: Number(data?.hp) || 1000,
+    maxHp: Number(data?.maxHp) || 1000,
     speed: 14,
     direction: group.rotation.y,
     bombImpulse: new THREE.Vector3(),
     turnAt: clock.elapsedTime + 3 + Math.random() * 5,
-    submergedUntil: 0,
+    submergedUntil: data?.submerged ? clock.elapsedTime + 1.2 : 0,
     ramCooldown: 0,
-  });
+  };
+  animals.push(animal);
+  return animal;
 }
 
 function makeCrateMesh(x, z, kind = "crate") {
@@ -4489,8 +4853,8 @@ function spawnTreasure(position = null) {
     kind: "treasure",
     born: clock.elapsedTime,
     heal: 18 + Math.random() * 14,
-    xp: 220 + Math.random() * 120,
-    gold: 110 + Math.floor(Math.random() * 80),
+    xp: 440 + Math.random() * 240,
+    gold: 220 + Math.floor(Math.random() * 160),
   });
 }
 
@@ -4602,6 +4966,43 @@ function finishFishing() {
   addXP(22 + Math.floor(Math.random() * 10));
   toast(`${kind} reeled in after a hard pull.`);
   kind === "Squid" ? makeSquid() : makeFish();
+}
+
+function rewardFishCatch(item, source = "Line") {
+  const kind = item?.userData?.kind === "squid" ? "Squid" : "Fish";
+  if (item && fish.includes(item)) {
+    scene.remove(item);
+    fish.splice(fish.indexOf(item), 1);
+  }
+  state.gold += 16 + state.level * 3 + Math.floor(Math.random() * 14);
+  addXP(22 + Math.floor(Math.random() * 10));
+  if (source !== "quiet") toast(`${kind} caught by ${source}.`);
+  kind === "Squid" ? makeSquid() : makeFish();
+}
+
+function pointTouchesWhalerNet(point) {
+  if (state.shipType !== "whaler" || !state.whalerNets || !playerShip) return false;
+  const progress = clamp(state.whalerNetProgress || 0, 0, 1);
+  if (progress < 0.55) return false;
+  const local = playerShip.worldToLocal(point.clone());
+  const radius = shipHitRadius("whaler");
+  const inner = radius * 0.28;
+  const outer = inner + (4.4 * progress);
+  return Math.abs(local.x) > inner
+    && Math.abs(local.x) < outer
+    && Math.abs(local.z) < radius * 1.26
+    && local.y > -1.1
+    && local.y < 2.2;
+}
+
+function updateWhalerNets() {
+  if (state.mode !== "ship" || state.shipType !== "whaler" || !state.whalerNets || state.whalerNetProgress < 0.55) return;
+  crates.slice().forEach((crate) => {
+    if (pointTouchesWhalerNet(crate.mesh.position)) collectCrate(crate);
+  });
+  fish.slice().forEach((item) => {
+    if (pointTouchesWhalerNet(item.position)) rewardFishCatch(item, "the nets");
+  });
 }
 
 function alertBot(bot, seconds = 12) {
@@ -4784,6 +5185,13 @@ function projectileHitsAnimal(shot, animal) {
 function damageAnimal(animal, shot) {
   if (animal.kind !== "whale") return false;
   const damage = shot.ammoType === "harpoon" ? CANNONBALL_TYPES.harpoon.whaleDamage : shot.damage * 0.5;
+  if (animal.serverId && multiplayer.serverWorld) {
+    animal.aggressiveUntil = clock.elapsedTime + 18;
+    animal.submergedUntil = 0;
+    makeSplashEffect(animal.group.position);
+    sendMultiplayer({ type: "hitWhale", id: animal.serverId, damage, ammoType: shot.ammoType || "basic" });
+    return false;
+  }
   animal.hp -= damage;
   animal.aggressiveUntil = clock.elapsedTime + 18;
   animal.submergedUntil = 0;
@@ -4817,6 +5225,21 @@ function damageAnimal(animal, shot) {
 function updateAnimals(dt) {
   animals.slice().forEach((animal) => {
     if (animal.kind !== "whale") return;
+    if (animal.serverId && multiplayer.serverWorld) {
+      if (animal.serverPosition) animal.group.position.lerp(animal.serverPosition, clamp(dt * 6, 0, 0.28));
+      if (Number.isFinite(animal.serverRotation)) {
+        animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.serverRotation, clamp(dt * 5, 0, 0.24));
+        animal.direction = animal.group.rotation.y;
+      }
+      const submerged = animal.submergedUntil > clock.elapsedTime || animal.serverSubmerged;
+      const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
+      animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
+      animal.group.traverse((child) => {
+        if (child.material) child.material.opacity = submerged ? 0.34 : 1;
+        if (child.material) child.material.transparent = submerged;
+      });
+      return;
+    }
     if (!pointInWhaleNorthZone(animal.group.position, 80)) {
       animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 8, WHALE_NORTH_MAX_Z - 8);
       animal.direction = whaleZoneReturnDirection(animal.group.position);
@@ -5002,7 +5425,20 @@ function lightningStrike(storm) {
   }
 }
 
+function showServerLightning(x, z) {
+  const point = new THREE.Vector3(Number(x) || 0, 0.6, Number(z) || 0);
+  makeLightningBolt(point.clone().setY(58), point);
+  makeFireImpactEffect(point.clone(), new THREE.Vector3(1, 0, 0));
+}
+
 function updateStorms(dt) {
+  if (multiplayer.serverWorld) {
+    storms.slice().forEach((storm) => {
+      if (storm.serverPosition) storm.group.position.lerp(storm.serverPosition, clamp(dt * 3.5, 0, 0.2));
+      storm.group.rotation.y += dt * 0.04;
+    });
+    return;
+  }
   if (clock.elapsedTime >= nextStormAt) {
     nextStormAt = clock.elapsedTime + 130 + Math.random() * 220;
     if (Math.random() < 0.65) spawnStorm();
@@ -5079,8 +5515,8 @@ function initWorld() {
   playerShip.position.y = SHIP_WATERLINE_Y;
   scene.add(playerShip);
   character = makeCharacter();
-  for (let i = 0; i < 12; i++) makeFish();
-  for (let i = 0; i < 6; i++) makeSquid();
+  for (let i = 0; i < 36; i++) makeFish();
+  for (let i = 0; i < 18; i++) makeSquid();
   for (let i = 0; i < 7; i++) makeWhale();
   for (let i = 0; i < 15; i++) {
     const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
@@ -5254,6 +5690,17 @@ addEventListener("keydown", (event) => {
     setSail();
     return;
   }
+  if ((key === "c" || code === "keyc") && (state.viewMode === "deck" || state.viewMode === "swim")) {
+    event.preventDefault();
+    exitDeckMode();
+    return;
+  }
+  if (key === "f") {
+    event.preventDefault();
+    if (state.viewMode === "deck" || state.viewMode === "swim") returnCharacterToShipDeck();
+    else enterDeckMode();
+    return;
+  }
   if ((key === "r" || code === "keyr") && state.mode === "land") {
     event.preventDefault();
     openIslandShop();
@@ -5262,6 +5709,12 @@ addEventListener("keydown", (event) => {
   if ((key === " " || key === "spacebar") && state.mode === "land" && state.grounded) {
     event.preventDefault();
     state.walkVelocityY = 12;
+    state.grounded = false;
+    return;
+  }
+  if ((key === " " || key === "spacebar") && state.viewMode === "deck" && state.grounded) {
+    event.preventDefault();
+    state.walkVelocityY = 9;
     state.grounded = false;
     return;
   }
@@ -5285,6 +5738,21 @@ addEventListener("keydown", (event) => {
     event.preventDefault();
     setTool("glass");
     inspectWithSpyglass();
+    return;
+  }
+  if (key === "x" && state.fishing) {
+    event.preventDefault();
+    clearFishingRig();
+    state.fishing = null;
+    state.rodCooldown = 0.35;
+    toast("Line retracted.");
+    return;
+  }
+  if (key === "n") {
+    event.preventDefault();
+    if (state.shipType !== "whaler" || state.mode !== "ship") return toast("Only the Whaler can use side nets at sea.");
+    state.whalerNets = !state.whalerNets;
+    toast(state.whalerNets ? "Whaler nets extended. Speed reduced." : "Whaler nets retracted.");
     return;
   }
   if (key === "b") {
@@ -5361,6 +5829,7 @@ function dockAtIsland(island) {
   if (!island) return;
   state.docking = null;
   state.mode = "land";
+  state.viewMode = "ship";
   state.dockedAt = island.name;
   const landing = landingPointForShip(island, playerShip.position);
   state.walkingPos.copy(landing.point);
@@ -5396,6 +5865,7 @@ function setSail() {
     }
   }
   state.mode = "ship";
+  state.viewMode = "ship";
   state.dockedAt = null;
   character.visible = false;
   playerShip.visible = true;
@@ -5425,6 +5895,7 @@ function useTool() {
     dropBalloonBomb(activeBalloon());
     return;
   }
+  if (state.viewMode === "deck" || state.viewMode === "swim") return;
   if (state.mode !== "ship") return;
   raycaster.setFromCamera(mouse, camera);
   raycaster.ray.intersectPlane(aimPlane, aimPoint);
@@ -5681,7 +6152,7 @@ function ammoDescription(ammo) {
     return "Fixed 20 damage to ships. Whales take 100 damage from it, and cannon damage upgrades do not boost it.";
   }
   if (ammo.id === "airburst") {
-    return "Explodes high above the aim point. It does no ship damage, but one-shots hot air balloons inside its wide blast.";
+    return "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.";
   }
   return "Reliable single cannonball with infinite ammo.";
 }
@@ -5738,7 +6209,7 @@ function renderShop() {
     const replacePrompt = state.pendingAmmoAssign && CANNONBALL_TYPES[state.pendingAmmoAssign]
       ? `<div class="row"><div><h3>Hotbar Full</h3><p>Replace one non-basic slot with ${CANNONBALL_TYPES[state.pendingAmmoAssign].name}.</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">Slot ${slot + 1}</button>`).join("")}</div></div>`
       : "";
-    const balloonRow = `<div class="row"><div><h3>Hot Air Balloon <span class="price">450g each</span></h3><p>Owned ${state.balloonStock}/${state.maxBalloons}. Ballooners can launch them for scouting and bombing.</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>Buy</button></div></div>`;
+    const balloonRow = `<div class="row"><div><h3>Hot Air Balloon <span class="price">${BALLOON_COST}g each</span></h3><p>Owned ${state.balloonStock}/${state.maxBalloons}. Ballooners can launch them for scouting and bombing.</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>Buy</button></div></div>`;
     ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
@@ -5811,8 +6282,8 @@ ui.shopBody.addEventListener("click", (event) => {
   }
   if (button.dataset.buyBalloon) {
     if (state.balloonStock >= state.maxBalloons) return toast("You already have the maximum number of balloons.");
-    if (state.gold < 450) return toast("Not enough gold.");
-    state.gold -= 450;
+    if (state.gold < BALLOON_COST) return toast("Not enough gold.");
+    state.gold -= BALLOON_COST;
     state.balloonStock++;
     toast("Hot air balloon purchased.");
   }
@@ -5827,7 +6298,7 @@ ui.shopBody.addEventListener("click", (event) => {
   updateHud();
 });
 
-function makeBalloonMesh() {
+function makeBalloonMesh(showDirectionArrow = true) {
   const group = new THREE.Group();
   const envelope = new THREE.Mesh(new THREE.SphereGeometry(1.8, 18, 12), new THREE.MeshStandardMaterial({ color: 0xd85842, roughness: 0.82, metalness: 0.02 }));
   envelope.scale.set(1.05, 1.22, 1.05);
@@ -5841,26 +6312,28 @@ function makeBalloonMesh() {
   basket.position.y = 1.9;
   basket.castShadow = true;
   group.add(basket);
-  const arrow = new THREE.Group();
-  arrow.position.set(0, 6.96, 0.08);
-  const arrowBacking = new THREE.Group();
-  const backingHead = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.55, 3), new THREE.MeshBasicMaterial({ color: 0x2f241e }));
-  backingHead.rotation.x = Math.PI / 2;
-  backingHead.position.z = 0.72;
-  arrowBacking.add(backingHead);
-  const backingTail = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.45), new THREE.MeshBasicMaterial({ color: 0x2f241e }));
-  backingTail.position.z = -0.22;
-  arrowBacking.add(backingTail);
-  arrowBacking.position.y = -0.035;
-  arrow.add(arrowBacking);
-  const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.58, 1.32, 3), new THREE.MeshBasicMaterial({ color: 0xffef4a }));
-  arrowHead.rotation.x = Math.PI / 2;
-  arrowHead.position.z = 0.72;
-  arrow.add(arrowHead);
-  const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 1.25), new THREE.MeshBasicMaterial({ color: 0xffef4a }));
-  arrowTail.position.z = -0.16;
-  arrow.add(arrowTail);
-  group.add(arrow);
+  if (showDirectionArrow) {
+    const arrow = new THREE.Group();
+    arrow.position.set(0, 6.96, 0.08);
+    const arrowBacking = new THREE.Group();
+    const backingHead = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.55, 3), new THREE.MeshBasicMaterial({ color: 0x17323b }));
+    backingHead.rotation.x = Math.PI / 2;
+    backingHead.position.z = 0.72;
+    arrowBacking.add(backingHead);
+    const backingTail = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.45), new THREE.MeshBasicMaterial({ color: 0x17323b }));
+    backingTail.position.z = -0.22;
+    arrowBacking.add(backingTail);
+    arrowBacking.position.y = -0.035;
+    arrow.add(arrowBacking);
+    const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.58, 1.32, 3), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    arrowHead.rotation.x = Math.PI / 2;
+    arrowHead.position.z = 0.72;
+    arrow.add(arrowHead);
+    const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 1.25), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    arrowTail.position.z = -0.16;
+    arrow.add(arrowTail);
+    group.add(arrow);
+  }
   for (const sx of [-0.45, 0.45]) {
     for (const sz of [-0.4, 0.4]) {
       const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 5), mat(0x3b2d24));
@@ -6035,10 +6508,10 @@ function detonateAirburst(shot) {
   center.y = 24;
   const group = new THREE.Group();
   group.position.copy(center);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 10), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.86 }));
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(1.7, 16, 10), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.86 }));
   flash.userData.puff = true;
   group.add(flash);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(AIRBURST_RADIUS * 0.46, AIRBURST_RADIUS * 0.52, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(AIRBURST_RADIUS * 0.9, AIRBURST_RADIUS, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = Math.PI / 2;
   ring.userData.puff = true;
   group.add(ring);
@@ -6047,7 +6520,9 @@ function detonateAirburst(shot) {
     if (balloon.destroyed) return;
     const d = balloon.group.position.distanceTo(center);
     if (d > AIRBURST_RADIUS) return;
-    destroyBalloon(balloon, "airburst");
+    const damage = AIRBURST_DAMAGE * clamp(1 - d / Math.max(1, AIRBURST_RADIUS), 0, 1);
+    balloon.hp -= damage;
+    if (balloon.hp <= 0) destroyBalloon(balloon, "airburst");
   });
 }
 
@@ -6060,6 +6535,15 @@ function bombKnockbackVector(origin, target, radius, strength = BALLOON_BOMB_KNO
   else away.multiplyScalar(1 / distance);
   const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
   return away.multiplyScalar(strength * falloff * weightScale);
+}
+
+function pushFloatingLootFromExplosion(position, radius, strength = BALLOON_BOMB_KNOCKBACK * 0.72) {
+  crates.forEach((crate) => {
+    const knockback = bombKnockbackVector(position, crate.mesh.position, radius, strength, crate.kind === "treasure" || crate.kind === "kraken" ? 0.8 : 1);
+    if (!knockback) return;
+    crate.velocity = crate.velocity || new THREE.Vector3();
+    crate.velocity.add(knockback);
+  });
 }
 
 function detonateBalloonBomb(position, options = {}) {
@@ -6079,6 +6563,7 @@ function detonateBalloonBomb(position, options = {}) {
   addImpactEffect(boom, 0.9);
   addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly });
   const damage = Number(options.damage) || BALLOON_BOMB_DAMAGE;
+  pushFloatingLootFromExplosion(position, BALLOON_BOMB_BLAST_RADIUS + 8);
   const hitShip = (target, pos, type) => {
     const d = dist2(position, pos);
     const radius = BALLOON_BOMB_BLAST_RADIUS + shipHitRadius(type) * 0.5;
@@ -6240,6 +6725,9 @@ function updateShip(dt) {
   const spec = getShipStats();
   state.cooldown = Math.max(0, state.cooldown - dt);
   state.rodCooldown = Math.max(0, state.rodCooldown - dt);
+  const netsActive = state.shipType === "whaler" && state.whalerNets;
+  state.whalerNetProgress += ((netsActive ? 1 : 0) - state.whalerNetProgress) * clamp(dt * 4.8, 0, 1);
+  updateWhalerNetVisuals(playerShip, netsActive, dt);
   updateFireDamage(state, dt, state.velocity.length());
   state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
   updateDocking(dt);
@@ -6269,17 +6757,25 @@ function updateShip(dt) {
     state.position.copy(playerShip.position);
     return;
   }
+  if (state.viewMode === "deck" || state.viewMode === "swim") {
+    state.velocity.multiplyScalar(Math.pow(0.5, dt * 8));
+    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
+    updateSeaWalker(dt);
+    state.position.copy(playerShip.position);
+    return;
+  }
   if (state.viewMode === "balloon") {
     state.velocity.multiplyScalar(Math.pow(0.55, dt * 8));
     playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
     state.position.copy(playerShip.position);
     return;
   }
+  const effectiveSpeed = state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed;
   const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
   const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
-  state.rotation += turn * dt * (1.7 + spec.speed / 28);
+  state.rotation += turn * dt * (1.7 + effectiveSpeed / 28);
   const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-  state.velocity.add(forward.multiplyScalar(throttle * spec.speed * dt));
+  state.velocity.add(forward.multiplyScalar(throttle * effectiveSpeed * dt));
   const wind = windAt(playerShip.position);
   state.velocity.add(wind.multiplyScalar(dt * (Math.abs(throttle) > 0.05 ? 0.35 : 0.82)));
   state.velocity.multiplyScalar(Math.pow(0.86, dt * 9));
@@ -6302,6 +6798,7 @@ function updateShip(dt) {
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
   });
+  updateWhalerNets();
 }
 
 function updateWalker(dt) {
@@ -6336,6 +6833,92 @@ function updateWalker(dt) {
   }
   const groundY = islandGroundY(island, character.position) ?? island.landY;
   character.position.y = groundY + state.walkHeight + Math.sin(clock.elapsedTime * 5) * 0.035;
+}
+
+function updateSeaWalker(dt) {
+  if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
+  const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
+  character.rotation.y += turn * dt * 2.35;
+  state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.22);
+  const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0);
+  const forward = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
+  if (state.viewMode === "swim") {
+    if (dist2(character.position, playerShip.position) < shipHitRadius(state.shipType) + 1.6 && keys.has("f")) {
+      returnCharacterToShipDeck();
+      return;
+    }
+    if (throttle) {
+      const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 4.2));
+      if (Math.abs(next.x) < MAP_LIMIT * 0.98 && Math.abs(next.z) < MAP_LIMIT * 0.98) {
+        const block = shipSwimBlockAt(next);
+        if (!block) {
+          character.position.x = next.x;
+          character.position.z = next.z;
+        } else {
+          pushSwimmerAwayFromShip(block, dt);
+        }
+      }
+    }
+    character.position.y = 0.08 + Math.sin(clock.elapsedTime * 4.2) * 0.045;
+    const currentBlock = shipSwimBlockAt(character.position);
+    if (currentBlock) pushSwimmerAwayFromShip(currentBlock, dt);
+    return;
+  }
+
+  const currentLocal = playerShip.worldToLocal(character.position.clone());
+  if (throttle) {
+    const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 6.2));
+    const local = playerShip.worldToLocal(next.clone());
+    const nextSurface = shipWalkSurfaceAt(local, state.shipType, currentLocal.y);
+    if (nextSurface) {
+      character.position.x = next.x;
+      character.position.z = next.z;
+    } else if (!localPointOnShipDeck(local, state.shipType)) {
+      state.viewMode = "swim";
+      state.swimHp = 1;
+      character.position.y = 0.1;
+      toast("You jumped into the water. Press F to return to your ship.");
+      return;
+    }
+  }
+  state.walkVelocityY -= 24 * dt;
+  state.walkHeight = Math.max(0, state.walkHeight + state.walkVelocityY * dt);
+  if (state.walkHeight <= 0) {
+    state.walkHeight = 0;
+    state.walkVelocityY = 0;
+    state.grounded = true;
+  }
+  const local = playerShip.worldToLocal(character.position.clone());
+  const surface = shipWalkSurfaceAt(local, state.shipType, local.y);
+  if (!surface) {
+    if (localPointOnShipDeck(local, state.shipType)) {
+      const deckPoint = deckWorldPosition(local.x, local.z, state.shipType);
+      character.position.y = deckPoint.y + Math.sin(clock.elapsedTime * 5) * 0.018;
+      state.walkHeight = 0;
+      state.walkVelocityY = 0;
+      state.grounded = true;
+      return;
+    }
+    if (!state.grounded || character.position.y > 0.5) {
+      character.position.y -= 5.8 * dt;
+    }
+    if (character.position.y <= 0.18) {
+      state.viewMode = "swim";
+      state.swimHp = 1;
+      character.position.y = 0.1;
+      toast("You are swimming. Press F to return to your ship.");
+    }
+    return;
+  }
+  if (local.y <= surface.y + 0.08 && state.walkVelocityY <= 0) {
+    state.walkHeight = 0;
+    state.walkVelocityY = 0;
+    state.grounded = true;
+  } else {
+    state.walkHeight = Math.max(0, local.y - surface.y);
+  }
+  const deckPoint = shipSurfaceWorldPosition(local.x, local.z, surface.y);
+  character.position.y = deckPoint.y + state.walkHeight + Math.sin(clock.elapsedTime * 5) * 0.018;
 }
 
 function nearestBotEnemy(bot, maxDistance = 52) {
@@ -6401,12 +6984,14 @@ function updateBots(dt) {
         bot.rotation = bot.group.rotation.y;
       }
       bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
+      updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
       updateFireDamage(bot, dt, bot.velocity.length());
     });
     return;
   }
   bots.forEach((bot, i) => {
     const spec = getShipStats(bot.shipType);
+    updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
     const playerDistance = dist2(bot.group.position, playerShip.position);
     let aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 34));
     const lowHealth = bot.hp < spec.hp * 0.58;
@@ -6609,12 +7194,13 @@ function updateProjectiles(dt) {
     while (shot.trailPoints.length > 7) shot.trailPoints.shift();
     shot.trail.geometry.setFromPoints(shot.trailPoints);
     shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
+    if (shot.airburst && progress >= 0.92) {
+      detonateAirburst(shot);
+      removeProjectile(shot);
+      return;
+    }
     let hit = false;
     if (shot.owner === playerId) {
-      if (shot.ammoType === "airburst" && progress >= 0.92) {
-        detonateAirburst(shot);
-        hit = true;
-      }
       animals.forEach((animal) => {
         if (!hit && projectileHitsAnimal(shot, animal)) {
           damageAnimal(animal, shot);
@@ -6830,6 +7416,17 @@ function updateFish(dt) {
   }
   crates.slice().forEach((crate) => {
     if (crate.born === undefined) crate.born = clock.elapsedTime;
+    if (crate.velocity?.lengthSq?.() > 0.001) {
+      const next = crate.mesh.position.clone().add(crate.velocity.clone().multiplyScalar(dt));
+      if (Math.abs(next.x) < MAP_LIMIT * 0.98 && Math.abs(next.z) < MAP_LIMIT * 0.98 && !pointInAnyIsland(next, 4)) {
+        crate.mesh.position.x = next.x;
+        crate.mesh.position.z = next.z;
+      } else {
+        crate.velocity.multiplyScalar(-0.22);
+      }
+      crate.velocity.multiplyScalar(Math.pow(0.16, dt));
+      if (crate.velocity.lengthSq() < 0.01) crate.velocity.set(0, 0, 0);
+    }
     crate.mesh.rotation.y += dt * (crate.kind === "treasure" || crate.kind === "kraken" ? 0.92 : 0.65);
     const age = clock.elapsedTime - crate.born;
     const lifetime = crate.kind === "kraken" ? CRATE_LIFETIME * 4 : crate.kind === "whale" ? WHALE_BIT_LIFETIME : CRATE_LIFETIME;
@@ -6975,9 +7572,22 @@ function updateCamera(dt) {
   if (keys.has("arrowup")) state.cameraPitch = clamp(state.cameraPitch + 0.55 * dt, -0.18, 0.92);
   if (keys.has("arrowdown")) state.cameraPitch = clamp(state.cameraPitch - 0.55 * dt, -0.18, 0.92);
   camera.up.set(0, 1, 0);
+  if (state.viewMode === "deck" || state.viewMode === "swim") {
+    if (character) character.visible = false;
+    const swim = state.viewMode === "swim";
+    const eyeHeight = swim ? 0.24 : CHARACTER_EYE_HEIGHT;
+    const eye = character.position.clone().add(new THREE.Vector3(0, eyeHeight, 0));
+    if (swim) eye.y = Math.max(0.22, eye.y);
+    const pitch = swim ? clamp(state.cameraPitch * 0.58, 0.02, 0.48) : clamp(state.cameraPitch * 0.75 - 0.12, -0.18, 0.58);
+    const look = eye.clone().add(new THREE.Vector3(Math.sin(character.rotation.y), pitch, Math.cos(character.rotation.y)).normalize().multiplyScalar(16));
+    camera.position.lerp(eye, 0.36);
+    camera.lookAt(look);
+    labels.forEach((label) => label.lookAt(camera.position));
+    return;
+  }
   if (state.mode === "land") {
     if (character) character.visible = false;
-    const eye = character.position.clone().add(new THREE.Vector3(0, 1.18, 0));
+    const eye = character.position.clone().add(new THREE.Vector3(0, CHARACTER_EYE_HEIGHT, 0));
     const yaw = character.rotation.y;
     const look = eye.clone().add(new THREE.Vector3(Math.sin(yaw), clamp(state.cameraPitch * 0.75 - 0.12, -0.28, 0.58), Math.cos(yaw)).normalize().multiplyScalar(16));
     camera.position.lerp(eye, 0.36);
@@ -7011,7 +7621,11 @@ function updateHud() {
   if (state.infiniteGold) state.gold = 999999999;
   const spec = getShipStats();
   ui.playerName.textContent = captainName();
-  ui.modeLabel.textContent = state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
+  ui.modeLabel.textContent = state.viewMode === "swim"
+    ? "Swimming"
+    : state.viewMode === "deck"
+      ? "On deck"
+      : state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
   ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
@@ -7021,7 +7635,8 @@ function updateHud() {
     : blubberCount() > 0
       ? ` | Blubber ${blubberCount()}`
       : "";
-  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}${fireLabel}`;
+  const netLabel = state.shipType === "whaler" ? ` | Nets ${state.whalerNets ? "out" : "in"}` : "";
+  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${fireLabel}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
   const island = currentIsland();
@@ -7238,6 +7853,9 @@ function updateMinimap() {
   if (krakenBoss?.group?.visible) {
     drawKrakenMapMarker(ctx, krakenBoss.group.position.x, krakenBoss.group.position.z, ratio, krakenBoss.hp, krakenBoss.maxHp);
   }
+  animals.forEach((animal) => {
+    if (animal.kind === "whale") drawMapDot(ctx, animal.group.position.x, animal.group.position.z, expanded ? 4.2 : 3.2, "#315f89", "#d9fbff");
+  });
   bots.forEach((bot) => drawMapDot(ctx, bot.group.position.x, bot.group.position.z, expanded ? 4 : 3, "#cf493f", "#341918"));
   remotePlayers.forEach((remote) => {
     if (remote.group.visible) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
@@ -7251,9 +7869,9 @@ function updateMinimap() {
     ctx.fillStyle = "#fff1a6";
     ctx.fillRect(pos.x - 1.5 * ratio, pos.y + 3 * ratio, 3 * ratio, 2 * ratio);
   });
-  const playerPos = state.mode === "ship" ? playerShip.position : character.position;
+  const playerPos = state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land" ? character.position : playerShip.position;
   const playerMap = drawMapDot(ctx, playerPos.x, playerPos.z, expanded ? 5 : 4, "#fffdf2", "#123742");
-  const rotation = state.mode === "ship" ? state.rotation : character.rotation.y;
+  const rotation = state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land" ? character.rotation.y : state.rotation;
   ctx.save();
   ctx.translate(playerMap.x, playerMap.y);
   ctx.rotate(Math.PI - rotation);
@@ -7278,6 +7896,7 @@ function multiplayerPayload() {
     hp: state.hp,
     shipType: state.shipType,
     mode: state.mode,
+    whalerNets: Boolean(state.shipType === "whaler" && state.whalerNets),
     x: playerShip.position.x,
     z: playerShip.position.z,
     vx: state.velocity.x,
@@ -7316,18 +7935,33 @@ function sendMultiplayer(message) {
 
 function makeRemoteCharacter() {
   const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.95, 4, 8), mat(0x28678c));
-  body.position.y = 1.0;
+  const skin = mat(0xc88b58);
+  const cloth = mat(0x28678c);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.82, 0.3), cloth);
+  body.position.y = 1.18;
   body.castShadow = true;
   group.add(body);
-  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.12, 0.16), mats.gold);
-  sash.position.set(0, 1.05, 0.36);
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.14), mats.gold);
+  sash.position.set(0, 1.24, 0.22);
   sash.castShadow = true;
   group.add(sash);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.46, 8), mat(0xd9a028));
-  hat.position.y = 1.95;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), skin);
+  head.position.y = 1.78;
+  head.castShadow = true;
+  group.add(head);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.34, 8), mat(0xd9a028));
+  hat.position.y = 2.02;
   hat.castShadow = true;
   group.add(hat);
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.16), cloth);
+    arm.position.set(side * 0.37, 1.14, 0.01);
+    group.add(arm);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), mat(0x27364a));
+    leg.position.set(side * 0.14, 0.46, 0);
+    group.add(leg);
+  }
+  group.scale.setScalar(CHARACTER_SCALE / 0.34);
   group.visible = false;
   return group;
 }
@@ -7359,7 +7993,7 @@ function syncRemoteBalloons(remote, dataBalloons = []) {
   wanted.forEach((entry, index) => {
     let balloon = remote.balloons[index];
     if (!balloon) {
-      balloon = { group: makeBalloonMesh() };
+      balloon = { group: makeBalloonMesh(false) };
       balloon.group.scale.setScalar(0.86);
       scene.add(balloon.group);
       remote.balloons[index] = balloon;
@@ -7399,11 +8033,13 @@ function upsertRemotePlayer(data) {
   remote.level = data.level || 1;
   remote.gold = Number(data.gold) || 0;
   remote.hp = data.hp || getShipStats(shipType).hp;
+  remote.whalerNets = Boolean(data.whalerNets);
   remote.velocity = remote.velocity || new THREE.Vector3();
   remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
   remote.group.position.set(x, SHIP_WATERLINE_Y, z);
   remote.group.rotation.y = Number(data.rotation) || 0;
   remote.group.visible = true;
+  updateWhalerNetVisuals(remote.group, remote.whalerNets, 0.18);
 
   const onLand = data.mode === "land";
   remote.avatar.visible = onLand;
@@ -7449,6 +8085,80 @@ function syncServerBombs(items = []) {
   });
 }
 
+function removeAnimal(animal) {
+  if (!animal) return;
+  scene.remove(animal.group);
+  const index = animals.indexOf(animal);
+  if (index >= 0) animals.splice(index, 1);
+}
+
+function syncServerWhales(items = []) {
+  const seen = new Set();
+  animals.slice().forEach((animal) => {
+    if (animal.kind === "whale" && !animal.serverId) removeAnimal(animal);
+  });
+  (Array.isArray(items) ? items : []).forEach((data) => {
+    if (!data?.id) return;
+    seen.add(data.id);
+    let animal = animals.find((item) => item.serverId === data.id);
+    if (!animal) {
+      animal = makeWhale(data);
+    }
+    animal.hp = Number(data.hp) || animal.hp;
+    animal.maxHp = Number(data.maxHp) || animal.maxHp || 1000;
+    animal.serverPosition = new THREE.Vector3(Number(data.x) || 0, 0.05, Number(data.z) || WHALE_NORTH_CENTER_Z);
+    animal.serverRotation = Number(data.rotation) || 0;
+    animal.serverSubmerged = Boolean(data.submerged);
+    animal.submergedUntil = animal.serverSubmerged ? clock.elapsedTime + 0.5 : 0;
+  });
+  animals.slice().forEach((animal) => {
+    if (animal.kind === "whale" && animal.serverId && !seen.has(animal.serverId)) removeAnimal(animal);
+  });
+}
+
+function removeStorm(storm) {
+  if (!storm) return;
+  scene.remove(storm.group);
+  const index = storms.indexOf(storm);
+  if (index >= 0) storms.splice(index, 1);
+}
+
+function syncServerStorms(items = []) {
+  const seen = new Set();
+  storms.slice().forEach((storm) => {
+    if (!storm.serverId) removeStorm(storm);
+  });
+  (Array.isArray(items) ? items : []).forEach((data) => {
+    if (!data?.id) return;
+    seen.add(data.id);
+    let storm = storms.find((item) => item.serverId === data.id);
+    if (!storm) {
+      const group = makeStormCloud();
+      scene.add(group);
+      storm = {
+        serverId: data.id,
+        group,
+        radius: Number(data.radius) || 70,
+        born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
+        life: (Number(data.life) || 600000) / 1000,
+        strikeAt: Infinity,
+      };
+      storms.push(storm);
+    }
+    storm.radius = Number(data.radius) || storm.radius || 70;
+    storm.serverPosition = new THREE.Vector3(Number(data.x) || 0, 48, Number(data.z) || 0);
+    if (!storm.initialized) {
+      storm.group.position.copy(storm.serverPosition);
+      storm.initialized = true;
+    }
+    const shadow = storm.group.children.find((child) => child.userData.stormShadow);
+    if (shadow) shadow.scale.setScalar(storm.radius);
+  });
+  storms.slice().forEach((storm) => {
+    if (storm.serverId && !seen.has(storm.serverId)) removeStorm(storm);
+  });
+}
+
 function syncServerWorld(world) {
   if (!world) return;
   multiplayer.serverWorld = true;
@@ -7489,6 +8199,7 @@ function syncServerWorld(world) {
     bot.hp = Number(data.hp) || spec.hp;
     bot.level = Number(data.level) || 1;
     bot.courageous = Boolean(data.courageous);
+    bot.netsExtended = Boolean(data.netsExtended);
     bot.serverMaxHp = Number(data.maxHp) || spec.hp;
     bot.serverPosition = serverPosition;
     bot.serverRotation = serverRotation;
@@ -7544,6 +8255,8 @@ function syncServerWorld(world) {
   });
   syncKraken(world.kraken);
   syncServerBombs(world.bombs || []);
+  syncServerWhales(world.whales || []);
+  syncServerStorms(world.storms || []);
 }
 
 function applyCrateReward(crate) {
@@ -7618,6 +8331,24 @@ function handleMultiplayerMessage(message) {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
   } else if (message.type === "bombHit") {
     if (state.mode === "ship") damageTarget(state, Number(message.damage) || BALLOON_BOMB_DAMAGE, { ignoreArmor: true });
+  } else if (message.type === "whaleRam") {
+    if (state.mode === "ship") {
+      const origin = new THREE.Vector3(Number(message.x) || playerShip.position.x, 0, Number(message.z) || playerShip.position.z);
+      const away = playerShip.position.clone().sub(origin);
+      away.y = 0;
+      if (away.lengthSq() < 0.01) away.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
+      away.normalize();
+      damageTarget(state, Number(message.damage) || 50);
+      state.velocity.add(away.multiplyScalar(10));
+      toast("A whale rammed your ship.");
+    }
+  } else if (message.type === "stormHit") {
+    if (state.mode === "ship") damageTarget(state, Number(message.damage) || 50, { fire: message.fire || { dps: 10, duration: 3 }, hitPosition: playerShip.position.clone() });
+  } else if (message.type === "balloonLightning") {
+    const hit = balloons.find((balloon) => !balloon.destroyed && dist2(balloon.group.position, new THREE.Vector3(Number(message.x) || 0, 0, Number(message.z) || 0)) < 5);
+    if (hit) destroyBalloon(hit, "lightning");
+  } else if (message.type === "lightningStrike") {
+    showServerLightning(message.x, message.z);
   } else if (message.type === "bombExplode") {
     const bomb = balloonBombs.find((item) => item.serverId === message.id);
     if (bomb) {
