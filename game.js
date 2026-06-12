@@ -11,9 +11,9 @@ renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8edff0);
-scene.fog = new THREE.Fog(0x8edff0, 150, 430);
+scene.fog = new THREE.Fog(0x8edff0, 240, 980);
 
-const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 650);
+const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1250);
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -69,16 +69,17 @@ const CRATE_DROP_MULTIPLIER = 1.2;
 const KRAKEN_ATTACK_LIFE = 3.8;
 const KRAKEN_SLAM_DELAY_MS = 2900;
 const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
-const MAP_LIMIT = 400;
+const MAP_LIMIT = 760;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
 const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
-const ISLAND_RADIUS_SCALE = 2;
-const ISLAND_SPACING_SCALE = 1.35;
+const ISLAND_RADIUS_SCALE = 4;
+const ISLAND_SPACING_SCALE = 2.05;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
 const CHARACTER_SCALE = 0.34;
-const SEA_SIZE = 2400;
+const SEA_SIZE = 3600;
 const WIND_MARKER_COUNT = 18;
 const BALLOON_BOMB_GRAVITY = 18;
+const BALLOON_BOMB_DAMAGE = 500;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
@@ -174,15 +175,15 @@ const shipCatalog = [
 ];
 
 const shipBalance = {
-  skiff: { name: "Skiff", price: 0, hp: 435, armor: 0, speed: 15, regen: 1, capacity: 4, hitbox: 2.4 },
-  shallop: { name: "Shallop", price: 380, hp: 495, armor: 0, speed: 17, regen: 1, capacity: 5, hitbox: 2.5 },
-  pinnace: { name: "Pinnace", price: 560, hp: 555, armor: 0, speed: 20, regen: 1, capacity: 4, hitbox: 2.6 },
+  skiff: { name: "Skiff", price: 0, hp: 435, armor: 0, speed: 15, regen: 1, capacity: 4, hitbox: 2.1 },
+  shallop: { name: "Shallop", price: 380, hp: 495, armor: 0, speed: 17, regen: 1, capacity: 5, hitbox: 2.25 },
+  pinnace: { name: "Pinnace", price: 560, hp: 555, armor: 0, speed: 20, regen: 1, capacity: 4, hitbox: 2.35 },
   hoy: { name: "Hoy", price: 760, hp: 660, armor: 0.03, speed: 11, regen: 2, capacity: 10, hitbox: 2.9 },
-  yawl: { name: "Yawl", price: 950, fixedPrice: true, hp: 585, armor: 0, speed: 18, regen: 1, capacity: 5, hitbox: 2.6, weight: 62 },
+  yawl: { name: "Yawl", price: 950, fixedPrice: true, hp: 585, armor: 0, speed: 18, regen: 1, capacity: 5, hitbox: 2.45, weight: 62 },
   balinger: { name: "Balinger", price: 1250, fixedPrice: true, hp: 720, armor: 0.02, speed: 14, regen: 2, capacity: 11, hitbox: 3.0, weight: 88 },
   felucca: { name: "Felucca", price: 1850, fixedPrice: true, hp: 650, armor: 0, speed: 25, regen: 1, capacity: 6, hitbox: 3.0, weight: 72 },
   bilander: { name: "Bilander", price: 2150, fixedPrice: true, hp: 840, armor: 0.04, speed: 16, regen: 2, capacity: 13, hitbox: 3.2, weight: 98 },
-  cog: { name: "Cog", price: 980, hp: 780, armor: 0.05, speed: 10, regen: 2, capacity: 14, hitbox: 3.1 },
+  cog: { name: "Cog", price: 980, hp: 780, armor: 0.05, speed: 10, regen: 2, capacity: 14, hitbox: 2.85 },
   longship: { name: "Longship", price: 1200, hp: 615, armor: 0, speed: 24, regen: 1, capacity: 6, hitbox: 3.2 },
   dogger: { name: "Dogger", price: 1320, hp: 690, armor: 0.03, speed: 18, regen: 2, capacity: 8, hitbox: 2.9 },
   dhow: { name: "Dhow", price: 1450, hp: 705, armor: 0.01, speed: 19, regen: 2, capacity: 12, hitbox: 3.0 },
@@ -198,7 +199,7 @@ const shipBalance = {
   schooner: { name: "Schooner", price: 3600, hp: 900, armor: 0.03, speed: 26, regen: 2, capacity: 10, hitbox: 3.3 },
   galley: { name: "Galley", price: 3900, hp: 930, armor: 0.02, speed: 23, regen: 2, capacity: 7, hitbox: 3.5 },
   xebec: { name: "Xebec", price: 4300, hp: 960, armor: 0.03, speed: 29, regen: 2, capacity: 8, hitbox: 3.4 },
-  brigantine: { name: "Brigantine", price: 4850, hp: 1080, armor: 0.06, speed: 22, regen: 2, capacity: 14, hitbox: 3.6 },
+  brigantine: { name: "Brigantine", price: 4850, hp: 1080, armor: 0.06, speed: 22, regen: 2, capacity: 14, hitbox: 3.8 },
   caravel: { name: "Caravel", price: 5200, hp: 1170, armor: 0.06, speed: 16, regen: 3, capacity: 18, hitbox: 3.5 },
   snow: { name: "Snow", price: 5750, hp: 1290, armor: 0.07, speed: 19, regen: 3, capacity: 18, hitbox: 3.7 },
   packet: { name: "Packet Ship", price: 6100, hp: 1050, armor: 0.03, speed: 27, regen: 2, capacity: 12, hitbox: 3.5 },
@@ -215,7 +216,7 @@ const shipBalance = {
   galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
   eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
   treasure: { name: "Treasure Junk", price: 16800, hp: 2700, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 4.9 },
-  whaler: { name: "Whaler", price: 11500, fixedPrice: true, hp: 1500, armor: 0.05, speed: 10, regen: 2, capacity: 4, blubberCapacity: 40, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
+  whaler: { name: "Whaler", price: 11500, fixedPrice: true, hp: 1500, armor: 0.05, speed: 10, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
   ballooner: { name: "Ballooner", price: 14500, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
   fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
@@ -375,6 +376,7 @@ const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const SHOT_REPLAY_MAX_AGE_MS = 3200;
 const CRATE_LIFETIME = 120;
+const WHALE_BIT_LIFETIME = 300;
 const CRATE_SINK_TIME = 5;
 const MAX_TREASURES = 3;
 const CENTER_BOT_CLEAR_RADIUS = 88;
@@ -496,21 +498,26 @@ function shipWeight(type = state.shipType) {
 
 function shipVisualScale(type = state.shipType) {
   const baseScale = {
-    shallop: 0.86,
-    pinnace: 0.88,
-    yawl: 0.9,
-    balinger: 0.96,
-    felucca: 0.98,
-    bilander: 1.02,
+    skiff: 0.72,
+    shallop: 0.78,
+    pinnace: 0.8,
+    yawl: 0.82,
+    balinger: 0.88,
+    felucca: 0.88,
+    bilander: 0.92,
     dart: 0.82,
-    cat: 0.92,
-    longship: 0.92,
-    dogger: 0.96,
-    sloop: 0.94,
-    tartane: 0.96,
+    cat: 0.86,
+    longship: 0.86,
+    cog: 0.86,
+    knarr: 0.88,
+    dhow: 0.88,
+    dogger: 0.88,
+    sloop: 0.9,
+    lugger: 0.9,
+    tartane: 0.9,
     storm: 0.92,
     brig: 1.12,
-    brigantine: 1.1,
+    brigantine: 1.18,
     packet: 1.05,
     barquentine: 1.12,
     barque: 1.15,
@@ -632,10 +639,18 @@ function projectileHitsShip(shot, ship, type) {
   return projectileHitsHull(localPoint, type) || projectileHitsMast(localPoint, type);
 }
 
-function cargoCount() {
+function regularCargoCount() {
   return Object.entries(state.cargo).reduce((total, [name, count]) => (
     name === "Whale Blubber" ? total : total + count
   ), 0);
+}
+
+function cargoCount() {
+  return regularCargoCount() + (state.shipType === "whaler" ? 0 : blubberCount());
+}
+
+function totalCargoCount() {
+  return regularCargoCount() + blubberCount();
 }
 
 function cargoCapacity() {
@@ -647,7 +662,13 @@ function blubberCount() {
 }
 
 function blubberCapacity() {
-  return getShipStats().blubberCapacity || 0;
+  return state.shipType === "whaler" ? (getShipStats().blubberCapacity || 50) : Math.max(0, cargoCapacity() - cargoCount());
+}
+
+function canAddBlubber(amount = 1) {
+  const count = Math.max(0, Number(amount) || 0);
+  if (state.shipType === "whaler") return blubberCount() + count <= blubberCapacity();
+  return totalCargoCount() + count <= cargoCapacity();
 }
 
 function marketBuyPrice(island, name) {
@@ -1008,6 +1029,45 @@ function makePalm() {
   return tree;
 }
 
+function makePine() {
+  const tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 3.6, 6), mat(0x7a5030));
+  trunk.position.y = 1.8;
+  trunk.castShadow = true;
+  tree.add(trunk);
+  for (let i = 0; i < 3; i++) {
+    const foliage = new THREE.Mesh(new THREE.ConeGeometry(1.45 - i * 0.22, 2.35, 7), mat(i % 2 ? 0x2f6b48 : 0x24543c));
+    foliage.position.y = 3.0 + i * 0.85;
+    foliage.castShadow = true;
+    tree.add(foliage);
+  }
+  return tree;
+}
+
+function makeBroadleafTree() {
+  const tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.46, 3.2, 6), mat(0x8b5a32));
+  trunk.position.y = 1.6;
+  trunk.castShadow = true;
+  tree.add(trunk);
+  const crownMat = mat(Math.random() < 0.5 ? 0x3c8b4f : 0x4f9b58);
+  for (let i = 0; i < 4; i++) {
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(1.05 + Math.random() * 0.25, 9, 7), crownMat);
+    crown.position.set((Math.random() - 0.5) * 1.25, 3.35 + Math.random() * 0.55, (Math.random() - 0.5) * 1.25);
+    crown.scale.y = 0.85;
+    crown.castShadow = true;
+    tree.add(crown);
+  }
+  return tree;
+}
+
+function makeIslandTree(theme) {
+  if (["norse", "rocky", "naval", "fort"].includes(theme)) return Math.random() < 0.68 ? makePine() : makeBroadleafTree();
+  if (["iberian", "trade", "starter", "schooner"].includes(theme)) return Math.random() < 0.55 ? makeBroadleafTree() : makePalm();
+  if (["atoll", "lagoon", "dhow", "market"].includes(theme)) return Math.random() < 0.78 ? makePalm() : makeBroadleafTree();
+  return Math.random() < 0.45 ? makePalm() : makeBroadleafTree();
+}
+
 function makeIsland(data) {
   const group = new THREE.Group();
   group.position.set(data.x, 0, data.z);
@@ -1137,6 +1197,42 @@ function makeIsland(data) {
     addCollisionBox(x + w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
     return house;
   };
+  const addThemeHouse = () => {
+    const profiles = {
+      norse: { x: radius * 0.15, z: radius * 0.02, w: 6.4, d: 3.1, color: 0x8b5a32, roof: 0x5a3b25, chimney: false },
+      pagoda: { x: radius * 0.18, z: radius * 0.02, w: 3.8, d: 3.8, color: 0xd9a45e, roof: 0xd99928, chimney: false },
+      iberian: { x: radius * 0.16, z: radius * 0.04, w: 4.4, d: 3.4, color: 0xf4e5c9, roof: 0xb84f44, chimney: true },
+      fort: { x: radius * 0.16, z: radius * 0.02, w: 4.8, d: 3.8, color: 0x9b9a87, roof: 0x4f5963, chimney: false },
+      naval: { x: radius * 0.17, z: radius * 0.02, w: 5.2, d: 3.4, color: 0xd8d2bd, roof: 0x4051a8, chimney: true },
+      trade: { x: radius * 0.18, z: radius * 0.02, w: 5.8, d: 3.2, color: 0xb77b42, roof: 0x7a5030, chimney: true },
+      lagoon: { x: radius * 0.18, z: radius * 0.04, w: 4.2, d: 3.2, color: 0xe2d0a5, roof: 0xd7b44a, chimney: false },
+      atoll: { x: radius * 0.18, z: radius * 0.04, w: 3.6, d: 3.0, color: 0xefc27c, roof: 0xef6f4f, chimney: false },
+      rocky: { x: radius * 0.17, z: radius * 0.02, w: 4.2, d: 3.4, color: 0x9b8b78, roof: 0x5b6268, chimney: true },
+    };
+    const profile = profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false };
+    const house = addInteriorHouse(profile.x, profile.z, profile.w, profile.d, profile.color, profile.roof);
+    if (profile.chimney) {
+      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.2, 0.42), mat(0x5a3b25));
+      chimney.position.set(profile.x + profile.w * 0.28, 5.75, profile.z - profile.d * 0.25);
+      chimney.castShadow = true;
+      group.add(chimney);
+    }
+    if (data.theme === "pagoda") {
+      for (let i = 0; i < 2; i++) {
+        const eave = new THREE.Mesh(new THREE.BoxGeometry(profile.w + 1.2 - i * 0.5, 0.12, profile.d + 1.2 - i * 0.5), mat(profile.roof));
+        eave.position.set(profile.x, 5.05 + i * 0.46, profile.z);
+        eave.castShadow = true;
+        group.add(eave);
+      }
+    }
+    if (data.theme === "norse") {
+      const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, profile.w + 0.7, 6), mats.dark);
+      ridge.rotation.z = Math.PI / 2;
+      ridge.position.set(profile.x, 5.75, profile.z);
+      group.add(ridge);
+    }
+    return house;
+  };
   const addMountain = (x, z, r, h, color = 0x66706e, cave = false) => {
     const mountain = new THREE.Group();
     const peakProfiles = [];
@@ -1251,7 +1347,7 @@ function makeIsland(data) {
     obstacles.push({ x: worldX + Math.sin(yaw) * 2.1, z: worldZ + Math.cos(yaw) * 2.1, r: 1.0 });
     addCollisionBox(x, z, wreckWidth * 0.9, wreckLength * 0.42, 0.16, yaw);
   };
-  addInteriorHouse(radius * 0.18, radius * 0.03, 4.0, 3.2, data.theme === "norse" ? 0x8b5a32 : 0xd9a45e, accent);
+  addThemeHouse();
   if (!["atoll", "lagoon"].includes(data.theme)) {
     addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e, ["rocky", "norse", "fort", "naval"].includes(data.theme));
   }
@@ -1288,12 +1384,15 @@ function makeIsland(data) {
     }
   }
   if (data.theme === "starter") {
-    const light = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 4.6, 10), mat(0xf6ead0));
-    light.position.set(5.6, 4.9, -5.4);
+    const light = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.4, 8.6, 12), mat(0xf6ead0));
+    light.position.set(6.8, 6.9, -7.2);
     light.castShadow = true;
     group.add(light);
-    addCone(5.6, -5.4, 1.25, 0.9, accent, 7.7, 10);
-    obstacles.push({ x: data.x + 5.6, z: data.z - 5.4, r: 1.25 });
+    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.9, 12), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
+    lantern.position.set(6.8, 11.35, -7.2);
+    group.add(lantern);
+    addCone(6.8, -7.2, 1.55, 1.15, accent, 12.1, 10);
+    obstacles.push({ x: data.x + 6.8, z: data.z - 7.2, r: 1.65 });
   }
   if (data.theme === "iberian") {
     addBlock(4.7, -4.5, 3.2, 3.6, 3.0, 0xf4e5c9);
@@ -1355,13 +1454,13 @@ function makeIsland(data) {
     obstacles.push({ x: data.x + 3.65, z: data.z - 4.5, r: 0.85 });
     obstacles.push({ x: data.x + 6.75, z: data.z - 4.5, r: 0.85 });
   }
-  const palmCount = data.theme === "atoll" ? 8 : 5;
-  for (let i = 0; i < palmCount; i++) {
-    const palm = makePalm();
-    palm.position.set(Math.cos(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.22), 2.3, Math.sin(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.2));
-    palm.scale.setScalar(0.75 + Math.random() * 0.45);
-    group.add(palm);
-    obstacles.push({ x: data.x + palm.position.x, z: data.z + palm.position.z, r: 1.35 * palm.scale.x });
+  const treeCount = data.theme === "atoll" ? 9 : ["norse", "rocky", "naval"].includes(data.theme) ? 7 : 6;
+  for (let i = 0; i < treeCount; i++) {
+    const tree = makeIslandTree(data.theme);
+    tree.position.set(Math.cos(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.22), 2.3, Math.sin(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.2));
+    tree.scale.setScalar(0.75 + Math.random() * 0.48);
+    group.add(tree);
+    obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.35 * tree.scale.x });
   }
   for (let i = 0; i < 8; i++) {
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7 + Math.random() * 0.7, 0), mats.rock);
@@ -2238,13 +2337,13 @@ function addHullPaintBands(group, length, width, scale, spec, tier, profile = "s
 
 function mastPlan(type, length) {
   if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
-  if (type === "whaler") return [-length * 0.18, length * 0.16];
-  if (type === "ballooner") return [-length * 0.22, length * 0.08];
-  if (["sloop", "storm", "dart", "lugger", "dogger", "tartane"].includes(type)) return [-length * 0.16, length * 0.18];
+  if (type === "whaler") return [-length * 0.22, length * 0.03];
+  if (type === "ballooner") return [-length * 0.27, -length * 0.02];
+  if (["sloop", "storm", "dart", "lugger", "dogger", "tartane"].includes(type)) return [-length * 0.18, length * 0.11];
   if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee"].includes(type)) {
-    return [-length * 0.28, -length * 0.02, length * 0.17];
+    return [-length * 0.3, -length * 0.04, length * 0.1];
   }
-  return [-length * 0.22, length * 0.18];
+  return [-length * 0.24, length * 0.1];
 }
 
 function addStandingRigging(group, type, length, width, scale, tier) {
@@ -2516,7 +2615,7 @@ function makeShip(type = "skiff", remote = false) {
     group.add(armor);
   } else if (type === "junk") {
     addSquareSail(group, -0.3, -0.7, 0.9, 0xf4e1b4, 3);
-    addSquareSail(group, 0.45, 1.25, 0.68, 0xf0dba2, 2);
+    addSquareSail(group, 0.45, 0.82, 0.68, 0xf0dba2, 2);
     const house = new THREE.Mesh(new THREE.BoxGeometry(1.8 * scale, 0.62 * scale, 1.18 * scale), mats.wood);
     house.position.set(0, 1.55 * scale, 1.55 * scale);
     house.castShadow = true;
@@ -2527,11 +2626,11 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "galleon") {
     addSquareSail(group, -0.7, -1.8, 0.95, 0xf6ead0, 2);
     addSquareSail(group, 0.7, 0.15, 1.08, 0xf8df88, 3);
-    addSquareSail(group, 0, 2.15, 0.82, 0xf6ead0, 2);
+    addSquareSail(group, 0, 1.42, 0.82, 0xf6ead0, 2);
   } else if (type === "merchantman" || type === "eastindiaman") {
     addSquareSail(group, -0.8, -1.75, 0.92, 0xf3e5c8, 2);
     addSquareSail(group, 0.25, 0.15, 1.02, 0xf7edcf, 2);
-    addSquareSail(group, 0.9, 1.95, 0.74, 0xf3e5c8, 1);
+    addSquareSail(group, 0.9, 1.35, 0.74, 0xf3e5c8, 1);
     addDeckFittings(group, hullSize[0], hullSize[1], scale, 3, spec.color, profile);
   } else if (type === "shallop") {
     addSail(group, 0, -0.1, 0.72, 0xf6ead0);
@@ -2582,11 +2681,11 @@ function makeShip(type = "skiff", remote = false) {
     addSail(group, 0, 0.5, 0.72, 0xd8f0c8);
   } else if (type === "sloop") {
     addSail(group, -0.05, -0.9, 1.08, 0xd8f8ff);
-    addSail(group, 0.35, 1.45, 0.68, 0xf8f4e5);
+    addSail(group, 0.35, 0.92, 0.68, 0xf8f4e5);
     addCabin(group, 0, 1.9, 1.35, 0.85, scale * 0.82, 0x624534);
   } else if (type === "storm") {
     addSail(group, -0.15, -1.05, 1.05, 0xc8cdfd);
-    addSail(group, 0.2, 1.35, 0.82, 0xf4f4ff);
+    addSail(group, 0.2, 0.88, 0.82, 0xf4f4ff);
     addCabin(group, 0, 1.9, 1.45, 0.9, scale * 0.82, 0x4f4c65);
   } else if (type === "cog" || type === "hoy") {
     addSquareSail(group, 0, -0.2, 0.92, 0xf1e5c4, 1);
@@ -2630,13 +2729,13 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "caravel" || type === "pink" || type === "ketch") {
     addSquareSail(group, -0.45, -1.2, 0.85, 0xf5ead3, 1);
     addSail(group, 0.45, 0.8, 0.95, 0xf8efd8);
-    if (type === "ketch") addSail(group, 0.9, 2.05, 0.62, 0xf5ead3);
+    if (type === "ketch") addSail(group, 0.9, 1.34, 0.62, 0xf5ead3);
     addCabin(group, 0, 2.05, 2.0, 1.15, scale * 0.9, 0x77513a);
   } else if (type === "snow" || type === "barque" || type === "barquentine") {
     addSquareSail(group, -0.45, -1.35, 0.9, 0xf4f0dd, 2);
     if (type === "barquentine") addSail(group, 0.45, 0.8, 0.86, 0xe4edf7);
     else addSquareSail(group, 0.45, 0.8, 0.84, 0xe4edf7, 2);
-    addSail(group, 0.75, 2.1, 0.62, 0xf4f0dd);
+    addSail(group, 0.75, 1.35, 0.62, 0xf4f0dd);
   } else if (type === "fluyt") {
     addSquareSail(group, -0.55, -1.35, 0.85, 0xf3e2c4, 2);
     addSquareSail(group, 0.35, 0.65, 0.95, 0xf7ead2, 2);
@@ -2647,7 +2746,7 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "frigate" || type === "corvette" || type === "razee") {
     addSquareSail(group, -0.8, -1.8, 0.9, 0xf2ead5, 2);
     addSquareSail(group, 0, 0, 1.02, 0xf8efd8, 3);
-    addSquareSail(group, 0.78, 1.85, type === "corvette" ? 0.68 : 0.78, 0xf2ead5, type === "corvette" ? 1 : 2);
+    addSquareSail(group, 0.78, 1.28, type === "corvette" ? 0.68 : 0.78, 0xf2ead5, type === "corvette" ? 1 : 2);
   } else if (type === "whaler") {
     addSquareSail(group, -0.65, -1.55, 0.78, 0xe8eadf, 1);
     addSail(group, 0.45, 0.8, 0.86, 0xf4efd9);
@@ -2684,16 +2783,16 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "carrack") {
     addSquareSail(group, -0.55, -1.6, 0.95, 0xf6ead0, 2);
     addSquareSail(group, 0.55, 0.25, 1.04, 0xf8e7bb, 2);
-    addSail(group, 0, 2.0, 0.86, 0xf6ead0);
+    addSail(group, 0, 1.32, 0.86, 0xf6ead0);
   } else if (type === "manowar" || type === "fourthrate" || type === "firstrate") {
     const sailBoost = type === "firstrate" ? 1.08 : type === "fourthrate" ? 0.96 : 1;
     addSquareSail(group, -0.9, -2.1, 1.0 * sailBoost, 0xf6ead0, type === "fourthrate" ? 2 : 3);
     addSquareSail(group, 0, -0.1, 1.08 * sailBoost, 0xf8e7bb, 3);
-    addSquareSail(group, 0.9, 2.0, 0.95 * sailBoost, 0xf6ead0, type === "firstrate" ? 3 : 2);
+    addSquareSail(group, 0.9, 1.42, 0.95 * sailBoost, 0xf6ead0, type === "firstrate" ? 3 : 2);
   } else if (type === "treasure") {
     addSquareSail(group, -0.85, -1.8, 1.05, 0xf5df9b, 3);
     addSquareSail(group, 0.25, 0.1, 1.18, 0xf8e8aa, 3);
-    addSquareSail(group, 0.9, 2.15, 0.95, 0xf1d98d, 2);
+    addSquareSail(group, 0.9, 1.46, 0.95, 0xf1d98d, 2);
     const pagoda = new THREE.Mesh(new THREE.ConeGeometry(1.35 * scale, 0.75 * scale, 4), mat(0xd6a83c));
     pagoda.position.set(0, 2.9 * scale, 2.55 * scale);
     pagoda.rotation.y = Math.PI / 4;
@@ -4176,33 +4275,19 @@ function makeCrateMesh(x, z, kind = "crate") {
   group.position.set(x, 0.65, z);
   group.rotation.y = Math.random() * Math.PI;
   if (kind === "whale") {
-    const bodyMat = mat(0x315f89);
-    const darkMat = mat(0x234b6c);
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 12), bodyMat);
-    body.scale.set(1.55, 0.34, 2.75);
-    body.position.set(0, 0.22, -0.35);
-    body.castShadow = true;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 9), bodyMat);
-    head.scale.set(1.72, 0.32, 0.88);
-    head.position.set(0, 0.18, 2.0);
-    group.add(head);
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), mat(0xa8c9df));
-    belly.scale.set(1.12, 0.08, 2.35);
-    belly.position.set(0, -0.02, 0.48);
-    group.add(belly);
-    const tailStock = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.42, 1.7, 10), darkMat);
-    tailStock.position.set(0, 0.18, -3.15);
-    tailStock.rotation.x = Math.PI / 2;
-    group.add(tailStock);
-    for (const side of [-1, 1]) {
-      const fluke = new THREE.Mesh(new THREE.ConeGeometry(0.48, 1.08, 4), darkMat);
-      fluke.position.set(side * 0.54, 0.18, -3.95);
-      fluke.rotation.z = side * Math.PI / 2;
-      fluke.rotation.y = side * 0.3;
-      fluke.scale.set(1.2, 0.42, 0.12);
-      group.add(fluke);
-    }
+    const chunk = new THREE.Mesh(new THREE.DodecahedronGeometry(0.82, 0), mat(0x9db7c7));
+    chunk.scale.set(1.2, 0.45, 0.86);
+    chunk.position.y = 0.05;
+    chunk.castShadow = true;
+    group.add(chunk);
+    const rind = new THREE.Mesh(new THREE.DodecahedronGeometry(0.58, 0), mat(0x315f89));
+    rind.scale.set(1.08, 0.2, 0.58);
+    rind.position.set(-0.18, 0.28, 0.06);
+    rind.castShadow = true;
+    group.add(rind);
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 5), new THREE.MeshBasicMaterial({ color: 0xe7f5f7, transparent: true, opacity: 0.6 }));
+    shine.position.set(0.26, 0.48, 0.04);
+    group.add(shine);
     scene.add(group);
     return group;
   }
@@ -4322,9 +4407,13 @@ function nearestPickupTo(point, maxDistance = 215, bot = null) {
     if (islands.some((island) => dist2(crate.mesh.position, island.group.position) < island.radius + 8)) return;
     const d = dist2(point, crate.mesh.position);
     const valuable = crate.kind === "treasure" || crate.kind === "kraken";
-    const searchDistance = valuable ? maxDistance * 1.35 : maxDistance;
+    const searchDistance = crate.kind === "treasure"
+      ? Math.min(maxDistance * 2.05, 430)
+      : crate.kind === "kraken"
+        ? Math.min(maxDistance * 1.65, 360)
+        : Math.min(maxDistance, 260);
     if (d > searchDistance) return;
-    const priority = crate.kind === "kraken" ? 0.22 : crate.kind === "treasure" ? 0.3 : 1 - healthNeed * 0.38;
+    const priority = crate.kind === "kraken" ? 0.2 : crate.kind === "treasure" ? 0.11 : crate.kind === "whale" ? 0.72 : 1 - healthNeed * 0.38;
     const score = d * priority - healthNeed * 36;
     if (score < bestScore) {
       best = crate;
@@ -4594,16 +4683,25 @@ function damageAnimal(animal, shot) {
   const pos = animal.group.position.clone();
   scene.remove(animal.group);
   animals.splice(animals.indexOf(animal), 1);
-  crates.push({
-    mesh: makeCrateMesh(pos.x, pos.z, "whale"),
-    kind: "whale",
-    born: clock.elapsedTime,
-    heal: 0,
-    xp: 0,
-    gold: 0,
-    blubber: 3 + Math.floor(Math.random() * 3),
-  });
-  toast("Whale down. A carcass surfaced.");
+  const bitCount = 3 + Math.floor(Math.random() * 3);
+  if (multiplayer.serverWorld) {
+    sendMultiplayer({ type: "spawnWhaleBits", x: pos.x, z: pos.z, count: bitCount });
+  } else {
+    for (let i = 0; i < bitCount; i++) {
+      const angle = (Math.PI * 2 * i) / bitCount + Math.random() * 0.45;
+      const radius = 2.2 + Math.random() * 4.4;
+      crates.push({
+        mesh: makeCrateMesh(pos.x + Math.sin(angle) * radius, pos.z + Math.cos(angle) * radius, "whale"),
+        kind: "whale",
+        born: clock.elapsedTime,
+        heal: 0,
+        xp: 0,
+        gold: 0,
+        blubber: 1,
+      });
+    }
+  }
+  toast("Whale down. Blubber bits surfaced.");
   return true;
 }
 
@@ -4815,7 +4913,7 @@ function damageTarget(target, amount, options = {}) {
     sendMultiplayer({ type: "hitBot", id: target.serverId, damage: amount, fire: options.fire || null });
     return;
   }
-  const armor = target.isBot ? getShipStats(target.shipType).armor : getShipStats().armor;
+  const armor = options.ignoreArmor ? 0 : target.isBot ? getShipStats(target.shipType).armor : getShipStats().armor;
   target.hp -= amount * (1 - armor);
   if (target.hp > 0 && options.fire) igniteTarget(target, options.fire, options.hitPosition || null);
   if (target.isBot && target.hp > 0) alertBot(target);
@@ -5268,20 +5366,19 @@ function useTool() {
 function collectCrate(crate) {
   if (crate.serverId && multiplayer.serverWorld) {
     if (crate.pending) return;
+    if (crate.kind === "whale" && !canAddBlubber(Math.max(1, Math.floor(Number(crate.blubber) || 1)))) {
+      return toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
+    }
     crate.pending = true;
     sendMultiplayer({ type: "collectCrate", id: crate.serverId });
     return;
   }
   if (crate.kind === "whale") {
-    const amount = crate.blubber || (3 + Math.floor(Math.random() * 3));
-    const capacity = blubberCapacity();
-    if (!capacity) return toast("You need a Whaler to carry whale blubber.");
-    const room = Math.max(0, capacity - blubberCount());
-    if (room <= 0) return toast("Your whale blubber hold is full.");
-    const taken = Math.min(room, amount);
-    state.cargo["Whale Blubber"] = blubberCount() + taken;
+    const amount = Math.max(1, Math.floor(Number(crate.blubber) || 1));
+    if (!canAddBlubber(amount)) return toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
+    state.cargo["Whale Blubber"] = blubberCount() + amount;
     removeCrate(crate);
-    toast(`Recovered ${taken} whale blubber.`);
+    toast("Recovered whale blubber.");
     return;
   }
   state.hp = clamp(state.hp + crate.heal, 0, maxHp());
@@ -5434,7 +5531,7 @@ function shipPreviewImage(type) {
 
 function tradeDescription(island, name, owned, buyPrice, sellPrice) {
   if (name === "Whale Blubber") {
-    return `Owned ${owned}. Portsmouth pays 200g each; other ports will not buy it. Whalers can carry up to 40 blubber outside their normal hold.`;
+    return `Owned ${owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.`;
   }
   const markets = islandData
     .map((item) => ({ name: item.name, sell: marketSellPrice(item, name) }))
@@ -5492,7 +5589,12 @@ function renderShop() {
   if (state.shopTab === "goods") {
     const marketGoods = [...goods];
     if (island.name === "Portsmouth" || blubberCount() > 0) marketGoods.push("Whale Blubber");
-    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}${blubberCapacity() ? ` | Blubber ${blubberCount()}/${blubberCapacity()}` : ""}. Buy low, then sell where demand is higher.</p>` + marketGoods.map((name) => {
+    const blubberLabel = state.shipType === "whaler"
+      ? ` | Blubber ${blubberCount()}/${blubberCapacity()}`
+      : blubberCount() > 0
+        ? ` | Blubber ${blubberCount()} in hold`
+        : "";
+    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}. Buy low, then sell where demand is higher.</p>` + marketGoods.map((name) => {
       const owned = state.cargo[name] || 0;
       const buyPrice = marketBuyPrice(island, name);
       const sellPrice = marketSellPrice(island, name);
@@ -5562,8 +5664,12 @@ ui.shopBody.addEventListener("click", (event) => {
   if (button.dataset.ship) {
     const ship = getShipStats(button.dataset.ship);
     if (state.gold < ship.price) return toast("Not enough gold.");
-    if (cargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
-    if (blubberCount() > (ship.blubberCapacity || 0)) return toast(`${ship.name} cannot carry that much whale blubber.`);
+    if (regularCargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity} regular cargo.`);
+    if (ship.id === "whaler") {
+      if (blubberCount() > (ship.blubberCapacity || 50)) return toast(`${ship.name} cannot carry that much whale blubber.`);
+    } else if (totalCargoCount() > ship.capacity) {
+      return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
+    }
     state.gold -= ship.price;
     replacePlayerShip(ship.id);
     if (ship.id === "ballooner") state.balloonStock = Math.max(state.balloonStock, 3);
@@ -5618,6 +5724,16 @@ function makeBalloonMesh() {
   basket.position.y = 1.9;
   basket.castShadow = true;
   group.add(basket);
+  const arrow = new THREE.Group();
+  arrow.position.set(0, 1.25, 1.05);
+  const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.9, 3), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
+  arrowHead.rotation.x = Math.PI / 2;
+  arrowHead.position.z = 0.48;
+  arrow.add(arrowHead);
+  const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.8), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
+  arrowTail.position.z = -0.18;
+  arrow.add(arrowTail);
+  group.add(arrow);
   for (const sx of [-0.45, 0.45]) {
     for (const sz of [-0.4, 0.4]) {
       const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 5), mat(0x3b2d24));
@@ -5752,16 +5868,38 @@ function destroyBalloon(balloon, cause = "crash") {
   }
 }
 
+function makeBalloonBombMesh() {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.82, 14, 10), mat(0x2f2a24));
+  mesh.castShadow = true;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.045, 6, 16), mat(0x6b4a2e));
+  band.rotation.x = Math.PI / 2;
+  mesh.add(band);
+  return mesh;
+}
+
 function dropBalloonBomb(balloon) {
   if (!balloon || balloon.destroyed) return;
   if (!balloon.bomb) return toast("This balloon has already dropped its bomb.");
   balloon.bomb = false;
   const plan = ensureBalloonBombPlan(balloon);
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.72, 12, 9), mat(0x2f2a24));
-  mesh.position.copy(balloon.group.position).add(plan.offset);
-  mesh.castShadow = true;
+  const start = balloon.group.position.clone().add(plan.offset);
+  const velocity = balloonBombVelocity(balloon, plan);
+  if (multiplayer.serverWorld && sendMultiplayer({
+    type: "balloonBomb",
+    x: start.x,
+    y: start.y,
+    z: start.z,
+    vx: velocity.x,
+    vy: velocity.y,
+    vz: velocity.z,
+  })) {
+    toast("Bomb away.");
+    return;
+  }
+  const mesh = makeBalloonBombMesh();
+  mesh.position.copy(start);
   scene.add(mesh);
-  balloonBombs.push({ mesh, start: mesh.position.clone(), velocity: balloonBombVelocity(balloon, plan), born: clock.elapsedTime });
+  balloonBombs.push({ mesh, start, velocity, born: clock.elapsedTime });
   toast("Bomb away.");
 }
 
@@ -5783,7 +5921,7 @@ function detonateAirburst(shot) {
   });
 }
 
-function detonateBalloonBomb(position) {
+function detonateBalloonBomb(position, options = {}) {
   makeSplashEffect(position);
   const boom = new THREE.Group();
   boom.position.copy(position).setY(1.2);
@@ -5798,17 +5936,19 @@ function detonateBalloonBomb(position) {
     boom.add(shard);
   }
   addImpactEffect(boom, 0.9);
-  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: true });
+  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly });
+  if (options.visualOnly) return;
+  const damage = Number(options.damage) || BALLOON_BOMB_DAMAGE;
   const hitShip = (target, pos, type) => {
     const d = dist2(position, pos);
-    if (d < shipHitRadius(type) + 4) damageTarget(target, 1000 * clamp(1 - d / 10, 0.35, 1));
+    if (d < shipHitRadius(type) + 4) damageTarget(target, damage * clamp(1 - d / 10, 0.35, 1), { ignoreArmor: true });
   };
   if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
   bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
   animals.forEach((animal) => {
     const d = dist2(position, animal.group.position);
     if (d < animalHitRadius(animal) + 5) {
-      animal.hp -= 700 * clamp(1 - d / 16, 0.25, 1);
+      animal.hp -= damage * clamp(1 - d / 16, 0.25, 1);
       if (animal.hp <= 0) damageAnimal(animal, { ammoType: "bomb", damage: 9999, mesh: { position } });
     }
   });
@@ -5910,6 +6050,11 @@ function updateBalloons(dt) {
     }
   }
   balloonBombs.slice().forEach((bomb) => {
+    if (bomb.serverId) {
+      bomb.mesh.rotation.x += dt * 4;
+      bomb.mesh.rotation.z += dt * 1.7;
+      return;
+    }
     const age = Math.max(0, clock.elapsedTime - (bomb.born ?? clock.elapsedTime));
     bomb.mesh.position.copy(bomb.start.clone().add(bomb.velocity.clone().multiplyScalar(age)));
     bomb.mesh.position.y = bomb.start.y + bomb.velocity.y * age - 0.5 * BALLOON_BOMB_GRAVITY * age * age;
@@ -6107,7 +6252,8 @@ function updateBots(dt) {
     let pickupTarget = nearestPickupTo(bot.group.position, lowHealth ? 250 : 215, bot);
     const pickupDistance = pickupTarget ? dist2(bot.group.position, pickupTarget.mesh.position) : Infinity;
     const valuablePickup = pickupTarget && (pickupTarget.kind === "treasure" || pickupTarget.kind === "kraken");
-    if (pickupTarget && (lowHealth || (!aggressive && !fightingBot) || (valuablePickup && pickupDistance < 155))) {
+    const pickupChaseRange = pickupTarget?.kind === "treasure" ? 310 : pickupTarget?.kind === "kraken" ? 240 : 170;
+    if (pickupTarget && (lowHealth || (!aggressive && !fightingBot) || (valuablePickup && pickupDistance < pickupChaseRange))) {
       if (lowHealth || valuablePickup) {
         aggressive = false;
         bot.agroUntil = 0;
@@ -6518,11 +6664,11 @@ function updateFish(dt) {
     if (crate.born === undefined) crate.born = clock.elapsedTime;
     crate.mesh.rotation.y += dt * (crate.kind === "treasure" || crate.kind === "kraken" ? 0.92 : 0.65);
     const age = clock.elapsedTime - crate.born;
-    const lifetime = crate.kind === "kraken" ? CRATE_LIFETIME * 4 : CRATE_LIFETIME;
+    const lifetime = crate.kind === "kraken" ? CRATE_LIFETIME * 4 : crate.kind === "whale" ? WHALE_BIT_LIFETIME : CRATE_LIFETIME;
     const sink = clamp((age - lifetime) / CRATE_SINK_TIME, 0, 1);
-    const baseY = crate.kind === "kraken" ? 0.54 : crate.kind === "treasure" ? 0.78 : 0.72;
+    const baseY = crate.kind === "kraken" ? 0.54 : crate.kind === "treasure" ? 0.78 : crate.kind === "whale" ? 0.48 : 0.72;
     crate.mesh.position.y = baseY + Math.sin(clock.elapsedTime * 2 + crate.mesh.id) * 0.1 - sink * 1.8;
-    const baseScale = crate.kind === "kraken" ? 1.2 : crate.kind === "treasure" ? 1.08 : 1;
+    const baseScale = crate.kind === "kraken" ? 1.2 : crate.kind === "treasure" ? 1.08 : crate.kind === "whale" ? 0.72 : 1;
     crate.mesh.scale.setScalar(baseScale * (1 - sink * 0.35));
     if (!crate.serverId && age > lifetime + CRATE_SINK_TIME) removeCrate(crate);
   });
@@ -6702,7 +6848,11 @@ function updateHud() {
   ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
   const fireLabel = state.fire ? ` | Burning ${Math.ceil(state.fire.remaining)}s` : "";
-  const blubberLabel = blubberCapacity() ? ` | Blubber ${blubberCount()}/${blubberCapacity()}` : "";
+  const blubberLabel = state.shipType === "whaler"
+    ? ` | Blubber ${blubberCount()}/${blubberCapacity()}`
+    : blubberCount() > 0
+      ? ` | Blubber ${blubberCount()}`
+      : "";
   ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}${fireLabel}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
@@ -7110,6 +7260,27 @@ function removeBot(bot) {
   if (index >= 0) bots.splice(index, 1);
 }
 
+function syncServerBombs(items = []) {
+  const seen = new Set();
+  items.forEach((data) => {
+    if (!data?.id) return;
+    seen.add(data.id);
+    let bomb = balloonBombs.find((item) => item.serverId === data.id);
+    if (!bomb) {
+      const mesh = makeBalloonBombMesh();
+      scene.add(mesh);
+      bomb = { serverId: data.id, mesh };
+      balloonBombs.push(bomb);
+    }
+    bomb.mesh.position.set(Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0);
+  });
+  balloonBombs.slice().forEach((bomb) => {
+    if (!bomb.serverId || seen.has(bomb.serverId)) return;
+    scene.remove(bomb.mesh);
+    balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
+  });
+}
+
 function syncServerWorld(world) {
   if (!world) return;
   multiplayer.serverWorld = true;
@@ -7176,8 +7347,9 @@ function syncServerWorld(world) {
     if (!data?.id) return;
     seenCrates.add(data.id);
     let crate = crates.find((item) => item.serverId === data.id);
+    const serverKind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : data.kind === "whale" ? "whale" : "crate";
     if (!crate) {
-      const kind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : "crate";
+      const kind = serverKind;
       crate = {
         serverId: data.id,
         mesh: makeCrateMesh(Number(data.x) || 0, Number(data.z) || 0, kind),
@@ -7185,15 +7357,17 @@ function syncServerWorld(world) {
         heal: Number(data.heal) || 10,
         xp: Number(data.xp) || 16,
         gold: Number(data.gold) || 14,
+        blubber: Number(data.blubber) || 0,
         born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
       };
       crates.push(crate);
     }
-    crate.kind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : "crate";
+    crate.kind = serverKind;
     if (Number.isFinite(Number(data.born))) crate.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
     crate.heal = Number(data.heal) || crate.heal;
     crate.xp = Number(data.xp) || crate.xp;
     crate.gold = Number(data.gold) || crate.gold;
+    crate.blubber = Number(data.blubber) || crate.blubber || 0;
     crate.mesh.position.x = Number(data.x) || crate.mesh.position.x;
     crate.mesh.position.z = Number(data.z) || crate.mesh.position.z;
   });
@@ -7201,12 +7375,23 @@ function syncServerWorld(world) {
     if (!crate.serverId || !seenCrates.has(crate.serverId)) removeCrate(crate);
   });
   syncKraken(world.kraken);
+  syncServerBombs(world.bombs || []);
 }
 
 function applyCrateReward(crate) {
   if (!crate) return;
   const local = crates.find((item) => item.serverId === crate.id);
   if (local) removeCrate(local);
+  if (crate.kind === "whale") {
+    const amount = Math.max(1, Math.floor(Number(crate.blubber) || 1));
+    if (canAddBlubber(amount)) {
+      state.cargo["Whale Blubber"] = blubberCount() + amount;
+      toast("Recovered whale blubber.");
+    } else {
+      toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
+    }
+    return;
+  }
   state.hp = clamp(state.hp + (Number(crate.heal) || 0), 0, maxHp());
   addXP(Number(crate.xp) || 0);
   state.gold += Number(crate.gold) || 0;
@@ -7263,6 +7448,17 @@ function handleMultiplayerMessage(message) {
     applyCrateReward(message.crate);
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
+  } else if (message.type === "bombHit") {
+    if (state.mode === "ship") damageTarget(state, Number(message.damage) || BALLOON_BOMB_DAMAGE, { ignoreArmor: true });
+  } else if (message.type === "bombExplode") {
+    const bomb = balloonBombs.find((item) => item.serverId === message.id);
+    if (bomb) {
+      scene.remove(bomb.mesh);
+      balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
+    }
+    const x = Number(message.x);
+    const z = Number(message.z);
+    if (Number.isFinite(x) && Number.isFinite(z)) detonateBalloonBomb(new THREE.Vector3(x, 0, z), { visualOnly: true });
   } else if (message.type === "playerSunk") {
     applyRemotePlayerSunk(message);
   } else if (message.type === "krakenAttack") {

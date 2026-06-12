@@ -8,15 +8,17 @@ const port = Number(process.env.PORT || 4174);
 const clients = new Map();
 const bots = [];
 const crates = [];
-const worldBounds = 400;
+const bombs = [];
+const worldBounds = 760;
 const visibleBounds = worldBounds * 1.12;
-const islandSpacingScale = 1.35;
+const islandSpacingScale = 2.05;
 const islandSpacingAnchor = { x: -34, z: -24 };
 const botCount = 14;
 const cannonballSpeed = 29.3;
 const botCannonRange = 34;
 const centerBotClearRadius = 88;
 const crateLifetimeMs = 120000;
+const whaleBitLifetimeMs = 300000;
 const crateSinkMs = 5000;
 const maxTreasures = 3;
 const krakenMaxHp = 10000;
@@ -26,9 +28,14 @@ const krakenSpeed = 1;
 const krakenAttackDamage = 999999;
 const krakenBotFleeRadius = krakenAttackRadius + 46;
 const crateDropMultiplier = 1.2;
+const balloonBombDamage = 500;
+const balloonBombGravity = 18;
+const balloonBombBlastRadius = 12;
+const balloonBombLifetimeMs = 9000;
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
+let nextBombId = 1;
 let kraken = null;
 
 function spreadIslandCenter(island) {
@@ -56,7 +63,7 @@ const islandCenters = [
   { x: 164, z: -22, radius: 21 },
   { x: -96, z: 216, radius: 20 },
   { x: 246, z: -222, radius: 21 },
-].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 2 }));
+].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 4 }));
 
 const shipStats = [
   { id: "yawl", hp: 565, speed: 18, tier: 1 },
@@ -122,15 +129,15 @@ const playerShipTiers = {
 };
 
 const shipPhysics = {
-  skiff: { radius: 2.4, weight: 50 },
-  shallop: { radius: 2.5, weight: 55 },
-  pinnace: { radius: 2.6, weight: 59 },
+  skiff: { radius: 2.1, weight: 50 },
+  shallop: { radius: 2.25, weight: 55 },
+  pinnace: { radius: 2.35, weight: 59 },
   hoy: { radius: 2.9, weight: 76 },
-  yawl: { radius: 2.6, weight: 62 },
+  yawl: { radius: 2.45, weight: 62 },
   balinger: { radius: 3, weight: 88 },
   felucca: { radius: 3, weight: 72 },
   bilander: { radius: 3.2, weight: 98 },
-  cog: { radius: 3.1, weight: 89 },
+  cog: { radius: 2.85, weight: 89 },
   longship: { radius: 3.2, weight: 88 },
   dogger: { radius: 2.9, weight: 75 },
   dhow: { radius: 3, weight: 82 },
@@ -146,7 +153,7 @@ const shipPhysics = {
   schooner: { radius: 3.3, weight: 97 },
   galley: { radius: 3.5, weight: 107 },
   xebec: { radius: 3.4, weight: 101 },
-  brigantine: { radius: 3.6, weight: 117 },
+  brigantine: { radius: 3.8, weight: 117 },
   caravel: { radius: 3.5, weight: 114 },
   snow: { radius: 3.7, weight: 126 },
   packet: { radius: 3.5, weight: 110 },
@@ -672,6 +679,25 @@ function spawnCrates(x, z, count, level = 1, tier = 0) {
   }
 }
 
+function spawnWhaleBits(x, z, count = 4) {
+  const total = clamp(Math.floor(Number(count) || 4), 3, 5);
+  for (let i = 0; i < total; i++) {
+    const angle = (Math.PI * 2 * i) / total + Math.random() * 0.5;
+    const radius = 2.5 + Math.random() * 4.5;
+    crates.push({
+      id: crypto.randomUUID(),
+      kind: "whale",
+      born: Date.now(),
+      x: x + Math.sin(angle) * radius,
+      z: z + Math.cos(angle) * radius,
+      heal: 0,
+      xp: 0,
+      gold: 0,
+      blubber: 1,
+    });
+  }
+}
+
 function spawnTreasure(now = Date.now()) {
   if (crates.filter((crate) => crate.kind === "treasure").length >= maxTreasures) return null;
   const point = randomPoint(worldBounds * 0.94, 55);
@@ -699,9 +725,13 @@ function nearestPickup(bot, maxDistance = 220) {
     if (isInsideIsland(crate, 8)) continue;
     const distance = Math.hypot(crate.x - bot.x, crate.z - bot.z);
     const valuable = crate.kind === "treasure" || crate.kind === "kraken";
-    const searchDistance = valuable ? maxDistance * 1.35 : maxDistance;
+    const searchDistance = crate.kind === "treasure"
+      ? Math.min(maxDistance * 2.05, 430)
+      : crate.kind === "kraken"
+        ? Math.min(maxDistance * 1.65, 360)
+        : Math.min(maxDistance, 260);
     if (distance > searchDistance) continue;
-    const priority = crate.kind === "kraken" ? 0.22 : crate.kind === "treasure" ? 0.3 : 1 - healthNeed * 0.38;
+    const priority = crate.kind === "kraken" ? 0.2 : crate.kind === "treasure" ? 0.11 : crate.kind === "whale" ? 0.72 : 1 - healthNeed * 0.38;
     const score = distance * priority - healthNeed * 36;
     if (score < bestScore) {
       best = crate;
@@ -743,7 +773,11 @@ function updateCrateLifecycle(now) {
   for (let i = crates.length - 1; i >= 0; i--) {
     const crate = crates[i];
     if (!crate.born) crate.born = now;
-    const lifetime = crate.kind === "kraken" ? crateLifetimeMs * 4 : crateLifetimeMs;
+    const lifetime = crate.kind === "kraken"
+      ? crateLifetimeMs * 4
+      : crate.kind === "whale"
+        ? whaleBitLifetimeMs
+        : crateLifetimeMs;
     if (now - crate.born <= lifetime + crateSinkMs) continue;
     removed.push(crate.id);
     crates.splice(i, 1);
@@ -860,6 +894,115 @@ function damageBot(bot, amount, rewardSocket = null, fire = null) {
   }
   resetBot(bot);
   return true;
+}
+
+function damageBotIgnoringArmor(bot, amount, rewardSocket = null) {
+  bot.hp -= Math.max(0, Number(amount) || 0);
+  if (bot.hp > 0) return false;
+  const level = bot.level || 1;
+  const tier = bot.tier || 0;
+  spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
+  if (rewardSocket) {
+    send(rewardSocket, {
+      type: "botReward",
+      level,
+      gold: 50 + level * 14 + tier * 40,
+      xp: 48 + level * 22 + tier * 28,
+    });
+  }
+  resetBot(bot);
+  return true;
+}
+
+function spawnBalloonBomb(message, socket) {
+  if (!socket.player) return null;
+  const x = Number(message.x);
+  const y = Number(message.y);
+  const z = Number(message.z);
+  if (![x, y, z].every(Number.isFinite)) return null;
+  const bomb = {
+    id: `bomb-${nextBombId++}`,
+    owner: socket.id,
+    born: Date.now(),
+    x,
+    y: clamp(y, 8, 95),
+    z,
+    startX: x,
+    startY: clamp(y, 8, 95),
+    startZ: z,
+    vx: clamp(Number(message.vx) || 0, -42, 42),
+    vy: clamp(Number(message.vy) || 0, -22, 12),
+    vz: clamp(Number(message.vz) || 0, -42, 42),
+  };
+  bombs.push(bomb);
+  return bomb;
+}
+
+function explodeBalloonBomb(bomb) {
+  const rewardSocket = clients.get(bomb.owner) || null;
+  for (const bot of bots) {
+    if (bot.hp <= 0) continue;
+    const distance = Math.hypot(bot.x - bomb.x, bot.z - bomb.z);
+    const radius = balloonBombBlastRadius + shipRadius(bot.shipType) * 0.5;
+    if (distance > radius) continue;
+    const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
+    damageBotIgnoringArmor(bot, balloonBombDamage * falloff, rewardSocket);
+  }
+  for (const socket of clients.values()) {
+    if (!socket.player || socket.player.mode === "land") continue;
+    const playerX = Number(socket.player.x);
+    const playerZ = Number(socket.player.z);
+    if (!Number.isFinite(playerX) || !Number.isFinite(playerZ)) continue;
+    const distance = Math.hypot(playerX - bomb.x, playerZ - bomb.z);
+    const radius = balloonBombBlastRadius + shipRadius(socket.player.shipType || "skiff") * 0.5;
+    if (distance > radius) continue;
+    const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
+    send(socket, {
+      type: "bombHit",
+      id: bomb.id,
+      damage: Math.round(balloonBombDamage * falloff),
+      x: bomb.x,
+      z: bomb.z,
+    });
+  }
+  broadcast({ type: "bombExplode", id: bomb.id, x: bomb.x, z: bomb.z });
+}
+
+function updateBalloonBombs(now) {
+  if (!bombs.length) return;
+  for (let i = bombs.length - 1; i >= 0; i--) {
+    const bomb = bombs[i];
+    const age = (now - bomb.born) / 1000;
+    bomb.x = bomb.startX + bomb.vx * age;
+    bomb.y = bomb.startY + bomb.vy * age - 0.5 * balloonBombGravity * age * age;
+    bomb.z = bomb.startZ + bomb.vz * age;
+    let shouldExplode = bomb.y <= 0.35 || now - bomb.born > balloonBombLifetimeMs;
+    if (!shouldExplode && bomb.y <= 5.5) {
+      for (const bot of bots) {
+        if (bot.hp <= 0) continue;
+        if (Math.hypot(bot.x - bomb.x, bot.z - bomb.z) <= shipRadius(bot.shipType) + 1.8) {
+          shouldExplode = true;
+          break;
+        }
+      }
+      if (!shouldExplode) {
+        for (const socket of clients.values()) {
+          if (!socket.player || socket.player.mode === "land") continue;
+          const playerX = Number(socket.player.x);
+          const playerZ = Number(socket.player.z);
+          if (!Number.isFinite(playerX) || !Number.isFinite(playerZ)) continue;
+          if (Math.hypot(playerX - bomb.x, playerZ - bomb.z) <= shipRadius(socket.player.shipType || "skiff") + 1.8) {
+            shouldExplode = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!shouldExplode) continue;
+    bomb.y = Math.max(0, bomb.y);
+    explodeBalloonBomb(bomb);
+    bombs.splice(i, 1);
+  }
 }
 
 function sinkBotByKraken(bot) {
@@ -1054,9 +1197,20 @@ function worldSnapshot() {
       born: crate.born || Date.now(),
       x: crate.x,
       z: crate.z,
-      heal: Math.round(crate.heal),
-      xp: Math.round(crate.xp),
-      gold: crate.gold,
+      heal: Math.round(Number(crate.heal) || 0),
+      xp: Math.round(Number(crate.xp) || 0),
+      gold: Number(crate.gold) || 0,
+      blubber: Number(crate.blubber) || 0,
+    })),
+    bombs: bombs.map((bomb) => ({
+      id: bomb.id,
+      owner: bomb.owner,
+      x: bomb.x,
+      y: bomb.y,
+      z: bomb.z,
+      vx: bomb.vx,
+      vy: bomb.vy,
+      vz: bomb.vz,
     })),
   };
 }
@@ -1116,10 +1270,15 @@ function updateWorld() {
     const pickupDistance = noticedPickup ? Math.hypot(noticedPickup.x - bot.x, noticedPickup.z - bot.z) : Infinity;
     const valuablePickup = noticedPickup && (noticedPickup.kind === "treasure" || noticedPickup.kind === "kraken");
     const inAngryCombat = Boolean(targetSocket || targetBot);
+    const pickupChaseRange = noticedPickup?.kind === "treasure"
+      ? 310 - lootDiscipline * 70
+      : noticedPickup?.kind === "kraken"
+        ? 240 - lootDiscipline * 50
+        : 170 - lootDiscipline * 32;
     const shouldSeekPickup = noticedPickup && (
       !inAngryCombat
       || healthRatio < 0.35
-      || (valuablePickup && !bot.angerUntil && !bot.botFightUntil && pickupDistance < 145 - lootDiscipline * 55)
+      || (valuablePickup && !bot.angerUntil && !bot.botFightUntil && pickupDistance < pickupChaseRange)
     );
     if (shouldSeekPickup) {
       pickupTarget = noticedPickup;
@@ -1429,6 +1588,7 @@ function updateWorld() {
   botCollectCrates();
   updateCrateLifecycle(now);
   updateKraken(now, dt);
+  updateBalloonBombs(now);
   broadcast(worldSnapshot());
 }
 
@@ -1589,6 +1749,18 @@ function handleMessage(socket, text) {
         sentAt: Date.now(),
       },
     }, socket);
+  }
+  if (message.type === "balloonBomb") {
+    const bomb = spawnBalloonBomb(message, socket);
+    if (bomb) broadcast(worldSnapshot());
+  }
+  if (message.type === "spawnWhaleBits") {
+    const x = Number(message.x);
+    const z = Number(message.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    if (socket.player && Math.hypot(Number(socket.player.x) - x, Number(socket.player.z) - z) > 120) return;
+    spawnWhaleBits(x, z, message.count);
+    broadcast(worldSnapshot());
   }
   if (message.type === "hitBot") {
     const bot = bots.find((item) => item.id === message.id);
