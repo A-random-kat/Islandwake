@@ -9,9 +9,9 @@ const clients = new Map();
 const bots = [];
 const crates = [];
 const bombs = [];
-const worldBounds = 760;
+const worldBounds = 880;
 const visibleBounds = worldBounds * 1.12;
-const islandSpacingScale = 2.05;
+const islandSpacingScale = 2.45;
 const islandSpacingAnchor = { x: -34, z: -24 };
 const botCount = 14;
 const cannonballSpeed = 29.3;
@@ -31,6 +31,7 @@ const crateDropMultiplier = 1.2;
 const balloonBombDamage = 500;
 const balloonBombGravity = 18;
 const balloonBombBlastRadius = 12;
+const balloonBombKnockback = 22;
 const balloonBombLifetimeMs = 9000;
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
@@ -63,6 +64,11 @@ const islandCenters = [
   { x: 164, z: -22, radius: 21 },
   { x: -96, z: 216, radius: 20 },
   { x: 246, z: -222, radius: 21 },
+  { x: -308, z: 14, radius: 7 },
+  { x: 298, z: 88, radius: 8 },
+  { x: 6, z: -326, radius: 6 },
+  { x: -286, z: 268, radius: 9 },
+  { x: 312, z: -72, radius: 7 },
 ].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 4 }));
 
 const shipStats = [
@@ -946,6 +952,12 @@ function explodeBalloonBomb(bomb) {
     const radius = balloonBombBlastRadius + shipRadius(bot.shipType) * 0.5;
     if (distance > radius) continue;
     const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
+    const nx = distance > 0.001 ? (bot.x - bomb.x) / distance : Math.sin(Date.now() * 0.01);
+    const nz = distance > 0.001 ? (bot.z - bomb.z) / distance : Math.cos(Date.now() * 0.01);
+    const weightScale = clamp(95 / shipWeight(bot.shipType), 0.38, 1.25);
+    const impulse = balloonBombKnockback * falloff * weightScale;
+    bot.vx += nx * impulse;
+    bot.vz += nz * impulse;
     damageBotIgnoringArmor(bot, balloonBombDamage * falloff, rewardSocket);
   }
   for (const socket of clients.values()) {
@@ -964,6 +976,15 @@ function explodeBalloonBomb(bomb) {
       x: bomb.x,
       z: bomb.z,
     });
+  }
+  if (kraken?.alive) {
+    const head = krakenHeadPoint();
+    const distance = Math.hypot(head.x - bomb.x, head.z - bomb.z);
+    const radius = balloonBombBlastRadius + krakenRadius * 0.62;
+    if (distance <= radius) {
+      const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
+      damageKraken(balloonBombDamage * falloff, rewardSocket, { allowRemote: true });
+    }
   }
   broadcast({ type: "bombExplode", id: bomb.id, x: bomb.x, z: bomb.z });
 }
@@ -1027,9 +1048,9 @@ function spawnKrakenTentacle(now = Date.now()) {
   });
 }
 
-function damageKraken(amount, rewardSocket = null) {
+function damageKraken(amount, rewardSocket = null, options = {}) {
   if (!kraken?.alive) return false;
-  if (rewardSocket?.player && dist(rewardSocket.player, kraken) > krakenAttackRadius + 56) return false;
+  if (!options.allowRemote && rewardSocket?.player && dist(rewardSocket.player, kraken) > krakenAttackRadius + 56) return false;
   kraken.hp -= clamp(Number(amount) || 0, 0, 260);
   if (kraken.hp > 0) return false;
   kraken.hp = 0;

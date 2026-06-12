@@ -69,17 +69,20 @@ const CRATE_DROP_MULTIPLIER = 1.2;
 const KRAKEN_ATTACK_LIFE = 3.8;
 const KRAKEN_SLAM_DELAY_MS = 2900;
 const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
-const MAP_LIMIT = 760;
+const MAP_LIMIT = 880;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
 const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
 const ISLAND_RADIUS_SCALE = 4;
-const ISLAND_SPACING_SCALE = 2.05;
+const ISLAND_SPACING_SCALE = 2.45;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
 const CHARACTER_SCALE = 0.34;
-const SEA_SIZE = 3600;
+const SEA_SIZE = 4200;
 const WIND_MARKER_COUNT = 18;
 const BALLOON_BOMB_GRAVITY = 18;
 const BALLOON_BOMB_DAMAGE = 500;
+const BALLOON_BOMB_BLAST_RADIUS = 12;
+const BALLOON_BOMB_KNOCKBACK = 22;
+const AIRBURST_RADIUS = 30;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
@@ -114,6 +117,11 @@ const islandData = [
   { name: "Crown Harbor", culture: "Crown Colony", x: 164, z: -22, radius: 21, color: 0x82bd72, accent: 0xd99928, theme: "fort", shipMarket: ["dart", "storm", "bombketch", "frigate"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Blackreef", culture: "Privateer", x: -96, z: 216, radius: 20, color: 0x5fa66a, accent: 0x3f87a6, theme: "rocky", shipMarket: ["dart", "lugger", "brigantine", "xebec"], goods: { Silk: 78, Spice: 52, Iron: 101, Tea: 55, Pearls: 86 } },
   { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "barque", "merchantman", "whaler", "eastindiaman", "grandfrigate"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
+  { name: "Gull Keys", culture: "Uncharted", x: -308, z: 14, radius: 7, color: 0x6aa86a, accent: 0xd7b44a, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Twin Shoals", culture: "Uncharted", x: 298, z: 88, radius: 8, color: 0x82bd72, accent: 0xefc27c, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Mistfall Cay", culture: "Uncharted", x: 6, z: -326, radius: 6, color: 0x75caa5, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Broken Tooth", culture: "Uncharted", x: -286, z: 268, radius: 9, color: 0x6f9b68, accent: 0x4f5963, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Greenneedle", culture: "Uncharted", x: 312, z: -72, radius: 7, color: 0x68b779, accent: 0x2f6b48, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
 ].map(spreadIslandData);
 
 const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
@@ -1073,6 +1081,85 @@ function makeIsland(data) {
   group.position.set(data.x, 0, data.z);
   const radius = (data.radius || 20) * ISLAND_RADIUS_SCALE;
   const accent = data.accent || 0xd64f45;
+  if (data.exploreOnly) {
+    const obstacles = [];
+    const collisionBoxes = [];
+    const terrainFeatures = [];
+    const lobeSpecs = data.lobes || [
+      { x: -radius * 0.18, z: -radius * 0.08, rx: radius * 0.58, rz: radius * 0.42, rot: 0.25 },
+      { x: radius * 0.22, z: radius * 0.1, rx: radius * 0.42, rz: radius * 0.56, rot: -0.42 },
+      { x: -radius * 0.02, z: radius * 0.3, rx: radius * 0.34, rz: radius * 0.26, rot: 0.72 },
+    ];
+    lobeSpecs.forEach((lobe, index) => {
+      const shallow = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.07, 12), mats.shallows);
+      shallow.scale.set(lobe.rx + 5, 1, lobe.rz + 5);
+      shallow.position.set(lobe.x, 0.08, lobe.z);
+      shallow.rotation.y = lobe.rot;
+      shallow.receiveShadow = true;
+      group.add(shallow);
+      const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1.35, 10), mats.sand);
+      sand.scale.set(lobe.rx, 1, lobe.rz);
+      sand.position.set(lobe.x, 0.78 + index * 0.04, lobe.z);
+      sand.rotation.y = lobe.rot;
+      sand.castShadow = true;
+      sand.receiveShadow = true;
+      group.add(sand);
+      const grass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.65, 9), mat(index % 2 ? data.color : new THREE.Color(data.color).multiplyScalar(0.88).getHex()));
+      grass.scale.set(lobe.rx * 0.72, 1, lobe.rz * 0.72);
+      grass.position.set(lobe.x, 1.72 + index * 0.04, lobe.z);
+      grass.rotation.y = lobe.rot + 0.18;
+      grass.castShadow = true;
+      grass.receiveShadow = true;
+      group.add(grass);
+    });
+    const hill = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.22, radius * 0.28, 7), mats.rock);
+    hill.position.set(-radius * 0.12, 2.25 + radius * 0.14, -radius * 0.08);
+    hill.scale.z = 0.72;
+    hill.rotation.y = 0.4;
+    hill.castShadow = true;
+    group.add(hill);
+    terrainFeatures.push({ x: data.x - radius * 0.12, z: data.z - radius * 0.08, r: radius * 0.22, h: radius * 0.26 });
+    for (let i = 0; i < 4; i++) {
+      const angle = i * 1.65 + Math.random() * 0.25;
+      const tree = makeIslandTree(i % 2 ? "rocky" : "atoll");
+      tree.position.set(Math.cos(angle) * radius * (0.24 + Math.random() * 0.18), 1.85, Math.sin(angle) * radius * (0.2 + Math.random() * 0.16));
+      tree.scale.setScalar(0.55 + Math.random() * 0.32);
+      group.add(tree);
+      obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.1 * tree.scale.x });
+    }
+    for (let i = 0; i < 7; i++) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55 + Math.random() * 0.75, 0), mats.rock);
+      rock.position.set((Math.random() - 0.5) * radius * 1.2, 2.05, (Math.random() - 0.5) * radius * 1.05);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.scale.set(0.8 + Math.random() * 0.8, 0.45 + Math.random() * 0.65, 0.8 + Math.random() * 0.8);
+      rock.castShadow = true;
+      group.add(rock);
+      obstacles.push({ x: data.x + rock.position.x, z: data.z + rock.position.z, r: 0.9 * Math.max(rock.scale.x, rock.scale.z) });
+    }
+    const marker = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.6, 6), mats.wood);
+    marker.position.set(radius * 0.18, 3.5, -radius * 0.22);
+    marker.rotation.z = -0.12;
+    group.add(marker);
+    const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.68, 1.2), mat(accent));
+    pennant.position.set(radius * 0.2, 4.65, -radius * 0.22);
+    group.add(pennant);
+    const label = makeLabel(data.name);
+    label.position.set(data.x, 9, data.z);
+    scene.add(label);
+    labels.push(label);
+    scene.add(group);
+    return {
+      ...data,
+      group,
+      radius,
+      landY: 2.15,
+      obstacles,
+      collisionBoxes,
+      terrainFeatures,
+      dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.82),
+      shop: new THREE.Vector3(data.x, 0, data.z),
+    };
+  }
   const shallows = new THREE.Mesh(new THREE.CylinderGeometry(radius + 7, radius + 10, 0.08, 24), mats.shallows);
   shallows.position.y = 0.08;
   shallows.receiveShadow = true;
@@ -2339,6 +2426,8 @@ function mastPlan(type, length) {
   if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
   if (type === "whaler") return [-length * 0.22, length * 0.03];
   if (type === "ballooner") return [-length * 0.27, -length * 0.02];
+  if (type === "grandfrigate") return [-length * 0.3, -length * 0.06, length * 0.09];
+  if (type === "windrunner") return [-length * 0.32, -length * 0.08, length * 0.08];
   if (["sloop", "storm", "dart", "lugger", "dogger", "tartane"].includes(type)) return [-length * 0.18, length * 0.11];
   if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee"].includes(type)) {
     return [-length * 0.3, -length * 0.04, length * 0.1];
@@ -2453,9 +2542,9 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   const customCabinTypes = new Set([
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
-    "galley", "galleon", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
+    "galley", "galleon", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
     "packet", "pink", "pinnace", "razee", "schooner", "sloop", "storm", "treasure",
-    "xebec", "tartane", "firstrate", "whaler", "ballooner",
+    "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner",
   ]);
   const customDeckTypes = new Set([
     "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "ironclad",
@@ -2528,6 +2617,8 @@ function makeShip(type = "skiff", remote = false) {
     frigate: [8.2, 2.9],
     corvette: [7.8, 2.65],
     razee: [8.5, 3.0],
+    grandfrigate: [8.9, 3.18],
+    windrunner: [9.4, 2.55],
     carrack: [7.4, 3.5],
     manowar: [8.4, 3.8],
     fourthrate: [8.3, 3.65],
@@ -2547,7 +2638,7 @@ function makeShip(type = "skiff", remote = false) {
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
-  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "razee", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
+  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "razee", "grandfrigate", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
   group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, darkHulled ? mats.hullDark : mats.hull, profile));
   [-1, 1].forEach((side) => {
     addHullSideLine(
@@ -2603,7 +2694,24 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.rotation.x = Math.PI / 2;
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
-  if (type === "clipper") {
+  if (type === "grandfrigate") {
+    addSquareSail(group, -0.85, -2.05, 0.96, 0xf2ead5, 2);
+    addSquareSail(group, 0, -0.35, 1.08, 0xf8efd8, 3);
+    addSquareSail(group, 0.82, 1.08, 0.78, 0xf2ead5, 2);
+    const commandDeck = new THREE.Mesh(new THREE.BoxGeometry(2.1 * scale, 0.46 * scale, 1.05 * scale), mat(0x4a3a33));
+    commandDeck.position.set(0, 1.82 * scale, 2.55 * scale);
+    commandDeck.castShadow = true;
+    group.add(commandDeck);
+    addWindowRow(group, hullSize[1] * 0.78, 2.55 * scale + 0.54 * scale, 1.84 * scale, scale, 0xffd56a, 4);
+  } else if (type === "windrunner") {
+    addSquareSail(group, -0.65, -2.25, 0.78, 0xfff3ce, 2);
+    addSquareSail(group, 0.1, -0.55, 0.92, 0xffdf9b, 2);
+    addSail(group, 0.58, 0.88, 0.7, 0xfff3ce);
+    const lowCabin = new THREE.Mesh(new THREE.BoxGeometry(1.85 * scale, 0.38 * scale, 0.86 * scale), mat(0x5b432f));
+    lowCabin.position.set(0, 1.68 * scale, 2.45 * scale);
+    lowCabin.castShadow = true;
+    group.add(lowCabin);
+  } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
   } else if (type === "brig" || type === "brigantine") {
@@ -4264,6 +4372,7 @@ function makeWhale() {
     maxHp: 1000,
     speed: 14,
     direction: group.rotation.y,
+    bombImpulse: new THREE.Vector3(),
     turnAt: clock.elapsedTime + 3 + Math.random() * 5,
     submergedUntil: 0,
     ramCooldown: 0,
@@ -4745,6 +4854,10 @@ function updateAnimals(dt) {
     animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.direction, clamp(dt * 2, 0, 0.12));
     const forward = new THREE.Vector3(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
     const next = animal.group.position.clone().add(forward.multiplyScalar(animal.speed * dt * (submerged ? 0.82 : (animal.aggressiveUntil || 0) > clock.elapsedTime ? 1.08 : 1)));
+    if (animal.bombImpulse?.lengthSq?.() > 0.001) {
+      next.add(animal.bombImpulse.clone().multiplyScalar(dt));
+      animal.bombImpulse.multiplyScalar(Math.pow(0.14, dt));
+    }
     const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + animalHitRadius(animal) * 0.85);
     if (!pointInWhaleNorthZone(next)) {
       animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), 0.62);
@@ -5568,7 +5681,7 @@ function ammoDescription(ammo) {
     return "Fixed 20 damage to ships. Whales take 100 damage from it, and cannon damage upgrades do not boost it.";
   }
   if (ammo.id === "airburst") {
-    return "Explodes high above the aim point. It does no ship damage, but deals 40-60 damage to hot air balloons in the blast.";
+    return "Explodes high above the aim point. It does no ship damage, but one-shots hot air balloons inside its wide blast.";
   }
   return "Reliable single cannonball with infinite ammo.";
 }
@@ -5586,6 +5699,10 @@ function upgradeDescription(id) {
 function renderShop() {
   const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
   ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
+  if (island.exploreOnly) {
+    ui.shopBody.innerHTML = `<p class="stats">${island.name} is uncharted. There are no shops, shipwrights, or trade goods here.</p>`;
+    return;
+  }
   if (state.shopTab === "goods") {
     const marketGoods = [...goods];
     if (island.name === "Portsmouth" || blubberCount() > 0) marketGoods.push("Whale Blubber");
@@ -5725,13 +5842,23 @@ function makeBalloonMesh() {
   basket.castShadow = true;
   group.add(basket);
   const arrow = new THREE.Group();
-  arrow.position.set(0, 1.25, 1.05);
-  const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.9, 3), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
+  arrow.position.set(0, 6.96, 0.08);
+  const arrowBacking = new THREE.Group();
+  const backingHead = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.55, 3), new THREE.MeshBasicMaterial({ color: 0x2f241e }));
+  backingHead.rotation.x = Math.PI / 2;
+  backingHead.position.z = 0.72;
+  arrowBacking.add(backingHead);
+  const backingTail = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.45), new THREE.MeshBasicMaterial({ color: 0x2f241e }));
+  backingTail.position.z = -0.22;
+  arrowBacking.add(backingTail);
+  arrowBacking.position.y = -0.035;
+  arrow.add(arrowBacking);
+  const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.58, 1.32, 3), new THREE.MeshBasicMaterial({ color: 0xffef4a }));
   arrowHead.rotation.x = Math.PI / 2;
-  arrowHead.position.z = 0.48;
+  arrowHead.position.z = 0.72;
   arrow.add(arrowHead);
-  const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.8), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
-  arrowTail.position.z = -0.18;
+  const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 1.25), new THREE.MeshBasicMaterial({ color: 0xffef4a }));
+  arrowTail.position.z = -0.16;
   arrow.add(arrowTail);
   group.add(arrow);
   for (const sx of [-0.45, 0.45]) {
@@ -5908,17 +6035,31 @@ function detonateAirburst(shot) {
   center.y = 24;
   const group = new THREE.Group();
   group.position.copy(center);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.82 }));
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 10), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.86 }));
   flash.userData.puff = true;
   group.add(flash);
-  addImpactEffect(group, 0.45);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(AIRBURST_RADIUS * 0.46, AIRBURST_RADIUS * 0.52, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = Math.PI / 2;
+  ring.userData.puff = true;
+  group.add(ring);
+  addImpactEffect(group, 0.75);
   balloons.forEach((balloon) => {
     if (balloon.destroyed) return;
     const d = balloon.group.position.distanceTo(center);
-    if (d > 17) return;
-    balloon.hp -= 40 + 20 * clamp(1 - d / 17, 0, 1);
-    if (balloon.hp <= 0) destroyBalloon(balloon, "airburst");
+    if (d > AIRBURST_RADIUS) return;
+    destroyBalloon(balloon, "airburst");
   });
+}
+
+function bombKnockbackVector(origin, target, radius, strength = BALLOON_BOMB_KNOCKBACK, weightScale = 1) {
+  const away = target.clone().sub(origin);
+  away.y = 0;
+  const distance = away.length();
+  if (distance > radius) return null;
+  if (distance <= 0.001) away.set(Math.sin(clock.elapsedTime * 9.1), 0, Math.cos(clock.elapsedTime * 9.1));
+  else away.multiplyScalar(1 / distance);
+  const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
+  return away.multiplyScalar(strength * falloff * weightScale);
 }
 
 function detonateBalloonBomb(position, options = {}) {
@@ -5937,22 +6078,49 @@ function detonateBalloonBomb(position, options = {}) {
   }
   addImpactEffect(boom, 0.9);
   addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly });
-  if (options.visualOnly) return;
   const damage = Number(options.damage) || BALLOON_BOMB_DAMAGE;
   const hitShip = (target, pos, type) => {
     const d = dist2(position, pos);
-    if (d < shipHitRadius(type) + 4) damageTarget(target, damage * clamp(1 - d / 10, 0.35, 1), { ignoreArmor: true });
+    const radius = BALLOON_BOMB_BLAST_RADIUS + shipHitRadius(type) * 0.5;
+    if (d >= radius) return;
+    const falloff = clamp(1 - d / Math.max(1, radius), 0.32, 1);
+    const velocity = target === state ? state.velocity : target.velocity;
+    const knockback = velocity ? bombKnockbackVector(position, pos, radius, BALLOON_BOMB_KNOCKBACK, clamp(95 / shipWeight(type), 0.38, 1.25)) : null;
+    if (knockback) velocity.add(knockback);
+    damageTarget(target, damage * falloff, { ignoreArmor: true });
   };
-  if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
-  bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
-  animals.forEach((animal) => {
+  if (!options.visualOnly) {
+    if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
+    bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
+  }
+  if (!options.visualOnly || options.affectAnimals) animals.forEach((animal) => {
     const d = dist2(position, animal.group.position);
-    if (d < animalHitRadius(animal) + 5) {
-      animal.hp -= damage * clamp(1 - d / 16, 0.25, 1);
+    const radius = BALLOON_BOMB_BLAST_RADIUS + animalHitRadius(animal) * 0.65;
+    if (d < radius) {
+      const falloff = clamp(1 - d / Math.max(1, radius), 0.3, 1);
+      const knockback = bombKnockbackVector(position, animal.group.position, radius, BALLOON_BOMB_KNOCKBACK, animal.kind === "whale" ? 0.52 : 1);
+      if (knockback) {
+        animal.bombImpulse = animal.bombImpulse || new THREE.Vector3();
+        animal.bombImpulse.add(knockback);
+      }
+      animal.hp -= damage * falloff;
+      animal.aggressiveUntil = clock.elapsedTime + 12;
+      animal.submergedUntil = 0;
       if (animal.hp <= 0) damageAnimal(animal, { ammoType: "bomb", damage: 9999, mesh: { position } });
     }
   });
-  balloons.forEach((balloon) => {
+  if (!options.visualOnly && krakenBoss?.alive && krakenBoss.group?.visible) {
+    const head = krakenHeadWorldPosition() || krakenBoss.group.position;
+    const d = dist2(position, head);
+    const radius = 28;
+    if (d < radius) {
+      const amount = damage * clamp(1 - d / radius, 0.32, 1);
+      krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - amount);
+      if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: amount });
+      if (krakenBoss.hp <= 0) krakenBoss.alive = false;
+    }
+  }
+  if (!options.visualOnly) balloons.forEach((balloon) => {
     if (balloon.destroyed) return;
     const d = dist2(position, balloon.group.position);
     if (d < 9) {
@@ -7458,7 +7626,7 @@ function handleMultiplayerMessage(message) {
     }
     const x = Number(message.x);
     const z = Number(message.z);
-    if (Number.isFinite(x) && Number.isFinite(z)) detonateBalloonBomb(new THREE.Vector3(x, 0, z), { visualOnly: true });
+    if (Number.isFinite(x) && Number.isFinite(z)) detonateBalloonBomb(new THREE.Vector3(x, 0, z), { visualOnly: true, affectAnimals: true });
   } else if (message.type === "playerSunk") {
     applyRemotePlayerSunk(message);
   } else if (message.type === "krakenAttack") {
