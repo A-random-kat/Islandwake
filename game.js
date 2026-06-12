@@ -40,6 +40,7 @@ const ui = {
   minimap: document.querySelector("#minimap"),
   closeMinimap: document.querySelector("#closeMinimap"),
   openMinimap: document.querySelector("#openMinimap"),
+  toggleWindMap: document.querySelector("#toggleWindMap"),
   leaderboardPanel: document.querySelector("#leaderboardPanel"),
   leaderboardList: document.querySelector("#leaderboardList"),
   closeLeaderboard: document.querySelector("#closeLeaderboard"),
@@ -48,6 +49,7 @@ const ui = {
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
+  developerTokenInput: document.querySelector("#developerTokenInput"),
   nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
   tabs: [...document.querySelectorAll(".tab")],
   toolButtons: {
@@ -73,8 +75,10 @@ const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
 const ISLAND_RADIUS_SCALE = 2;
 const ISLAND_SPACING_SCALE = 1.35;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
-const CHARACTER_SCALE = 0.5;
+const CHARACTER_SCALE = 0.34;
 const SEA_SIZE = 2400;
+const WIND_MARKER_COUNT = 18;
+const BALLOON_BOMB_GRAVITY = 18;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
@@ -110,6 +114,12 @@ const islandData = [
   { name: "Blackreef", culture: "Privateer", x: -96, z: 216, radius: 20, color: 0x5fa66a, accent: 0x3f87a6, theme: "rocky", shipMarket: ["dart", "lugger", "brigantine", "xebec"], goods: { Silk: 78, Spice: 52, Iron: 101, Tea: 55, Pearls: 86 } },
   { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "barque", "merchantman", "whaler", "eastindiaman", "grandfrigate"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
 ].map(spreadIslandData);
+
+const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
+const whaleZoneBaltimore = islandData.find((island) => island.name === "Baltimore") || { z: -280 };
+const WHALE_NORTH_MIN_Z = Math.min(whaleZonePortAzure.z, whaleZoneBaltimore.z) - 42;
+const WHALE_NORTH_MAX_Z = Math.max(whaleZonePortAzure.z, whaleZoneBaltimore.z) + 10;
+const WHALE_NORTH_CENTER_Z = (WHALE_NORTH_MIN_Z + WHALE_NORTH_MAX_Z) * 0.5;
 
 const shipCatalog = [
   { id: "skiff", name: "Skiff", price: 0, hp: 145, armor: 0.02, speed: 15, regen: 1.6, color: 0xcc4e3f, model: "skiff" },
@@ -285,6 +295,8 @@ saveValue("islandwakeId", captainId);
 const playerId = crypto.randomUUID();
 const state = {
   name: readSavedValue("islandwakeName"),
+  devToken: "",
+  infiniteGold: false,
   joined: false,
   level: 1,
   xp: 0,
@@ -310,6 +322,7 @@ const state = {
   activeBalloonIndex: -1,
   balloonStock: 0,
   maxBalloons: 5,
+  showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
   fire: null,
   cooldown: 0,
   rodCooldown: 0,
@@ -322,6 +335,7 @@ const state = {
   grounded: true,
   leviathanGrabbed: false,
   cameraYaw: 0,
+  cameraPitch: 0.28,
   fishing: null,
   spyTarget: null,
 };
@@ -350,6 +364,7 @@ const animals = [];
 const storms = [];
 const waveHazards = [];
 const activeKrakenAttacks = [];
+const windCurrents = [];
 const balloons = [];
 const balloonBombs = [];
 const crates = [];
@@ -371,6 +386,7 @@ let shipPreviewScene;
 let shipPreviewCamera;
 let fishingLine;
 let fishingBobber;
+let balloonReticle;
 let leviathan;
 let leviathanCooldown = 0;
 let krakenBoss = null;
@@ -502,7 +518,7 @@ function shipVisualScale(type = state.shipType) {
     turtle: 1.22,
     corvette: 1.16,
     frigate: 1.22,
-    whaler: 1.28,
+    whaler: 1.36,
     ballooner: 1.18,
     razee: 1.28,
     grandfrigate: 1.38,
@@ -570,6 +586,8 @@ function shipHullDimensions(type = state.shipType) {
     merchantman: [7.4, 3.45],
     eastindiaman: [7.8, 3.55],
     treasure: [8.0, 4.15],
+    whaler: [8.3, 3.05],
+    ballooner: [8.0, 3.05],
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const scale = shipVisualScale(type);
@@ -937,6 +955,20 @@ function addWorldWaterfall() {
     wall.rotation.y = rot;
     wall.userData.waterfall = true;
     scene.add(wall);
+    const foam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, 7), new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.72, depthWrite: false }));
+    foam.position.set(x, 0.09, z);
+    foam.rotation.y = rot;
+    foam.userData.waterfallFoam = true;
+    scene.add(foam);
+    for (let i = 0; i < 10; i++) {
+      const mist = new THREE.Mesh(new THREE.PlaneGeometry(width * (0.16 + Math.random() * 0.16), 18 + Math.random() * 14), new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+      mist.position.set(x, -6 - Math.random() * 20, z);
+      mist.rotation.y = rot;
+      mist.position.x += rot === 0 || rot === Math.PI ? (Math.random() - 0.5) * width : 0;
+      mist.position.z += rot === Math.PI / 2 || rot === -Math.PI / 2 ? (Math.random() - 0.5) * width : 0;
+      mist.userData.waterfallMist = Math.random() * 100;
+      scene.add(mist);
+    }
   };
   makeWall(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0);
   makeWall(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI);
@@ -1008,6 +1040,10 @@ function makeIsland(data) {
   const collisionBoxes = [
     { x: data.x - radius * 0.24, z: data.z - radius * 0.05, w: 5.8, d: 5.0 },
   ];
+  const terrainFeatures = [];
+  const addCollisionBox = (x, z, w, d, pad = 0.45, rot = 0) => {
+    collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot });
+  };
   const banner = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.2, 2.2), mat(accent));
   banner.position.set(2.7, 3.45, radius - 6.2);
   banner.castShadow = true;
@@ -1055,6 +1091,174 @@ function makeIsland(data) {
     group.add(cloth);
     obstacles.push({ x: data.x + x, z: data.z + z, r: 1.6 });
   };
+  const addInteriorHouse = (x, z, w, d, color, roofColor = accent) => {
+    const house = new THREE.Group();
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), mats.plank);
+    floor.position.y = 3.08;
+    floor.receiveShadow = true;
+    house.add(floor);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w, 1.9, 0.22), mat(color));
+    back.position.set(0, 4.05, -d * 0.5);
+    house.add(back);
+    for (const side of [-1, 1]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.9, d), mat(color));
+      wall.position.set(side * w * 0.5, 4.05, 0);
+      house.add(wall);
+      const window = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.08), mats.gold);
+      window.position.set(side * (w * 0.5 + 0.02), 4.3, -d * 0.06);
+      house.add(window);
+    }
+    const leftFront = new THREE.Mesh(new THREE.BoxGeometry(w * 0.34, 1.9, 0.22), mat(color));
+    leftFront.position.set(-w * 0.33, 4.05, d * 0.5);
+    const rightFront = leftFront.clone();
+    rightFront.position.x = w * 0.33;
+    house.add(leftFront, rightFront);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.58, 1.25, 4), mat(roofColor));
+    roof.position.y = 5.35;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    house.add(roof);
+    const table = new THREE.Mesh(new THREE.BoxGeometry(w * 0.32, 0.22, d * 0.24), mats.wood);
+    table.position.set(0.1, 3.35, -d * 0.08);
+    house.add(table);
+    house.position.set(x, 0, z);
+    house.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    group.add(house);
+    const wallPad = 0.08;
+    addCollisionBox(x, z - d * 0.5, w, 0.28, wallPad);
+    addCollisionBox(x - w * 0.5, z, 0.28, d, wallPad);
+    addCollisionBox(x + w * 0.5, z, 0.28, d, wallPad);
+    addCollisionBox(x - w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
+    addCollisionBox(x + w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
+    return house;
+  };
+  const addMountain = (x, z, r, h, color = 0x66706e, cave = false) => {
+    const mountain = new THREE.Group();
+    const peakProfiles = [];
+    const makePeak = (px, pz, pr, ph, tint, yaw = 0, snow = false) => {
+      const peak = new THREE.Mesh(new THREE.ConeGeometry(pr, ph, 7, 1), mat(tint));
+      peak.position.set(px, 3 + ph * 0.5, pz);
+      peak.scale.z = 0.78 + Math.random() * 0.22;
+      peak.rotation.set(0.06, yaw, -0.04);
+      peak.castShadow = true;
+      peak.receiveShadow = true;
+      mountain.add(peak);
+      peakProfiles.push({ x: px, z: pz, r: pr, h: ph });
+      if (snow) {
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(pr * 0.34, ph * 0.24, 6, 1), mat(0xd9e4df));
+        cap.position.set(px - pr * 0.06, 3 + ph * 0.88, pz - pr * 0.04);
+        cap.scale.z = peak.scale.z;
+        cap.rotation.copy(peak.rotation);
+        cap.castShadow = true;
+        mountain.add(cap);
+      }
+    };
+    const baseColor = color;
+    const shadowColor = new THREE.Color(color).multiplyScalar(0.78).getHex();
+    makePeak(0, 0, r * 1.18, h * 1.55, baseColor, Math.random() * Math.PI, true);
+    makePeak(-r * 0.34, r * 0.14, r * 0.74, h * 1.06, shadowColor, Math.random() * Math.PI, false);
+    makePeak(r * 0.35, -r * 0.1, r * 0.68, h * 0.96, baseColor, Math.random() * Math.PI, false);
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.22;
+      const ridge = new THREE.Mesh(new THREE.ConeGeometry(r * 0.085, h * 0.86, 3), mat(i % 2 ? shadowColor : baseColor));
+      ridge.position.set(Math.cos(angle) * r * 0.34, 3 + h * 0.48, Math.sin(angle) * r * 0.28);
+      ridge.rotation.set(0.82, -angle, 0.2);
+      ridge.castShadow = true;
+      mountain.add(ridge);
+    }
+    const foothill = new THREE.Mesh(new THREE.ConeGeometry(r * 1.45, h * 0.38, 9, 1), mat(shadowColor));
+    foothill.position.y = 3 + h * 0.18;
+    foothill.scale.z = 0.68;
+    foothill.rotation.y = Math.random() * Math.PI;
+    foothill.receiveShadow = true;
+    mountain.add(foothill);
+    if (cave) {
+      const mouth = new THREE.Mesh(new THREE.TorusGeometry(r * 0.28, 0.18, 8, 20, Math.PI), mat(0x28313a));
+      mouth.position.set(0, 3.55, r * 0.73);
+      mouth.rotation.x = Math.PI / 2;
+      mountain.add(mouth);
+      const tunnel = new THREE.Mesh(new THREE.BoxGeometry(r * 0.48, 1.25, r * 0.86), new THREE.MeshBasicMaterial({ color: 0x111820 }));
+      tunnel.position.set(0, 3.25, r * 0.5);
+      mountain.add(tunnel);
+    }
+    mountain.position.set(x, 0, z);
+    group.add(mountain);
+    terrainFeatures.push({
+      x: data.x + x,
+      z: data.z + z,
+      r: r * 1.32,
+      h: h * 1.05,
+      cave,
+      peaks: peakProfiles.map((peak) => ({
+        x: data.x + x + peak.x,
+        z: data.z + z + peak.z,
+        r: peak.r,
+        h: peak.h,
+      })),
+    });
+  };
+  const addShipwreck = (angle, type = "galleon") => {
+    const wreck = new THREE.Group();
+    const wreckLength = type === "frigate" ? 10.4 : 9.2;
+    const wreckWidth = type === "frigate" ? 3.6 : 3.2;
+    const shoreDistance = radius * 0.72;
+    const x = Math.sin(angle) * shoreDistance;
+    const z = Math.cos(angle) * shoreDistance;
+    const yaw = angle + Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
+    const wreckWood = mat(0x5a3522);
+    const wetWood = mat(0x39261c);
+    const paleWood = mat(0x8c623f);
+    const makePiece = (w, h, d, px, py, pz, material = wreckWood, rot = [0, 0, 0]) => {
+      const piece = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      piece.position.set(px, py, pz);
+      piece.rotation.set(rot[0], rot[1], rot[2]);
+      piece.castShadow = true;
+      piece.receiveShadow = true;
+      wreck.add(piece);
+      return piece;
+    };
+    makePiece(wreckWidth * 0.42, 0.34, wreckLength * 0.96, -wreckWidth * 0.56, 0.38, -0.2, wreckWood, [0.08, 0.04, -0.38]);
+    makePiece(wreckWidth * 0.36, 0.32, wreckLength * 0.72, wreckWidth * 0.52, 0.34, -0.7, wetWood, [-0.02, -0.14, 0.46]);
+    makePiece(wreckWidth * 0.58, 0.28, wreckLength * 0.52, 0.1, 0.18, -0.52, paleWood, [0.04, 0.02, 0.03]);
+    makePiece(wreckWidth * 0.78, 0.46, 1.5, -0.4, 0.55, wreckLength * 0.42, wetWood, [0.16, 0.18, -0.12]);
+    makePiece(wreckWidth * 0.62, 0.38, 1.3, 0.68, 0.42, -wreckLength * 0.48, wreckWood, [-0.2, -0.22, 0.18]);
+    for (let i = 0; i < 5; i++) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(wreckWidth * (0.48 + i * 0.015), 0.045, 6, 12, Math.PI), paleWood);
+      rib.position.set((i - 2) * 0.18, 0.74, -wreckLength * 0.34 + i * wreckLength * 0.16);
+      rib.rotation.set(Math.PI / 2, 0.18 * (i - 2), Math.PI * 0.5 + (i % 2 ? 0.18 : -0.14));
+      rib.scale.y = 0.78;
+      rib.castShadow = true;
+      wreck.add(rib);
+    }
+    makePiece(0.22, 0.22, wreckLength * 0.72, 0.9, 0.78, -0.12, wetWood, [1.42, 0.32, -0.28]);
+    makePiece(0.16, 0.16, wreckLength * 0.34, -1.42, 0.62, -0.98, paleWood, [1.22, -0.52, 0.36]);
+    for (let i = 0; i < 7; i++) {
+      const px = (Math.random() - 0.5) * wreckWidth * 2.2;
+      const pz = (Math.random() - 0.5) * wreckLength * 1.1;
+      makePiece(0.22 + Math.random() * 0.18, 0.12, 1.2 + Math.random() * 1.9, px, 0.12 + Math.random() * 0.3, pz, i % 2 ? wetWood : paleWood, [Math.random() * 0.24, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3]);
+    }
+    wreck.position.set(x, 2.35, z);
+    wreck.rotation.set(-0.04, yaw, 0.08);
+    group.add(wreck);
+    const worldX = data.x + x;
+    const worldZ = data.z + z;
+    obstacles.push({ x: worldX - Math.sin(yaw) * 2.4, z: worldZ - Math.cos(yaw) * 2.4, r: 1.15 });
+    obstacles.push({ x: worldX + Math.sin(yaw) * 2.1, z: worldZ + Math.cos(yaw) * 2.1, r: 1.0 });
+    addCollisionBox(x, z, wreckWidth * 0.9, wreckLength * 0.42, 0.16, yaw);
+  };
+  addInteriorHouse(radius * 0.18, radius * 0.03, 4.0, 3.2, data.theme === "norse" ? 0x8b5a32 : 0xd9a45e, accent);
+  if (!["atoll", "lagoon"].includes(data.theme)) {
+    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e, ["rocky", "norse", "fort", "naval"].includes(data.theme));
+  }
+  if (["rocky", "schooner", "naval", "trade"].includes(data.theme)) {
+    const wreckAngle = data.theme === "naval" ? -1.0 : data.theme === "trade" ? 1.05 : data.theme === "rocky" ? -2.2 : 2.35;
+    addShipwreck(wreckAngle, data.theme === "naval" ? "frigate" : "galleon");
+  }
   if (data.theme === "norse") {
     const hall = new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.4, 3.1), mat(0x8b5a32));
     hall.position.set(4.4, 3.7, -3.4);
@@ -1104,6 +1308,7 @@ function makeIsland(data) {
     bridge.position.set(3.7, 3.25, 3.0);
     bridge.rotation.x = Math.PI / 2;
     group.add(bridge);
+    addCollisionBox(3.7, 3.0, 5.4, 0.7, 0.18);
     addBlock(-5.1, -4.1, 2.5, 2.5, 2.4, 0xe2d0a5);
     addCone(-5.1, -4.1, 1.8, 0.9, accent, 5.3);
   }
@@ -1140,13 +1345,15 @@ function makeIsland(data) {
     shell.position.set(-5.2, 3.05, -4.2);
     shell.scale.z = 0.5;
     group.add(shell);
+    obstacles.push({ x: data.x - 5.2, z: data.z - 4.2, r: 1.2 });
   }
   if (data.theme === "rocky") {
     const cave = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.45, 8, 18, Math.PI), mat(0x3f4650));
     cave.position.set(5.2, 3.3, -4.5);
     cave.rotation.x = Math.PI / 2;
     group.add(cave);
-    obstacles.push({ x: data.x + 5.2, z: data.z - 4.5, r: 2.4 });
+    obstacles.push({ x: data.x + 3.65, z: data.z - 4.5, r: 0.85 });
+    obstacles.push({ x: data.x + 6.75, z: data.z - 4.5, r: 0.85 });
   }
   const palmCount = data.theme === "atoll" ? 8 : 5;
   for (let i = 0; i < palmCount; i++) {
@@ -1177,6 +1384,7 @@ function makeIsland(data) {
     landY: 2.9,
     obstacles,
     collisionBoxes,
+    terrainFeatures,
     dock: new THREE.Vector3(data.x, 0, data.z + radius),
     shop: new THREE.Vector3(data.x - radius * 0.24, 0, data.z - radius * 0.05),
   };
@@ -1207,12 +1415,42 @@ function islandGroundY(island, point) {
   const distance = dist2(point, island.group.position);
   if (distance > island.radius - 0.6) return null;
   const edgeSlope = clamp((distance - island.radius * 0.62) / (island.radius * 0.34), 0, 1);
-  return island.landY - edgeSlope * 0.82;
+  let y = island.landY - edgeSlope * 0.82;
+  (island.terrainFeatures || []).forEach((feature) => {
+    const d = dist2(point, feature);
+    if (d > feature.r * 1.08 && !(feature.peaks || []).some((peak) => dist2(point, peak) < peak.r * 1.08)) return;
+    const caveMouth = feature.cave && Math.abs(point.x - feature.x) < feature.r * 0.28 && point.z > feature.z + feature.r * 0.28 && point.z < feature.z + feature.r * 1.02;
+    if (caveMouth) {
+      y = Math.max(y, island.landY + 0.08);
+      return;
+    }
+    if (d < feature.r * 1.08) {
+      const climb = Math.pow(1 - d / (feature.r * 1.08), 1.45);
+      y = Math.max(y, island.landY + climb * feature.h * 0.38);
+    }
+    (feature.peaks || []).forEach((peak) => {
+      const peakDistance = dist2(point, peak);
+      if (peakDistance > peak.r * 1.04) return;
+      const coneSlope = clamp(1 - peakDistance / (peak.r * 1.04), 0, 1);
+      y = Math.max(y, island.landY + coneSlope * peak.h * 0.94);
+    });
+  });
+  return y;
 }
 
 function pointBlockedOnIsland(island, point) {
   if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
-  return island.collisionBoxes?.some((box) => Math.abs(point.x - box.x) < box.w * 0.5 + 0.45 && Math.abs(point.z - box.z) < box.d * 0.5 + 0.45);
+  return island.collisionBoxes?.some((box) => {
+    const pad = box.pad ?? 0.45;
+    const dx = point.x - box.x;
+    const dz = point.z - box.z;
+    const rot = box.rot || 0;
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    return Math.abs(localX) < box.w * 0.5 + pad && Math.abs(localZ) < box.d * 0.5 + pad;
+  });
 }
 
 function walkableGroundY(island, point) {
@@ -1243,6 +1481,30 @@ function randomWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
   return new THREE.Vector3(range * 0.65, SHIP_WATERLINE_Y, range * 0.65);
 }
 
+function randomNorthernWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
+  const point = new THREE.Vector3();
+  const minZ = Math.max(-range, WHALE_NORTH_MIN_Z);
+  const maxZ = Math.min(range, WHALE_NORTH_MAX_Z);
+  for (let i = 0; i < 100; i++) {
+    point.set((Math.random() - 0.5) * range * 2, SHIP_WATERLINE_Y, minZ + Math.random() * Math.max(8, maxZ - minZ));
+    if (dist2(point, state.position) >= minFromStart && !pointInAnyIsland(point, 16)) return point.clone();
+  }
+  return new THREE.Vector3(range * 0.15, SHIP_WATERLINE_Y, WHALE_NORTH_CENTER_Z);
+}
+
+function pointInWhaleNorthZone(point, pad = 0) {
+  return point.z >= WHALE_NORTH_MIN_Z - pad && point.z <= WHALE_NORTH_MAX_Z + pad;
+}
+
+function whaleZoneReturnDirection(position) {
+  const target = new THREE.Vector3(position.x * 0.45, 0, clamp(position.z, WHALE_NORTH_MIN_Z + 34, WHALE_NORTH_MAX_Z - 34));
+  target.z = WHALE_NORTH_CENTER_Z;
+  const toZone = target.sub(position);
+  toZone.y = 0;
+  if (toZone.lengthSq() < 0.01) toZone.set(0, 0, WHALE_NORTH_CENTER_Z > position.z ? 1 : -1);
+  return Math.atan2(toZone.x, toZone.z);
+}
+
 function randomTravelWaterPoint(range = MAP_LIMIT * 0.92) {
   const point = new THREE.Vector3();
   for (let i = 0; i < 90; i++) {
@@ -1252,6 +1514,38 @@ function randomTravelWaterPoint(range = MAP_LIMIT * 0.92) {
     if (!pointInAnyIsland(point, 22) && !nearStarterIsland(point, CENTER_BOT_CLEAR_RADIUS)) return point.clone();
   }
   return randomWaterPoint(range, 92);
+}
+
+function initWindCurrents() {
+  windCurrents.length = 0;
+  for (let i = 0; i < WIND_MARKER_COUNT; i++) {
+    const angle = (i / WIND_MARKER_COUNT) * Math.PI * 2 + Math.sin(i * 7.1) * 0.55;
+    const radius = MAP_LIMIT * (0.18 + (i % 6) * 0.12);
+    const x = Math.cos(angle) * radius + Math.sin(i * 1.9) * 28;
+    const z = Math.sin(angle) * radius + Math.cos(i * 2.3) * 28;
+    const dir = angle + Math.PI * 0.42 + Math.sin(i * 3.4) * 0.85;
+    windCurrents.push({
+      x: clamp(x, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.9),
+      z: clamp(z, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.9),
+      radius: 86 + (i % 4) * 24,
+      strength: 1.4 + (i % 5) * 0.45,
+      dir,
+      vector: new THREE.Vector3(Math.sin(dir), 0, Math.cos(dir)),
+    });
+  }
+}
+
+function windAt(position) {
+  const result = new THREE.Vector3();
+  windCurrents.forEach((wind) => {
+    const dx = position.x - wind.x;
+    const dz = position.z - wind.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > wind.radius) return;
+    const falloff = Math.pow(1 - distance / wind.radius, 1.35);
+    result.add(wind.vector.clone().multiplyScalar(wind.strength * falloff));
+  });
+  return result;
 }
 
 function landingPointForShip(island, shipPosition) {
@@ -1944,9 +2238,11 @@ function addHullPaintBands(group, length, width, scale, spec, tier, profile = "s
 
 function mastPlan(type, length) {
   if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
+  if (type === "whaler") return [-length * 0.18, length * 0.16];
+  if (type === "ballooner") return [-length * 0.22, length * 0.08];
   if (["sloop", "storm", "dart", "lugger", "dogger", "tartane"].includes(type)) return [-length * 0.16, length * 0.18];
   if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee"].includes(type)) {
-    return [-length * 0.28, 0, length * 0.28];
+    return [-length * 0.28, -length * 0.02, length * 0.17];
   }
   return [-length * 0.22, length * 0.18];
 }
@@ -2060,7 +2356,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
     "galley", "galleon", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
     "packet", "pink", "pinnace", "razee", "schooner", "sloop", "storm", "treasure",
-    "xebec", "tartane", "firstrate",
+    "xebec", "tartane", "firstrate", "whaler", "ballooner",
   ]);
   const customDeckTypes = new Set([
     "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "ironclad",
@@ -2079,7 +2375,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
   addAttachedPennant(group, hullLength, scale, spec.color, tier);
   addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if (tier >= 4 || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee"].includes(type)) {
+  if ((tier >= 4 && !["whaler", "ballooner"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
   if (gunDeckTypes.has(type) || tier >= 4) addCannonPorts(group, 1 + Math.min(5, tier), hullWidth, hullLength, scale, profile);
@@ -2352,6 +2648,39 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.8, -1.8, 0.9, 0xf2ead5, 2);
     addSquareSail(group, 0, 0, 1.02, 0xf8efd8, 3);
     addSquareSail(group, 0.78, 1.85, type === "corvette" ? 0.68 : 0.78, 0xf2ead5, type === "corvette" ? 1 : 2);
+  } else if (type === "whaler") {
+    addSquareSail(group, -0.65, -1.55, 0.78, 0xe8eadf, 1);
+    addSail(group, 0.45, 0.8, 0.86, 0xf4efd9);
+    addCabin(group, 0, 2.0, 2.1, 1.05, scale * 0.88, 0x526069);
+    const tryworks = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.42 * scale, 0.8 * scale), mat(0x394047));
+    tryworks.position.set(-0.55 * scale, 1.72 * scale, -0.1 * scale);
+    group.add(tryworks);
+    const boat = hullMesh(1.75 * scale, 0.42 * scale, 0.25 * scale, mats.plank, "dart");
+    boat.position.set(1.0 * scale, 1.82 * scale, 0.35 * scale);
+    boat.rotation.z = 0.12;
+    group.add(boat);
+    const harpoonRack = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.12 * scale, 1.7 * scale), mats.dark);
+    harpoonRack.position.set(-1.1 * scale, 1.82 * scale, -1.1 * scale);
+    harpoonRack.rotation.y = 0.35;
+    group.add(harpoonRack);
+  } else if (type === "ballooner") {
+    addSquareSail(group, -0.62, -1.5, 0.78, 0xf2ead5, 1);
+    addSail(group, 0.28, 0.45, 0.84, 0xf8efd8);
+    addCabin(group, 0, 1.55, 1.75, 0.92, scale * 0.84, 0x7a5030);
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(3.35 * scale, 0.16 * scale, 2.55 * scale), mats.plank);
+    platform.position.set(0, 1.74 * scale, hullSize[0] * 0.36 * scale);
+    platform.castShadow = true;
+    platform.receiveShadow = true;
+    group.add(platform);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.18 * scale, 0.045 * scale, 8, 28), mat(0xf3d178));
+    ring.position.set(0, 1.86 * scale, hullSize[0] * 0.36 * scale);
+    ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.48 * scale, 2.65 * scale), mats.wood);
+      rail.position.set(side * 1.72 * scale, 2.02 * scale, hullSize[0] * 0.36 * scale);
+      group.add(rail);
+    }
   } else if (type === "carrack") {
     addSquareSail(group, -0.55, -1.6, 0.95, 0xf6ead0, 2);
     addSquareSail(group, 0.55, 0.25, 1.04, 0xf8e7bb, 2);
@@ -2431,10 +2760,10 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const target = options.target
     ? options.target.clone()
     : pos.clone().add(dir.clone().normalize().multiplyScalar(range));
-  target.y = 0;
+  target.y = ammo.airburst ? 24 : 0;
   const start = pos.clone();
   start.y = 1.15;
-  const distance = Math.max(1, dist2(start, target));
+  const distance = Math.max(1, ammo.airburst ? start.distanceTo(target) : dist2(start, target));
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(ammo.radius || 0.35, 10, 8),
     new THREE.MeshStandardMaterial({ color: ammo.color || 0x2f3342, roughness: 0.84, metalness: 0.04 })
@@ -2461,8 +2790,9 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     damage,
     targetKind: options.targetKind || "any",
     ammoType: ammo.id,
+    airburst: Boolean(ammo.airburst),
     fire: ammo.fire ? { ...ammo.fire } : null,
-    arcHeight: clamp(distance * 0.16, 3.2, 10.5),
+    arcHeight: ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5),
     createdWallAt: Date.now(),
     maxWallAge: Math.max(2200, (distance / CANNONBALL_SPEED + 1.2) * 1000),
   });
@@ -3701,6 +4031,7 @@ function makeFish() {
   group.userData.phase = Math.random() * 20;
   group.userData.kind = "fish";
   group.userData.speed = 8;
+  group.userData.radius = 0.75;
   group.userData.direction = Math.random() * Math.PI * 2;
   scene.add(group);
   fish.push(group);
@@ -3725,6 +4056,7 @@ function makeSquid() {
   group.userData.phase = Math.random() * 20;
   group.userData.kind = "squid";
   group.userData.speed = 8;
+  group.userData.radius = 1.05;
   group.userData.direction = Math.random() * Math.PI * 2;
   scene.add(group);
   fish.push(group);
@@ -3822,9 +4154,8 @@ function makeWhale() {
   tail.rotation.x = Math.PI / 2;
   group.add(tail);
 
-  const point = randomWaterPoint(MAP_LIMIT * 0.9, 70);
-  point.z = Math.abs(point.z) + 30;
-  group.position.set(point.x, 0.05, clamp(point.z, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.92));
+  const point = randomNorthernWaterPoint(MAP_LIMIT * 0.9, 70);
+  group.position.set(point.x, 0.05, clamp(point.z, WHALE_NORTH_MIN_Z, WHALE_NORTH_MAX_Z));
   group.rotation.y = Math.random() * Math.PI * 2;
   scene.add(group);
   animals.push({
@@ -4023,18 +4354,14 @@ function nearestFishTo(point, maxDistance) {
   return best;
 }
 
+function fishHitRadius(item) {
+  return item?.userData?.radius || (item?.userData?.kind === "squid" ? 1.05 : 0.75);
+}
+
 function startFishing(dir) {
   if (state.fishing) return toast("Already reeling. Hold steady.");
   const castPoint = playerShip.position.clone().add(dir.clone().multiplyScalar(12 + Math.random() * 8));
   castPoint.y = 0.18;
-  let target = nearestFishTo(castPoint, 32);
-  if (!target) {
-    target = new THREE.Group();
-    target.position.copy(castPoint).add(new THREE.Vector3((Math.random() - 0.5) * 9, 0, (Math.random() - 0.5) * 9));
-    target.userData.phase = Math.random() * 10;
-    scene.add(target);
-    fish.push(target);
-  }
   fishingBobber = new THREE.Group();
   const bobberCore = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), mat(0xf4f1df));
   bobberCore.position.y = 0.18;
@@ -4054,10 +4381,10 @@ function startFishing(dir) {
   setCylinderBetween(fishingLine, playerShip.position.clone().add(new THREE.Vector3(0, 1.45, 0)), castPoint.clone());
   scene.add(fishingLine);
   state.fishing = {
-    target,
+    target: null,
     castPoint: castPoint.clone(),
     timer: 0,
-    biteTime: 1.2 + Math.random() * 3.2,
+    biteTime: 0,
     reelTime: 0.9 + Math.random() * 1.25,
     phase: "waiting",
   };
@@ -4220,20 +4547,48 @@ function updateFireDamage(target, dt, speed = 0) {
 }
 
 function animalHitRadius(animal) {
-  return animal.kind === "whale" ? 5.7 : 1;
+  return animal.kind === "whale" ? 5.2 : 1;
+}
+
+function whaleIslandSteer(position, forward, radius, submerged = false, extra = 0) {
+  const steer = new THREE.Vector3();
+  let active = false;
+  islands.forEach((island) => {
+    const away = position.clone().sub(island.group.position);
+    away.y = 0;
+    const distance = away.length();
+    const danger = island.radius + radius + (submerged ? 18 : 30) + extra;
+    if (distance <= 0.001 || distance >= danger) return;
+    active = true;
+    const pressure = Math.pow((danger - distance) / danger, 1.35);
+    const radial = away.normalize();
+    const tangent = new THREE.Vector3(radial.z, 0, -radial.x);
+    if (tangent.dot(forward) < 0) tangent.multiplyScalar(-1);
+    steer.add(radial.multiplyScalar(pressure * (submerged ? 1.05 : 1.75)));
+    steer.add(tangent.multiplyScalar(pressure * (submerged ? 1.25 : 1.55)));
+  });
+  if (!active) return null;
+  const blended = forward.clone().multiplyScalar(0.42).add(steer);
+  return blended.lengthSq() > 0.001 ? blended.normalize() : forward.clone();
 }
 
 function projectileHitsAnimal(shot, animal) {
   if (!animal || animal.hp <= 0 || animal.kind !== "whale") return false;
   if (animal.submergedUntil > clock.elapsedTime && shot.ammoType !== "harpoon") return false;
-  const radius = animalHitRadius(animal);
-  return dist2(shot.mesh.position, animal.group.position) < radius && shot.mesh.position.y < 5;
+  const local = animal.group.worldToLocal(shot.mesh.position.clone());
+  const lengthHit = 5.65;
+  const widthHit = 2.05;
+  const heightHit = animal.submergedUntil > clock.elapsedTime ? 1.35 : 2.3;
+  const ellipse = (local.x / widthHit) ** 2 + (local.z / lengthHit) ** 2;
+  return ellipse <= 1 && local.y > -1.2 && local.y < heightHit;
 }
 
 function damageAnimal(animal, shot) {
   if (animal.kind !== "whale") return false;
   const damage = shot.ammoType === "harpoon" ? CANNONBALL_TYPES.harpoon.whaleDamage : shot.damage * 0.5;
   animal.hp -= damage;
+  animal.aggressiveUntil = clock.elapsedTime + 18;
+  animal.submergedUntil = 0;
   makeSplashEffect(animal.group.position);
   if (animal.hp > 0) return false;
   const pos = animal.group.position.clone();
@@ -4255,22 +4610,63 @@ function damageAnimal(animal, shot) {
 function updateAnimals(dt) {
   animals.slice().forEach((animal) => {
     if (animal.kind !== "whale") return;
+    if (!pointInWhaleNorthZone(animal.group.position, 80)) {
+      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 8, WHALE_NORTH_MAX_Z - 8);
+      animal.direction = whaleZoneReturnDirection(animal.group.position);
+    }
     animal.turnAt -= dt;
     if (animal.turnAt <= 0) {
       animal.turnAt = 3 + Math.random() * 6;
       animal.direction += (Math.random() - 0.5) * 1.2;
       if (Math.random() < 0.28) animal.submergedUntil = clock.elapsedTime + 4 + Math.random() * 5;
     }
+    const underIsland = pointInAnyIsland(animal.group.position, animalHitRadius(animal) * 0.65);
+    if (underIsland && animal.submergedUntil <= clock.elapsedTime + 0.6) {
+      animal.submergedUntil = clock.elapsedTime + 2.4;
+    }
+    const nearWhaleBoundary = animal.group.position.z < WHALE_NORTH_MIN_Z + 42 || animal.group.position.z > WHALE_NORTH_MAX_Z - 42;
+    if ((animal.aggressiveUntil || 0) > clock.elapsedTime && state.mode === "ship" && pointInWhaleNorthZone(playerShip.position, -12)) {
+      animal.direction = lerpAngle(
+        animal.direction,
+        Math.atan2(playerShip.position.x - animal.group.position.x, playerShip.position.z - animal.group.position.z),
+        clamp(dt * 2.4, 0, 0.2)
+      );
+      animal.submergedUntil = 0;
+    }
+    if (nearWhaleBoundary || !pointInWhaleNorthZone(animal.group.position)) {
+      animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), clamp(dt * 3.8, 0, 0.32));
+    }
     const submerged = animal.submergedUntil > clock.elapsedTime;
+    const desiredForward = new THREE.Vector3(Math.sin(animal.direction), 0, Math.cos(animal.direction));
+    const islandSteer = whaleIslandSteer(animal.group.position, desiredForward, animalHitRadius(animal), submerged);
+    if (islandSteer) {
+      animal.direction = lerpAngle(animal.direction, Math.atan2(islandSteer.x, islandSteer.z), clamp(dt * (submerged ? 1.9 : 3.2), 0, 0.26));
+    }
     const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
     animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
     animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.direction, clamp(dt * 2, 0, 0.12));
     const forward = new THREE.Vector3(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
-    animal.group.position.add(forward.multiplyScalar(animal.speed * dt * (submerged ? 0.82 : 1)));
-    if (Math.abs(animal.group.position.x) > MAP_LIMIT * 0.94 || Math.abs(animal.group.position.z) > MAP_LIMIT * 0.94 || pointInAnyIsland(animal.group.position, 10)) {
-      animal.direction += Math.PI * (0.8 + Math.random() * 0.4);
+    const next = animal.group.position.clone().add(forward.multiplyScalar(animal.speed * dt * (submerged ? 0.82 : (animal.aggressiveUntil || 0) > clock.elapsedTime ? 1.08 : 1)));
+    const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + animalHitRadius(animal) * 0.85);
+    if (!pointInWhaleNorthZone(next)) {
+      animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), 0.62);
+      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 2, WHALE_NORTH_MAX_Z - 2);
+      return;
+    }
+    if (Math.abs(next.x) > MAP_LIMIT * 0.94 || Math.abs(next.z) > MAP_LIMIT * 0.94 || blockedIsland) {
+      if (blockedIsland) {
+        const escape = whaleIslandSteer(animal.group.position, forward, animalHitRadius(animal), submerged, 44);
+        if (escape) animal.direction = lerpAngle(animal.direction, Math.atan2(escape.x, escape.z), 0.42);
+        const away = animal.group.position.clone().sub(blockedIsland.group.position);
+        away.y = 0;
+        if (away.lengthSq() > 0.01) animal.group.position.add(away.normalize().multiplyScalar(dt * animal.speed * 0.35));
+      } else {
+        animal.direction += Math.PI * (0.8 + Math.random() * 0.4);
+      }
       animal.group.position.x = clamp(animal.group.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-      animal.group.position.z = clamp(animal.group.position.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 2, WHALE_NORTH_MAX_Z - 2);
+    } else {
+      animal.group.position.copy(next);
     }
     animal.group.traverse((child) => {
       if (child.material) child.material.opacity = submerged ? 0.34 : 1;
@@ -4300,6 +4696,11 @@ function makeStormCloud() {
     puff.position.set((Math.random() - 0.5) * 56, Math.random() * 7, (Math.random() - 0.5) * 48);
     group.add(puff);
   }
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x1f2b35, transparent: true, opacity: 0.22, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = -47.82;
+  shadow.userData.stormShadow = true;
+  group.add(shadow);
   group.position.y = 48;
   return group;
 }
@@ -4313,9 +4714,12 @@ function spawnStorm() {
   group.position.z = z;
   scene.add(group);
   const direction = Math.random() * Math.PI * 2;
+  const radius = 58 + Math.random() * 34;
+  const shadow = group.children.find((child) => child.userData.stormShadow);
+  if (shadow) shadow.scale.setScalar(radius);
   storms.push({
     group,
-    radius: 58 + Math.random() * 34,
+    radius,
     velocity: new THREE.Vector3(Math.sin(direction), 0, Math.cos(direction)).multiplyScalar(4),
     born: clock.elapsedTime,
     life: 600,
@@ -4360,6 +4764,11 @@ function lightningStrike(storm) {
       candidates.push({ kind: "bot", position: bot.group.position, target: bot, type: bot.shipType });
     }
   });
+  balloons.forEach((balloon) => {
+    if (!balloon.destroyed && dist2(balloon.group.position, storm.group.position) < storm.radius) {
+      candidates.push({ kind: "balloon", position: balloon.group.position, target: balloon });
+    }
+  });
   islands.forEach((island) => {
     if (dist2(island.group.position, storm.group.position) < storm.radius + island.radius) {
       const angle = Math.random() * Math.PI * 2;
@@ -4377,6 +4786,8 @@ function lightningStrike(storm) {
   makeFireImpactEffect(end.clone(), new THREE.Vector3(1, 0, 0));
   if (hit.kind === "player" || hit.kind === "bot") {
     damageTarget(hit.target, 50, { fire: { dps: 10, duration: 3 }, hitPosition: end });
+  } else if (hit.kind === "balloon") {
+    destroyBalloon(hit.target, "lightning");
   }
 }
 
@@ -4449,6 +4860,7 @@ function damageTarget(target, amount, options = {}) {
 function initWorld() {
   addLights();
   addSea();
+  initWindCurrents();
   for (let i = 0; i < 20; i++) makeCloud();
   islandData.forEach((data) => islands.push(makeIsland(data)));
   playerShip = makeShip(state.shipType);
@@ -4458,7 +4870,7 @@ function initWorld() {
   character = makeCharacter();
   for (let i = 0; i < 12; i++) makeFish();
   for (let i = 0; i < 6; i++) makeSquid();
-  for (let i = 0; i < 5; i++) makeWhale();
+  for (let i = 0; i < 7; i++) makeWhale();
   for (let i = 0; i < 15; i++) {
     const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
     const group = makeShip(spec.id, true);
@@ -4531,6 +4943,11 @@ ui.openMinimap.addEventListener("click", () => {
   ui.minimapPanel.classList.remove("expanded");
   ui.openMinimap.classList.add("hidden");
 });
+ui.toggleWindMap?.addEventListener("click", () => {
+  state.showWindMarkers = !state.showWindMarkers;
+  saveValue("islandwakeWindMarkers", state.showWindMarkers ? "1" : "0");
+  toast(state.showWindMarkers ? "Wind markers shown." : "Wind markers hidden.");
+});
 ui.closeLeaderboard?.addEventListener("click", () => {
   ui.leaderboardPanel.classList.add("hidden");
   ui.openLeaderboard.classList.remove("hidden");
@@ -4548,24 +4965,29 @@ ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
 
 function setupNameGate() {
   if (!ui.nameGate || !ui.nameForm || !ui.nameInput) return;
-  const joinGame = (event = null, forcedName = "") => {
+  const joinGame = (event = null, forcedName = "", forcedToken = "") => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (ui.nameGate.classList.contains("hidden")) return;
     if (forcedName) ui.nameInput.value = forcedName;
+    if (forcedToken && ui.developerTokenInput) ui.developerTokenInput.value = forcedToken;
     const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
     if (!nextName) {
       ui.nameInput.focus();
       return;
     }
+    const token = ui.developerTokenInput?.value?.trim() || "";
     state.name = nextName;
+    state.devToken = token;
+    state.infiniteGold = token === "GoldDigger";
+    if (state.infiniteGold) state.gold = 999999999;
     state.joined = true;
     saveValue("islandwakeName", nextName);
     ui.nameGate.classList.add("hidden");
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
     updateHud();
   };
-  window.islandwakeJoin = (name = "") => joinGame(null, String(name || ""));
+  window.islandwakeJoin = (name = "", token = "") => joinGame(null, String(name || ""), String(token || ""));
   ui.nameInput.value = state.name;
   ui.nameGate.classList.remove("hidden");
   setTimeout(() => {
@@ -4591,9 +5013,14 @@ function setupNameGate() {
     if (event.key !== "Enter") return;
     joinGame(event);
   });
+  ui.developerTokenInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    joinGame(event);
+  });
   if (window.ISLANDWAKE_PENDING_JOIN) {
-    joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN));
+    joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN), String(window.ISLANDWAKE_PENDING_TOKEN || ""));
     window.ISLANDWAKE_PENDING_JOIN = "";
+    window.ISLANDWAKE_PENDING_TOKEN = "";
   }
 }
 
@@ -4634,6 +5061,14 @@ addEventListener("keydown", (event) => {
   if (event.key === "ArrowRight") {
     event.preventDefault();
     state.cameraYaw -= 0.38;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    state.cameraPitch = clamp(state.cameraPitch + 0.08, -0.18, 0.92);
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    state.cameraPitch = clamp(state.cameraPitch - 0.08, -0.18, 0.92);
   }
   if (key === "g") {
     event.preventDefault();
@@ -5199,6 +5634,41 @@ function activeBalloon() {
   return state.viewMode === "balloon" ? balloons[state.activeBalloonIndex] : null;
 }
 
+function ensureBalloonReticle() {
+  if (balloonReticle) return balloonReticle;
+  balloonReticle = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.75, 40), new THREE.MeshBasicMaterial({ color: 0xfff1a6, transparent: true, opacity: 0.82, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  balloonReticle.add(ring);
+  const crossA = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.035, 0.08), new THREE.MeshBasicMaterial({ color: 0xfff1a6, transparent: true, opacity: 0.72 }));
+  crossA.position.y = 0.04;
+  balloonReticle.add(crossA);
+  const crossB = crossA.clone();
+  crossB.rotation.y = Math.PI / 2;
+  balloonReticle.add(crossB);
+  balloonReticle.visible = false;
+  scene.add(balloonReticle);
+  return balloonReticle;
+}
+
+function predictedBalloonBombPoint(balloon) {
+  const plan = ensureBalloonBombPlan(balloon);
+  const start = balloon.group.position.clone().add(plan.offset);
+  const velocity = balloonBombVelocity(balloon, plan);
+  return simulateBalloonBombImpact(start, velocity);
+}
+
+function updateBalloonReticle() {
+  const reticle = ensureBalloonReticle();
+  const balloon = activeBalloon();
+  reticle.visible = Boolean(balloon && !balloon.destroyed && balloon.bomb && !balloon.landing);
+  if (!reticle.visible) return;
+  const point = predictedBalloonBombPoint(balloon);
+  reticle.position.copy(point);
+  const pulse = 1 + Math.sin(clock.elapsedTime * 5.4) * 0.08;
+  reticle.scale.set(pulse, pulse, pulse);
+}
+
 function launchBalloon() {
   if (state.mode !== "ship" || state.shipType !== "ballooner") return toast("Only a Ballooner can launch hot air balloons.");
   if (balloons.filter((balloon) => !balloon.destroyed).length >= 3) return toast("Only 3 balloons can be launched at once.");
@@ -5218,6 +5688,26 @@ function launchBalloon() {
     destroyed: false,
   });
   toast("Balloon launched. Press V to switch view.");
+}
+
+function ensureBalloonBombPlan(balloon) {
+  if (!balloon.bombPlan) {
+    balloon.bombPlan = {
+      offset: new THREE.Vector3((Math.random() - 0.5) * 2.4, -2.1, (Math.random() - 0.5) * 2.4),
+      drift: new THREE.Vector3((Math.random() - 0.5) * 2.4, -10, (Math.random() - 0.5) * 2.4),
+    };
+  }
+  return balloon.bombPlan;
+}
+
+function balloonBombVelocity(balloon, plan = ensureBalloonBombPlan(balloon)) {
+  return new THREE.Vector3(balloon.velocity.x, 0, balloon.velocity.z).multiplyScalar(0.85).add(plan.drift);
+}
+
+function simulateBalloonBombImpact(start, velocity) {
+  const fallHeight = Math.max(0.01, start.y - 0.2);
+  const time = Math.max(0.01, (velocity.y + Math.sqrt(velocity.y * velocity.y + 2 * BALLOON_BOMB_GRAVITY * fallHeight)) / BALLOON_BOMB_GRAVITY);
+  return start.clone().add(velocity.clone().multiplyScalar(time)).setY(0.08);
 }
 
 function cycleViewMode() {
@@ -5253,7 +5743,8 @@ function landActiveBalloon() {
 function destroyBalloon(balloon, cause = "crash") {
   if (!balloon || balloon.destroyed) return;
   balloon.destroyed = true;
-  balloon.fallVelocity = -4;
+  balloon.fallVelocity = -1.6;
+  balloon.fallSpin = new THREE.Vector3((Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 1.0, (Math.random() - 0.5) * 1.8);
   balloon.cause = cause;
   if (state.activeBalloonIndex === balloons.indexOf(balloon)) {
     state.viewMode = "ship";
@@ -5265,11 +5756,12 @@ function dropBalloonBomb(balloon) {
   if (!balloon || balloon.destroyed) return;
   if (!balloon.bomb) return toast("This balloon has already dropped its bomb.");
   balloon.bomb = false;
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), mat(0x2f2a24));
-  mesh.position.copy(balloon.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 3, -2.1, (Math.random() - 0.5) * 3));
+  const plan = ensureBalloonBombPlan(balloon);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.72, 12, 9), mat(0x2f2a24));
+  mesh.position.copy(balloon.group.position).add(plan.offset);
   mesh.castShadow = true;
   scene.add(mesh);
-  balloonBombs.push({ mesh, velocity: new THREE.Vector3((Math.random() - 0.5) * 3.2, -10, (Math.random() - 0.5) * 3.2) });
+  balloonBombs.push({ mesh, start: mesh.position.clone(), velocity: balloonBombVelocity(balloon, plan), born: clock.elapsedTime });
   toast("Bomb away.");
 }
 
@@ -5293,6 +5785,19 @@ function detonateAirburst(shot) {
 
 function detonateBalloonBomb(position) {
   makeSplashEffect(position);
+  const boom = new THREE.Group();
+  boom.position.copy(position).setY(1.2);
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(2.8, 16, 10), new THREE.MeshBasicMaterial({ color: 0xffd06b, transparent: true, opacity: 0.86 }));
+  flash.userData.puff = true;
+  boom.add(flash);
+  for (let i = 0; i < 14; i++) {
+    const shard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.8), mat(i % 2 ? 0x5a3725 : 0x2f2a24));
+    shard.position.set((Math.random() - 0.5) * 2.2, 0.2 + Math.random() * 1.2, (Math.random() - 0.5) * 2.2);
+    shard.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 8, 5 + Math.random() * 8, (Math.random() - 0.5) * 8);
+    shard.userData.spin = new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7);
+    boom.add(shard);
+  }
+  addImpactEffect(boom, 0.9);
   addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: true });
   const hitShip = (target, pos, type) => {
     const d = dist2(position, pos);
@@ -5300,20 +5805,42 @@ function detonateBalloonBomb(position) {
   };
   if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
   bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
+  animals.forEach((animal) => {
+    const d = dist2(position, animal.group.position);
+    if (d < animalHitRadius(animal) + 5) {
+      animal.hp -= 700 * clamp(1 - d / 16, 0.25, 1);
+      if (animal.hp <= 0) damageAnimal(animal, { ammoType: "bomb", damage: 9999, mesh: { position } });
+    }
+  });
+  balloons.forEach((balloon) => {
+    if (balloon.destroyed) return;
+    const d = dist2(position, balloon.group.position);
+    if (d < 9) {
+      balloon.hp -= 100;
+      if (balloon.hp <= 0) destroyBalloon(balloon, "bomb");
+    }
+  });
 }
 
 function updateBalloons(dt) {
   const controlled = activeBalloon();
   balloons.slice().forEach((balloon, index) => {
     if (balloon.destroyed) {
-      balloon.fallVelocity = (balloon.fallVelocity || -4) - 18 * dt;
+      balloon.fallVelocity = (balloon.fallVelocity || -1.6) - 7.5 * dt;
       balloon.group.position.y += balloon.fallVelocity * dt;
-      balloon.group.rotation.x += dt * 1.1;
+      balloon.group.position.x += Math.sin(clock.elapsedTime * 3.4 + index) * dt * 0.9;
+      balloon.group.position.z += Math.cos(clock.elapsedTime * 2.9 + index) * dt * 0.9;
+      balloon.group.rotation.x += dt * (balloon.fallSpin?.x || 0.8);
+      balloon.group.rotation.y += dt * (balloon.fallSpin?.y || 0.4);
+      balloon.group.rotation.z += dt * (balloon.fallSpin?.z || 1.0);
       if (balloon.group.position.y <= 0.4) {
-        makeSplashEffect(balloon.group.position.clone().setY(0));
+        const pos = balloon.group.position.clone().setY(0);
+        makeSplashEffect(pos);
+        makeSplinterEffect(pos.clone().setY(0.8), new THREE.Vector3(1, 0, 0));
         if (state.mode === "ship" && dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 3) damageTarget(state, 50);
         scene.remove(balloon.group);
-        balloons.splice(index, 1);
+        const actualIndex = balloons.indexOf(balloon);
+        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
       }
       return;
     }
@@ -5325,33 +5852,52 @@ function updateBalloons(dt) {
       balloon.velocity.add(forward.multiplyScalar(throttle * 20 * dt));
       balloon.velocity.multiplyScalar(Math.pow(0.9, dt * 6));
     } else if (!balloon.landing) {
-      const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
-      balloon.velocity.lerp(forward.multiplyScalar(8), clamp(dt * 0.5, 0, 0.04));
+      balloon.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
+    }
+    if (balloon === controlled || balloon.landing) {
+      balloon.velocity.add(windAt(balloon.group.position).multiplyScalar(dt * (balloon.landing ? 0.45 : 2.35)));
     }
     if (balloon.landing) {
       const toShip = playerShip.position.clone().sub(balloon.group.position);
       toShip.y = 0;
       if (toShip.lengthSq() > 0.01) {
         toShip.normalize();
-        balloon.velocity.lerp(toShip.multiplyScalar(7), clamp(dt * 1.3, 0, 0.1));
+        balloon.velocity.lerp(toShip.multiplyScalar(12), clamp(dt * 2.2, 0, 0.2));
       }
-      balloon.velocity.x += Math.sin(clock.elapsedTime * 2.4 + index) * dt * 1.3;
-      balloon.velocity.z += Math.cos(clock.elapsedTime * 1.9 + index) * dt * 1.3;
-      balloon.group.position.y -= dt * 3.4;
-      if (balloon.group.position.y <= 4.6) {
-        if (dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 4 && state.shipType === "ballooner") {
-          scene.remove(balloon.group);
-          balloons.splice(index, 1);
-          state.balloonStock = Math.min(state.maxBalloons, state.balloonStock + 1);
-          toast("Balloon recovered.");
-        } else {
-          destroyBalloon(balloon, "bad landing");
-        }
-        return;
-      }
+      balloon.velocity.x += Math.sin(clock.elapsedTime * 2.4 + index) * dt * 0.75;
+      balloon.velocity.z += Math.cos(clock.elapsedTime * 1.9 + index) * dt * 0.75;
+      balloon.group.position.y -= dt * 4.8;
     }
     balloon.group.position.add(balloon.velocity.clone().multiplyScalar(dt));
-    balloon.group.position.y += (24 + Math.sin(clock.elapsedTime * 1.4 + index) * 1.2 - balloon.group.position.y) * clamp(dt * 0.8, 0, 0.05);
+    if (balloon.landing) {
+      if (balloon.group.position.y <= 5.0 && dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 4 && state.shipType === "ballooner") {
+        const actualIndex = balloons.indexOf(balloon);
+        scene.remove(balloon.group);
+        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
+        state.balloonStock = Math.min(state.maxBalloons, state.balloonStock + 1);
+        if (state.activeBalloonIndex === actualIndex) {
+          state.viewMode = "ship";
+          state.activeBalloonIndex = -1;
+        }
+        toast("Balloon recovered.");
+        return;
+      }
+      if (balloon.group.position.y <= 0.55) {
+        const pos = balloon.group.position.clone().setY(0);
+        makeSplashEffect(pos);
+        const actualIndex = balloons.indexOf(balloon);
+        scene.remove(balloon.group);
+        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
+        if (state.activeBalloonIndex === actualIndex) {
+          state.viewMode = "ship";
+          state.activeBalloonIndex = -1;
+        }
+        toast("Balloon splashed down.");
+        return;
+      }
+    } else {
+      balloon.group.position.y += (24 + Math.sin(clock.elapsedTime * 1.4 + index) * 1.2 - balloon.group.position.y) * clamp(dt * 0.8, 0, 0.05);
+    }
     balloon.group.rotation.y = balloon.rotation;
     if (Math.abs(balloon.group.position.x) > WATERFALL_LIMIT || Math.abs(balloon.group.position.z) > WATERFALL_LIMIT) destroyBalloon(balloon, "edge");
   });
@@ -5364,8 +5910,9 @@ function updateBalloons(dt) {
     }
   }
   balloonBombs.slice().forEach((bomb) => {
-    bomb.velocity.y -= 18 * dt;
-    bomb.mesh.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    const age = Math.max(0, clock.elapsedTime - (bomb.born ?? clock.elapsedTime));
+    bomb.mesh.position.copy(bomb.start.clone().add(bomb.velocity.clone().multiplyScalar(age)));
+    bomb.mesh.position.y = bomb.start.y + bomb.velocity.y * age - 0.5 * BALLOON_BOMB_GRAVITY * age * age;
     bomb.mesh.rotation.x += dt * 4;
     if (bomb.mesh.position.y <= 0.2) {
       const pos = bomb.mesh.position.clone().setY(0);
@@ -5385,12 +5932,19 @@ function updateShip(dt) {
   updateDocking(dt);
   if (state.fallingOffWorld) {
     state.fallingTimer += dt;
-    state.velocity.multiplyScalar(0.97);
-    playerShip.position.y -= (6 + state.fallingTimer * 10) * dt;
-    playerShip.rotation.x += dt * 0.55;
-    playerShip.rotation.z += dt * 0.8;
+    const outward = new THREE.Vector3(playerShip.position.x, 0, playerShip.position.z);
+    if (outward.lengthSq() > 0.01) outward.normalize();
+    state.velocity.add(outward.multiplyScalar(dt * 3.2));
+    state.velocity.multiplyScalar(0.985);
+    playerShip.position.add(state.velocity.clone().multiplyScalar(dt));
+    playerShip.position.y -= (4.5 + state.fallingTimer * 8.5) * dt;
+    playerShip.rotation.x += dt * (0.65 + state.fallingTimer * 0.18);
+    playerShip.rotation.z += dt * (0.95 + state.fallingTimer * 0.22);
+    if (Math.floor(state.fallingTimer * 6) !== Math.floor((state.fallingTimer - dt) * 6)) {
+      makeSplashEffect(playerShip.position.clone().setY(0));
+    }
     state.position.copy(playerShip.position);
-    if (state.fallingTimer > 3.2) {
+    if (state.fallingTimer > 4.6) {
       state.fallingOffWorld = false;
       state.fallingTimer = 0;
       damageTarget(state, maxHp() * 4);
@@ -5403,7 +5957,7 @@ function updateShip(dt) {
     return;
   }
   if (state.viewMode === "balloon") {
-    state.velocity.multiplyScalar(Math.pow(0.82, dt * 6));
+    state.velocity.multiplyScalar(Math.pow(0.55, dt * 8));
     playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
     state.position.copy(playerShip.position);
     return;
@@ -5413,6 +5967,8 @@ function updateShip(dt) {
   state.rotation += turn * dt * (1.7 + spec.speed / 28);
   const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
   state.velocity.add(forward.multiplyScalar(throttle * spec.speed * dt));
+  const wind = windAt(playerShip.position);
+  state.velocity.add(wind.multiplyScalar(dt * (Math.abs(throttle) > 0.05 ? 0.35 : 0.82)));
   state.velocity.multiplyScalar(Math.pow(0.86, dt * 9));
   const next = playerShip.position.clone().add(state.velocity.clone().multiplyScalar(dt));
   const hullRadius = shipHitRadius(state.shipType);
@@ -5449,6 +6005,13 @@ function updateWalker(dt) {
     if (groundY !== null) {
       character.position.x = next.x;
       character.position.z = next.z;
+    } else if (!state.grounded && throttle > 0) {
+      const rawGround = islandGroundY(island, next);
+      if (rawGround !== null) {
+        character.position.x = next.x;
+        character.position.z = next.z;
+        state.walkHeight = Math.max(state.walkHeight, Math.min(1.4, rawGround - character.position.y + 0.6));
+      }
     }
   }
   state.walkVelocityY -= 28 * dt;
@@ -5723,7 +6286,11 @@ function updateProjectiles(dt) {
     shot.traveled += shot.speed * dt;
     const progress = clamp(shot.traveled / shot.distance, 0, 1);
     shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
-    shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    if (!shot.airburst) {
+      shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    } else {
+      shot.mesh.position.y += Math.sin(progress * Math.PI) * 1.8;
+    }
     shot.trailPoints.push(shot.mesh.position.clone());
     while (shot.trailPoints.length > 7) shot.trailPoints.shift();
     shot.trail.geometry.setFromPoints(shot.trailPoints);
@@ -5892,7 +6459,7 @@ function updateFish(dt) {
     if (bait && dist2(item.position, bait) < (item.userData.kind === "squid" ? 45 : 30)) {
       direction = Math.atan2(bait.x - item.position.x, bait.z - item.position.z);
       item.userData.direction = lerpAngle(item.userData.direction || direction, direction, clamp(dt * 2.2, 0, 0.18));
-      if (dist2(item.position, bait) < 1.2 && state.fishing) {
+      if (dist2(item.position, bait) < fishHitRadius(item) + 0.72 && state.fishing) {
         state.fishing.target = item;
         state.fishing.phase = "reeling";
         state.fishing.timer = 0;
@@ -5903,12 +6470,16 @@ function updateFish(dt) {
     }
     direction = item.userData.direction || direction;
     const speed = item.userData.speed || 8;
-    item.position.x += Math.sin(direction) * speed * dt;
-    item.position.z += Math.cos(direction) * speed * dt;
-    if (Math.abs(item.position.x) > MAP_LIMIT * 0.95 || Math.abs(item.position.z) > MAP_LIMIT * 0.95 || pointInAnyIsland(item.position, 7)) {
+    const next = item.position.clone();
+    next.x += Math.sin(direction) * speed * dt;
+    next.z += Math.cos(direction) * speed * dt;
+    const hitRadius = fishHitRadius(item);
+    if (Math.abs(next.x) > MAP_LIMIT * 0.95 || Math.abs(next.z) > MAP_LIMIT * 0.95 || pointInAnyIsland(next, hitRadius + 5)) {
       item.userData.direction += Math.PI * (0.85 + Math.random() * 0.3);
       item.position.x = clamp(item.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
       item.position.z = clamp(item.position.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
+    } else {
+      item.position.copy(next);
     }
     item.rotation.y = direction;
     const pulse = 1 + Math.sin(item.userData.phase * 5) * 0.12;
@@ -5918,15 +6489,8 @@ function updateFish(dt) {
     state.fishing.timer += dt;
     const targetPos = state.fishing.target?.position || state.fishing.castPoint;
     if (state.fishing.phase === "waiting") {
-      const t = clamp(state.fishing.timer / state.fishing.biteTime, 0, 1);
-      fishingBobber.position.lerpVectors(state.fishing.castPoint, targetPos, t * 0.35);
+      fishingBobber.position.copy(state.fishing.castPoint);
       fishingBobber.position.y = 0.2 + Math.sin(clock.elapsedTime * 9) * 0.12;
-      if (state.fishing.timer >= state.fishing.biteTime) {
-        state.fishing.phase = "reeling";
-        state.fishing.target = state.fishing.target || nearestFishTo(fishingBobber.position, 42);
-        state.fishing.timer = 0;
-        toast("Bite! Reeling in...");
-      }
     } else {
       const t = clamp(state.fishing.timer / state.fishing.reelTime, 0, 1);
       const shipTip = playerShip.position.clone().add(new THREE.Vector3(0, 1.2, 0));
@@ -6094,11 +6658,14 @@ function updateKraken(dt) {
 function updateCamera(dt) {
   if (keys.has("arrowleft")) state.cameraYaw += 1.9 * dt;
   if (keys.has("arrowright")) state.cameraYaw -= 1.9 * dt;
+  if (keys.has("arrowup")) state.cameraPitch = clamp(state.cameraPitch + 0.55 * dt, -0.18, 0.92);
+  if (keys.has("arrowdown")) state.cameraPitch = clamp(state.cameraPitch - 0.55 * dt, -0.18, 0.92);
+  camera.up.set(0, 1, 0);
   if (state.mode === "land") {
     if (character) character.visible = false;
-    const eye = character.position.clone().add(new THREE.Vector3(0, 2.35, 0));
+    const eye = character.position.clone().add(new THREE.Vector3(0, 1.18, 0));
     const yaw = character.rotation.y;
-    const look = eye.clone().add(new THREE.Vector3(Math.sin(yaw), -0.08, Math.cos(yaw)).multiplyScalar(16));
+    const look = eye.clone().add(new THREE.Vector3(Math.sin(yaw), clamp(state.cameraPitch * 0.75 - 0.12, -0.28, 0.58), Math.cos(yaw)).normalize().multiplyScalar(16));
     camera.position.lerp(eye, 0.36);
     camera.lookAt(look);
     labels.forEach((label) => label.lookAt(camera.position));
@@ -6107,22 +6674,27 @@ function updateCamera(dt) {
   if (character) character.visible = false;
   const balloon = activeBalloon();
   if (balloon && !balloon.destroyed) {
-    const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
-    const desired = balloon.group.position.clone().add(forward.clone().multiplyScalar(-20)).add(new THREE.Vector3(0, 8, 0));
-    camera.position.lerp(desired, 0.12);
-    camera.lookAt(balloon.group.position.clone().add(forward.multiplyScalar(20)));
+    camera.up.set(0, 0, -1);
+    const height = clamp(54 + state.cameraPitch * 18, 48, 72);
+    const desired = balloon.group.position.clone().add(new THREE.Vector3(0, height, 0));
+    camera.position.lerp(desired, 0.18);
+    camera.lookAt(balloon.group.position.x, balloon.group.position.y - 18, balloon.group.position.z + 0.01);
     labels.forEach((label) => label.lookAt(camera.position));
     return;
   }
   const target = state.mode === "ship" ? playerShip.position : character.position;
-  const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * 58, 46, Math.cos(state.cameraYaw) * 58);
+  const cameraHeight = clamp(22 + state.cameraPitch * 48, 8, 70);
+  const orbitRadius = clamp(62 - state.cameraPitch * 18, 36, 68);
+  const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * orbitRadius, cameraHeight, Math.cos(state.cameraYaw) * orbitRadius);
   const desired = target.clone().add(offset);
+  desired.y = Math.max(2.8, desired.y);
   camera.position.lerp(desired, 0.08);
-  camera.lookAt(target.x, target.y, target.z);
+  camera.lookAt(target.x, target.y + clamp(state.cameraPitch * 6, 0, 7), target.z);
   labels.forEach((label) => label.lookAt(camera.position));
 }
 
 function updateHud() {
+  if (state.infiniteGold) state.gold = 999999999;
   const spec = getShipStats();
   ui.playerName.textContent = captainName();
   ui.modeLabel.textContent = state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
@@ -6288,6 +6860,49 @@ function updateMinimap() {
     ctx.lineTo(size, p);
     ctx.stroke();
   }
+  storms.forEach((storm) => {
+    const pos = mapPoint(storm.group.position.x, storm.group.position.z);
+    const r = Math.max(8, storm.radius * size / (MINIMAP_VISIBLE_LIMIT * 2));
+    const cloud = ctx.createRadialGradient(pos.x, pos.y, r * 0.15, pos.x, pos.y, r);
+    cloud.addColorStop(0, "rgba(35,39,47,0.5)");
+    cloud.addColorStop(1, "rgba(35,39,47,0.12)");
+    ctx.fillStyle = cloud;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(217,251,255,0.42)";
+    ctx.lineWidth = 1.2 * ratio;
+    ctx.beginPath();
+    ctx.moveTo(pos.x - 2 * ratio, pos.y - 5 * ratio);
+    ctx.lineTo(pos.x + 2 * ratio, pos.y - 1 * ratio);
+    ctx.lineTo(pos.x - 1 * ratio, pos.y - 1 * ratio);
+    ctx.lineTo(pos.x + 3 * ratio, pos.y + 5 * ratio);
+    ctx.stroke();
+  });
+  ui.toggleWindMap?.classList.toggle("active", state.showWindMarkers);
+  if (state.showWindMarkers) {
+    windCurrents.forEach((wind) => {
+      const pos = mapPoint(wind.x, wind.z);
+      const len = 8 * ratio;
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(Math.PI - wind.dir);
+      ctx.strokeStyle = "rgba(255,253,242,0.72)";
+      ctx.fillStyle = "rgba(255,253,242,0.72)";
+      ctx.lineWidth = 1.2 * ratio;
+      ctx.beginPath();
+      ctx.moveTo(0, len * 0.65);
+      ctx.lineTo(0, -len * 0.65);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, -len * 0.85);
+      ctx.lineTo(-3 * ratio, -len * 0.35);
+      ctx.lineTo(3 * ratio, -len * 0.35);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    });
+  }
   islands.forEach((island) => {
     const pos = drawMapDot(ctx, island.group.position.x, island.group.position.z, Math.max(3, island.radius * size / (MAP_LIMIT * 2.45)), "#72bf61", "#f3df9b");
     ctx.fillStyle = "#17313c";
@@ -6308,6 +6923,15 @@ function updateMinimap() {
   bots.forEach((bot) => drawMapDot(ctx, bot.group.position.x, bot.group.position.z, expanded ? 4 : 3, "#cf493f", "#341918"));
   remotePlayers.forEach((remote) => {
     if (remote.group.visible) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
+    (remote.balloons || []).forEach((balloon) => {
+      if (balloon.group.visible) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.5 : 2.6, "#c565db", "#f7ecff");
+    });
+  });
+  balloons.forEach((balloon) => {
+    if (balloon.destroyed) return;
+    const pos = drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 4 : 3, "#d85842", "#fff1a6");
+    ctx.fillStyle = "#fff1a6";
+    ctx.fillRect(pos.x - 1.5 * ratio, pos.y + 3 * ratio, 3 * ratio, 2 * ratio);
   });
   const playerPos = state.mode === "ship" ? playerShip.position : character.position;
   const playerMap = drawMapDot(ctx, playerPos.x, playerPos.z, expanded ? 5 : 4, "#fffdf2", "#123742");
@@ -6344,6 +6968,19 @@ function multiplayerPayload() {
     landX: character.position.x,
     landZ: character.position.z,
     landRotation: character.rotation.y,
+    balloons: balloons
+      .filter((balloon) => !balloon.destroyed)
+      .slice(0, 5)
+      .map((balloon, index) => ({
+        id: `${captainId}-balloon-${index}`,
+        x: balloon.group.position.x,
+        y: balloon.group.position.y,
+        z: balloon.group.position.z,
+        rotation: balloon.rotation,
+        hp: balloon.hp,
+        bomb: Boolean(balloon.bomb),
+        landing: Boolean(balloon.landing),
+      })),
   };
 }
 
@@ -6390,7 +7027,29 @@ function removeRemotePlayer(id) {
   if (!remote) return;
   clearBurnVisual(remote);
   scene.remove(remote.group, remote.avatar, remote.label);
+  (remote.balloons || []).forEach((balloon) => scene.remove(balloon.group));
   remotePlayers.delete(id);
+}
+
+function syncRemoteBalloons(remote, dataBalloons = []) {
+  remote.balloons = remote.balloons || [];
+  const wanted = Array.isArray(dataBalloons) ? dataBalloons.slice(0, 5) : [];
+  while (remote.balloons.length > wanted.length) {
+    const removed = remote.balloons.pop();
+    scene.remove(removed.group);
+  }
+  wanted.forEach((entry, index) => {
+    let balloon = remote.balloons[index];
+    if (!balloon) {
+      balloon = { group: makeBalloonMesh() };
+      balloon.group.scale.setScalar(0.86);
+      scene.add(balloon.group);
+      remote.balloons[index] = balloon;
+    }
+    balloon.group.position.set(Number(entry.x) || 0, Number(entry.y) || 24, Number(entry.z) || 0);
+    balloon.group.rotation.y = Number(entry.rotation) || 0;
+    balloon.group.visible = true;
+  });
 }
 
 function upsertRemotePlayer(data) {
@@ -6439,6 +7098,7 @@ function upsertRemotePlayer(data) {
     remote.lookPosition = remote.group.position;
     remote.label.position.set(x, 7, z);
   }
+  syncRemoteBalloons(remote, data.balloons);
   remote.label.lookAt(camera.position);
 }
 
@@ -6744,6 +7404,17 @@ function animateSea() {
       obj.position.x += obj.userData.cloud * 0.006;
       if (obj.position.x > SEA_SIZE * 0.38) obj.position.x = -SEA_SIZE * 0.38;
     }
+    if (obj.userData.waterfall) {
+      obj.material.opacity = 0.34 + Math.sin(clock.elapsedTime * 2.6 + obj.position.x * 0.01 + obj.position.z * 0.01) * 0.08;
+    }
+    if (obj.userData.waterfallFoam) {
+      obj.scale.z = 1 + Math.sin(clock.elapsedTime * 3.2 + obj.position.x * 0.01) * 0.08;
+    }
+    if (obj.userData.waterfallMist !== undefined) {
+      obj.position.y -= 0.025;
+      obj.material.opacity = 0.1 + Math.sin(clock.elapsedTime + obj.userData.waterfallMist) * 0.05;
+      if (obj.position.y < -44) obj.position.y = -6;
+    }
   });
 }
 
@@ -6761,6 +7432,7 @@ function frame() {
     updateFish(dt);
     updateAnimals(dt);
     updateBalloons(dt);
+    updateBalloonReticle();
     updateStorms(dt);
     updateLeviathan(dt);
     updateKraken(dt);
