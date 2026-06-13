@@ -311,6 +311,7 @@ const state = {
   name: readSavedValue("islandwakeName"),
   devToken: "",
   infiniteGold: false,
+  infiniteLevels: false,
   joined: false,
   level: 1,
   xp: 0,
@@ -460,20 +461,25 @@ function xpForLevel(level) {
   return Math.round((50 + level * 24) * 1.25);
 }
 
+function hasGoldDiggerPowers() {
+  return state.infiniteGold || state.devToken === "GoldDigger";
+}
+
 function addXP(amount) {
-  if (state.level >= MAX_PLAYER_LEVEL) {
+  const maxLevel = state.infiniteLevels ? Number.POSITIVE_INFINITY : MAX_PLAYER_LEVEL;
+  if (state.level >= maxLevel) {
     state.level = MAX_PLAYER_LEVEL;
     state.xp = 0;
     return;
   }
   state.xp += amount;
-  while (state.level < MAX_PLAYER_LEVEL && state.xp >= xpForLevel(state.level)) {
+  while (state.level < maxLevel && state.xp >= xpForLevel(state.level)) {
     state.xp -= xpForLevel(state.level);
     state.level++;
     state.points++;
     toast(`Level ${state.level}! Upgrade point earned.`);
   }
-  if (state.level >= MAX_PLAYER_LEVEL) {
+  if (!state.infiniteLevels && state.level >= MAX_PLAYER_LEVEL) {
     state.level = MAX_PLAYER_LEVEL;
     state.xp = 0;
   }
@@ -5665,6 +5671,9 @@ ui.openMinimap.addEventListener("click", () => {
   ui.minimapPanel.classList.remove("expanded");
   ui.openMinimap.classList.add("hidden");
 });
+ui.minimap?.addEventListener("click", (event) => {
+  handleGoldDiggerMinimapTeleport(event);
+});
 ui.toggleWindMap?.addEventListener("click", () => {
   state.showWindMarkers = !state.showWindMarkers;
   saveValue("islandwakeWindMarkers", state.showWindMarkers ? "1" : "0");
@@ -5702,7 +5711,13 @@ function setupNameGate() {
     state.name = nextName;
     state.devToken = token;
     state.infiniteGold = token === "GoldDigger";
+    state.infiniteLevels = token === "GoldDigger";
     if (state.infiniteGold) state.gold = 999999999;
+    if (state.infiniteLevels) {
+      state.level = Math.max(state.level, 999999);
+      state.points = Math.max(state.points, 999999);
+      state.xp = 0;
+    }
     state.joined = true;
     saveValue("islandwakeName", nextName);
     ui.nameGate.classList.add("hidden");
@@ -5861,7 +5876,9 @@ addEventListener("mousemove", (event) => {
   mouse.x = (event.clientX / innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / innerHeight) * 2 + 1;
 });
-addEventListener("mousedown", () => useTool());
+addEventListener("mousedown", (event) => {
+  if (event.target === canvas) useTool();
+});
 
 function currentIsland() {
   const pos = state.mode === "ship" ? playerShip.position : character.position;
@@ -7714,6 +7731,11 @@ function updateCamera(dt) {
 
 function updateHud() {
   if (state.infiniteGold) state.gold = 999999999;
+  if (state.infiniteLevels) {
+    state.level = Math.max(state.level, 999999);
+    state.points = Math.max(state.points, 999999);
+    state.xp = 0;
+  }
   const spec = getShipStats();
   ui.playerName.textContent = captainName();
   ui.modeLabel.textContent = state.viewMode === "swim"
@@ -7722,8 +7744,12 @@ function updateHud() {
       ? "On deck"
       : state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
-  ui.xpBar.style.width = state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
-  const levelLabel = state.level >= MAX_PLAYER_LEVEL ? `Lv.${MAX_PLAYER_LEVEL} MAX` : `Lv.${state.level}`;
+  ui.xpBar.style.width = state.infiniteLevels || state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
+  const levelLabel = state.infiniteLevels
+    ? "Lvl. infinite"
+    : state.level >= MAX_PLAYER_LEVEL
+      ? `Lv.${MAX_PLAYER_LEVEL} MAX`
+      : `Lv.${state.level}`;
   const fireLabel = state.fire ? ` | Burning ${Math.ceil(state.fire.remaining)}s` : "";
   const blubberLabel = state.shipType === "whaler"
     ? ` | Blubber ${blubberCount()}/${blubberCapacity()}`
@@ -7797,6 +7823,54 @@ function mapPoint(x, z) {
     x: size * 0.5 + (x / range) * size * 0.5,
     y: size * 0.5 + (z / range) * size * 0.5,
   };
+}
+
+function worldPointFromMinimapEvent(event) {
+  const rect = ui.minimap.getBoundingClientRect();
+  const xRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+  const yRatio = clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+  return new THREE.Vector3(
+    (xRatio - 0.5) * MINIMAP_VISIBLE_LIMIT * 2,
+    0,
+    (yRatio - 0.5) * MINIMAP_VISIBLE_LIMIT * 2,
+  );
+}
+
+function teleportGoldDiggerTo(point, source = "map") {
+  if (!hasGoldDiggerPowers() || !playerShip) return false;
+  const target = point.clone();
+  target.x = clamp(target.x, -MINIMAP_VISIBLE_LIMIT, MINIMAP_VISIBLE_LIMIT);
+  target.y = 0;
+  target.z = clamp(target.z, -MINIMAP_VISIBLE_LIMIT, MINIMAP_VISIBLE_LIMIT);
+  if (pointInAnyIsland(target, 3)) {
+    toast("GoldDigger teleport blocked: island.");
+    return true;
+  }
+  closeShop();
+  state.mode = "ship";
+  state.viewMode = "ship";
+  state.dockedAt = null;
+  state.docking = null;
+  state.fallingOffWorld = false;
+  state.fallingTimer = 0;
+  state.leviathanGrabbed = false;
+  state.activeBalloonIndex = -1;
+  state.velocity.set(0, 0, 0);
+  playerShip.visible = true;
+  playerShip.position.set(target.x, SHIP_WATERLINE_Y, target.z);
+  playerShip.rotation.y = state.rotation;
+  character.visible = false;
+  state.position.copy(playerShip.position);
+  multiplayer.lastSent = 0;
+  toast(source === "minimap" ? "GoldDigger minimap teleport." : "GoldDigger teleport.");
+  return true;
+}
+
+function handleGoldDiggerMinimapTeleport(event) {
+  if (!hasGoldDiggerPowers() || nameGateOpen()) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  return teleportGoldDiggerTo(worldPointFromMinimapEvent(event), "minimap");
 }
 
 function drawMapDot(ctx, x, z, radius, color, stroke = null) {

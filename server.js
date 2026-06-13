@@ -1264,13 +1264,100 @@ function spawnBalloonBomb(message, socket) {
   return bomb;
 }
 
+function bombFallSeconds(startY, startVy = -10) {
+  const height = Math.max(0, Number(startY) - 0.35);
+  const vy = Number(startVy) || 0;
+  return clamp((vy + Math.sqrt(vy * vy + 2 * balloonBombGravity * height)) / balloonBombGravity, 0.65, 2.8);
+}
+
+function botBalloonOwner(balloon) {
+  return bots.find((bot) => bot.id === balloon.owner && bot.hp > 0) || null;
+}
+
+function liveBotBalloonTarget(balloon) {
+  if (balloon.targetKind === "player" && balloon.targetId) {
+    const socket = clients.get(balloon.targetId);
+    if (socket?.player && socket.player.mode !== "land") {
+      return {
+        x: Number(socket.player.x) || balloon.targetX,
+        z: Number(socket.player.z) || balloon.targetZ,
+        vx: Number(socket.player.vx) || 0,
+        vz: Number(socket.player.vz) || 0,
+        kind: "player",
+        targetId: balloon.targetId,
+      };
+    }
+  }
+  if (balloon.targetKind === "bot" && balloon.targetId) {
+    const bot = bots.find((item) => item.id === balloon.targetId && item.hp > 0);
+    if (bot) return { x: bot.x, z: bot.z, vx: bot.vx || 0, vz: bot.vz || 0, kind: "bot", targetId: bot.id };
+  }
+  return {
+    x: Number(balloon.targetX) || 0,
+    z: Number(balloon.targetZ) || 0,
+    vx: Number(balloon.targetVx) || 0,
+    vz: Number(balloon.targetVz) || 0,
+    kind: balloon.targetKind || "last-known",
+    targetId: balloon.targetId || null,
+  };
+}
+
+function predictedBotBalloonDropPoint(balloon, target, owner = botBalloonOwner(balloon)) {
+  const distance = Math.hypot((target.x || 0) - balloon.x, (target.z || 0) - balloon.z);
+  const travelSeconds = clamp(distance / 20, 0.35, 4.2);
+  const fallSeconds = bombFallSeconds(balloon.y - 1.2, -10);
+  const leadSeconds = travelSeconds + fallSeconds * 0.72;
+  const jitter = balloon.aimJitter || 0;
+  let x = (Number(target.x) || 0) + (Number(target.vx) || 0) * leadSeconds + Math.sin(balloon.jitterPhase || 0) * jitter;
+  let z = (Number(target.z) || 0) + (Number(target.vz) || 0) * leadSeconds + Math.cos(balloon.jitterPhase || 0) * jitter;
+  if (owner) {
+    const ownerFutureX = owner.x + (owner.vx || 0) * (leadSeconds + 0.45);
+    const ownerFutureZ = owner.z + (owner.vz || 0) * (leadSeconds + 0.45);
+    const safeRadius = balloonBombBlastRadius + shipRadius(owner.shipType) * 0.75 + 8;
+    const dx = x - ownerFutureX;
+    const dz = z - ownerFutureZ;
+    const ownerDistance = Math.hypot(dx, dz);
+    if (ownerDistance < safeRadius) {
+      const side = ownerDistance > 0.001
+        ? { x: dx / ownerDistance, z: dz / ownerDistance }
+        : { x: Math.cos(balloon.jitterPhase || 0), z: Math.sin(balloon.jitterPhase || 0) };
+      x = ownerFutureX + side.x * safeRadius;
+      z = ownerFutureZ + side.z * safeRadius;
+    }
+  }
+  return { x, z, leadSeconds, fallSeconds };
+}
+
+function botBalloonDropWouldHitOwner(balloon, owner = botBalloonOwner(balloon), target = liveBotBalloonTarget(balloon)) {
+  if (!owner) return false;
+  const fallSeconds = bombFallSeconds(balloon.y - 1.2, -10);
+  const drop = predictedBotBalloonDropPoint(balloon, target, owner);
+  const ownerX = owner.x + (owner.vx || 0) * fallSeconds;
+  const ownerZ = owner.z + (owner.vz || 0) * fallSeconds;
+  const safeRadius = balloonBombBlastRadius + shipRadius(owner.shipType) * 0.65 + 6;
+  return Math.hypot(drop.x - ownerX, drop.z - ownerZ) < safeRadius;
+}
+
 function spawnBotBalloonBomb(bot, target) {
-  const offsetX = (Math.random() - 0.5) * 10;
-  const offsetZ = (Math.random() - 0.5) * 10;
-  const targetVx = Number(target.vx) || 0;
-  const targetVz = Number(target.vz) || 0;
-  const startX = target.x + offsetX - targetVx * 0.45;
-  const startZ = target.z + offsetZ - targetVz * 0.45;
+  const fakeBalloon = {
+    owner: bot.id,
+    x: bot.x + Math.sin(bot.rotation) * 7,
+    y: 26,
+    z: bot.z + Math.cos(bot.rotation) * 7,
+    targetX: target.x,
+    targetZ: target.z,
+    targetVx: target.vx || 0,
+    targetVz: target.vz || 0,
+    targetKind: target.kind,
+    targetId: target.targetId,
+    aimJitter: 3.5,
+    jitterPhase: Math.random() * Math.PI * 2,
+  };
+  if (botBalloonDropWouldHitOwner(fakeBalloon, bot, target)) return null;
+  const drop = predictedBotBalloonDropPoint(fakeBalloon, target, bot);
+  const fallSeconds = bombFallSeconds(fakeBalloon.y, -10);
+  const startX = fakeBalloon.x;
+  const startZ = fakeBalloon.z;
   const bomb = {
     id: `bomb-${nextBombId++}`,
     owner: bot.id,
@@ -1281,9 +1368,9 @@ function spawnBotBalloonBomb(bot, target) {
     startX,
     startY: 26,
     startZ,
-    vx: targetVx * 0.35 + (Math.random() - 0.5) * 5,
+    vx: clamp((drop.x - startX) / fallSeconds, -42, 42),
     vy: -10,
-    vz: targetVz * 0.35 + (Math.random() - 0.5) * 5,
+    vz: clamp((drop.z - startZ) / fallSeconds, -42, 42),
   };
   bombs.push(bomb);
   return bomb;
@@ -1308,10 +1395,15 @@ function spawnBotBalloon(bot, target) {
     rotation: bot.rotation,
     hp: 100,
     bomb: true,
+    landing: false,
     targetX: Number(target.x) || bot.x,
     targetZ: Number(target.z) || bot.z,
     targetVx: Number(target.vx) || 0,
     targetVz: Number(target.vz) || 0,
+    targetKind: target.kind || "unknown",
+    targetId: target.targetId || null,
+    aimJitter: 2.2 + Math.random() * 2.2,
+    jitterPhase: Math.random() * Math.PI * 2,
     dropAt: now + 1200 + Math.random() * 800,
     expireAt: now + 10500 + Math.random() * 2500,
     falling: false,
@@ -1323,9 +1415,18 @@ function spawnBotBalloon(bot, target) {
 
 function dropBotBalloonBomb(balloon) {
   if (!balloon?.bomb) return null;
+  const owner = botBalloonOwner(balloon);
+  const target = liveBotBalloonTarget(balloon);
+  if (botBalloonDropWouldHitOwner(balloon, owner, target)) {
+    balloon.dropAt = Date.now() + 650;
+    return null;
+  }
+  const fallSeconds = bombFallSeconds(balloon.y - 1.2, -10);
+  const drop = predictedBotBalloonDropPoint(balloon, target, owner);
   balloon.bomb = false;
-  const targetVx = Number(balloon.targetVx) || 0;
-  const targetVz = Number(balloon.targetVz) || 0;
+  balloon.landing = true;
+  balloon.returnAt = Date.now() + 250;
+  balloon.expireAt = Date.now() + 12000;
   const bomb = {
     id: `bomb-${nextBombId++}`,
     owner: balloon.owner,
@@ -1336,9 +1437,9 @@ function dropBotBalloonBomb(balloon) {
     startX: balloon.x,
     startY: clamp(balloon.y - 1.2, 8, 95),
     startZ: balloon.z,
-    vx: targetVx * 0.35 + (Math.random() - 0.5) * 5,
+    vx: clamp((drop.x - balloon.x) / fallSeconds, -42, 42),
     vy: -10,
-    vz: targetVz * 0.35 + (Math.random() - 0.5) * 5,
+    vz: clamp((drop.z - balloon.z) / fallSeconds, -42, 42),
   };
   bombs.push(bomb);
   return bomb;
@@ -1370,23 +1471,48 @@ function updateBotBalloons(now, dt) {
       }
       continue;
     }
-    const target = { x: balloon.targetX + (balloon.targetVx || 0) * 0.35, z: balloon.targetZ + (balloon.targetVz || 0) * 0.35 };
+    const owner = botBalloonOwner(balloon);
+    if (!owner) {
+      crashBotBalloon(balloon, "owner-lost");
+      continue;
+    }
+    let target;
+    let desiredY = 24;
+    if (balloon.landing || !balloon.bomb) {
+      target = {
+        x: owner.x + (owner.vx || 0) * 0.85,
+        z: owner.z + (owner.vz || 0) * 0.85,
+      };
+      const homeDistance = Math.hypot(target.x - balloon.x, target.z - balloon.z);
+      desiredY = homeDistance < 28 ? 5.2 : 16;
+      if (homeDistance < shipRadius(owner.shipType) + 4.2 && balloon.y <= 6.2) {
+        botBalloons.splice(i, 1);
+        continue;
+      }
+    } else {
+      const liveTarget = liveBotBalloonTarget(balloon);
+      balloon.targetX = liveTarget.x;
+      balloon.targetZ = liveTarget.z;
+      balloon.targetVx = liveTarget.vx || 0;
+      balloon.targetVz = liveTarget.vz || 0;
+      target = predictedBotBalloonDropPoint(balloon, liveTarget, owner);
+    }
     const dx = target.x - balloon.x;
     const dz = target.z - balloon.z;
     const distance = Math.hypot(dx, dz);
     if (distance > 0.01) {
       const dirX = dx / distance;
       const dirZ = dz / distance;
-      balloon.vx += dirX * 20 * dt;
-      balloon.vz += dirZ * 20 * dt;
+      balloon.vx += dirX * (balloon.landing ? 17 : 20) * dt;
+      balloon.vz += dirZ * (balloon.landing ? 17 : 20) * dt;
       balloon.rotation = Math.atan2(dirX, dirZ);
     }
     balloon.vx *= Math.pow(0.9, dt * 6);
     balloon.vz *= Math.pow(0.9, dt * 6);
     balloon.x += balloon.vx * dt;
     balloon.z += balloon.vz * dt;
-    balloon.y += (24 - balloon.y) * clamp(dt * 0.8, 0, 0.05);
-    if (balloon.bomb && (now >= balloon.dropAt || distance < 9)) dropBotBalloonBomb(balloon);
+    balloon.y += (desiredY - balloon.y) * clamp(dt * (balloon.landing ? 1.8 : 0.8), 0, balloon.landing ? 0.16 : 0.05);
+    if (balloon.bomb && (distance < 8 || (now >= balloon.dropAt && distance < 22))) dropBotBalloonBomb(balloon);
     if (now >= balloon.expireAt || Math.abs(balloon.x) > visibleBounds || Math.abs(balloon.z) > visibleBounds) crashBotBalloon(balloon, "expired");
   }
 }
@@ -1689,6 +1815,7 @@ function botBalloonSnapshot(balloon) {
     rotation: balloon.rotation,
     hp: Math.max(0, Math.round(balloon.hp || 0)),
     bomb: Boolean(balloon.bomb),
+    landing: Boolean(balloon.landing),
     falling: Boolean(balloon.falling),
     spinX: balloon.spinX || 0,
     spinY: balloon.spinY || 0,
@@ -2059,9 +2186,9 @@ function updateWorld() {
     }
 
     const shotTarget = fleeingKraken ? null : targetSocket?.player
-      ? { x: Number(targetSocket.player.x) || bot.x, z: Number(targetSocket.player.z) || bot.z, vx: Number(targetSocket.player.vx) || 0, vz: Number(targetSocket.player.vz) || 0, kind: "player" }
+      ? { x: Number(targetSocket.player.x) || bot.x, z: Number(targetSocket.player.z) || bot.z, vx: Number(targetSocket.player.vx) || 0, vz: Number(targetSocket.player.vz) || 0, kind: "player", targetId: targetSocket.id }
       : targetBot
-        ? { x: targetBot.x, z: targetBot.z, vx: targetBot.vx, vz: targetBot.vz, kind: "bot", bot: targetBot }
+        ? { x: targetBot.x, z: targetBot.z, vx: targetBot.vx, vz: targetBot.vz, kind: "bot", bot: targetBot, targetId: targetBot.id }
         : targetKraken && kraken?.alive
           ? { ...krakenHeadPoint(), vx: kraken.vx || 0, vz: kraken.vz || 0, kind: "kraken", kraken: true }
           : null;
