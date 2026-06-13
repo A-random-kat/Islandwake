@@ -4,54 +4,56 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=125" />
+  <link rel="stylesheet" href="styles.css?v=126" />
 </head>
 <body>
   <canvas id="game"></canvas>
 
   <div id="nameGate" class="name-gate">
     <div id="nameForm" class="name-card">
-      <span>Captain name</span>
-      <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" />
-      <span>Developer token</span>
-      <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Optional" />
-      <button id="setSailButton" type="button">Set sail</button>
+      <span data-i18n="captainName">Captain name</span>
+      <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
+      <span data-i18n="developerToken">Developer token</span>
+      <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Optional" data-i18n-placeholder="optional" />
+      <span data-i18n="language">Language</span>
+      <select id="languageSelect" class="language-select" aria-label="Language"></select>
+      <button id="setSailButton" type="button" data-i18n="setSail">Set sail</button>
     </div>
   </div>
 
   <div id="beginnerGuide" class="guide-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
     <div id="guideQuestion" class="guide-card">
-      <span>First voyage</span>
-      <h2 id="guideTitle">Are you new to Islandwake?</h2>
-      <p>A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.</p>
+      <span data-i18n="firstVoyage">First voyage</span>
+      <h2 id="guideTitle" data-i18n="newQuestion">Are you new to Islandwake?</h2>
+      <p data-i18n="newQuestionBody">A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.</p>
       <div class="guide-actions">
-        <button id="guideYes" type="button">Yes, show guide</button>
-        <button id="guideNo" type="button">No, set sail</button>
+        <button id="guideYes" type="button" data-i18n="showGuide">Yes, show guide</button>
+        <button id="guideNo" type="button" data-i18n="noSetSail">No, set sail</button>
       </div>
     </div>
     <div id="guideContent" class="guide-card guide-content hidden">
-      <span>Beginner's guide</span>
-      <h2>Survive, trade, upgrade</h2>
+      <span data-i18n="beginnerGuide">Beginner's guide</span>
+      <h2 data-i18n="guideHeadline">Survive, trade, upgrade</h2>
       <div class="guide-grid">
         <section>
-          <h3>Sailing</h3>
-          <p>Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.</p>
+          <h3 data-i18n="guideSailingTitle">Sailing</h3>
+          <p data-i18n="guideSailingBody">Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.</p>
         </section>
         <section>
-          <h3>Islands</h3>
-          <p>Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.</p>
+          <h3 data-i18n="guideIslandsTitle">Islands</h3>
+          <p data-i18n="guideIslandsBody">Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.</p>
         </section>
         <section>
-          <h3>Tools</h3>
-          <p>Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.</p>
+          <h3 data-i18n="guideToolsTitle">Tools</h3>
+          <p data-i18n="guideToolsBody">Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.</p>
         </section>
         <section>
-          <h3>Progress</h3>
-          <p>Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.</p>
+          <h3 data-i18n="guideProgressTitle">Progress</h3>
+          <p data-i18n="guideProgressBody">Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.</p>
         </section>
       </div>
       <div class="guide-actions">
-        <button id="guideClose" type="button">Start playing</button>
+        <button id="guideClose" type="button" data-i18n="startPlaying">Start playing</button>
       </div>
     </div>
   </div>
@@ -60,6 +62,7 @@
     <section class="panel captain">
       <div>
         <strong id="playerName">Captain</strong>
+        <select id="hudLanguageSelect" class="language-select hud-language" aria-label="Language"></select>
         <span id="modeLabel">At sea</span>
       </div>
       <div class="bars">
@@ -78,36 +81,36 @@
     <section id="ammoHotbar" class="panel ammo-hotbar"></section>
 
     <section class="panel cargo">
-      <strong>Cargo</strong>
+      <strong data-i18n="cargo">Cargo</strong>
       <div id="cargoList"></div>
     </section>
 
     <section id="spyPanel" class="panel spy hidden">
-      <strong id="spyName">No target</strong>
+      <strong id="spyName" data-i18n="noTarget">No target</strong>
       <div id="spyDetails"></div>
     </section>
   </div>
 
   <section id="minimapPanel" class="panel minimap">
     <header>
-      <strong>Map</strong>
+      <strong data-i18n="map">Map</strong>
       <div>
-        <button id="toggleWindMap" title="Toggle wind markers">Wind</button>
+        <button id="toggleWindMap" title="Toggle wind markers" data-i18n="wind" data-i18n-title="toggleWindMarkers">Wind</button>
         <button id="closeMinimap" title="Hide minimap">x</button>
       </div>
     </header>
     <canvas id="minimap" width="180" height="180"></canvas>
   </section>
-  <button id="openMinimap" class="minimap-open hidden" title="Open minimap">Map</button>
+  <button id="openMinimap" class="minimap-open hidden" title="Open minimap" data-i18n="map" data-i18n-title="openMinimap">Map</button>
 
   <section id="leaderboardPanel" class="panel leaderboard">
     <header>
-      <strong>Gold</strong>
+      <strong data-i18n="gold">Gold</strong>
       <button id="closeLeaderboard" title="Hide leaderboard">x</button>
     </header>
     <ol id="leaderboardList"></ol>
   </section>
-  <button id="openLeaderboard" class="leaderboard-open hidden" title="Open leaderboard">Gold</button>
+  <button id="openLeaderboard" class="leaderboard-open hidden" title="Open leaderboard" data-i18n="gold" data-i18n-title="openLeaderboard">Gold</button>
 
   <div id="dockPrompt" class="prompt hidden">Press <b>T</b> to dock</div>
   <div id="toast"></div>
@@ -118,13 +121,13 @@
         <span id="shopIsland">Island</span>
         <strong>Harbor Market</strong>
       </div>
-      <button id="closeShop" title="Close">x</button>
+      <button id="closeShop" title="Close" data-i18n-title="close">x</button>
     </header>
     <nav>
-      <button class="tab active" data-tab="goods">Goods</button>
-      <button class="tab" data-tab="ships">Ships</button>
-      <button class="tab" data-tab="ammo">Shot</button>
-      <button class="tab" data-tab="upgrades">Upgrades</button>
+      <button class="tab active" data-tab="goods" data-i18n="goodsTab">Goods</button>
+      <button class="tab" data-tab="ships" data-i18n="shipsTab">Ships</button>
+      <button class="tab" data-tab="ammo" data-i18n="shotTab">Shot</button>
+      <button class="tab" data-tab="upgrades" data-i18n="upgradesTab">Upgrades</button>
     </nav>
     <div id="shopBody"></div>
   </aside>
@@ -156,6 +159,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=125"></script>
+  <script type="module" src="game.js?v=126"></script>
 </body>
 </html>

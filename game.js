@@ -51,6 +51,8 @@ const ui = {
   nameInput: document.querySelector("#captainNameInput"),
   developerTokenInput: document.querySelector("#developerTokenInput"),
   nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
+  languageSelect: document.querySelector("#languageSelect"),
+  hudLanguageSelect: document.querySelector("#hudLanguageSelect"),
   beginnerGuide: document.querySelector("#beginnerGuide"),
   guideQuestion: document.querySelector("#guideQuestion"),
   guideContent: document.querySelector("#guideContent"),
@@ -103,6 +105,175 @@ const CANNONBALL_TYPES = {
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
+const LANGUAGE_OPTIONS = {
+  en: "English",
+  zh: "中文",
+  fr: "Français",
+  de: "Deutsch",
+  es: "Español",
+};
+const DEFAULT_LANGUAGE = "en";
+const I18N = {
+  en: {
+    ui: {
+      captainName: "Captain name", enterName: "Enter your name", developerToken: "Developer token", optional: "Optional", language: "Language", setSail: "Set sail",
+      firstVoyage: "First voyage", newQuestion: "Are you new to Islandwake?", newQuestionBody: "A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.", showGuide: "Yes, show guide", noSetSail: "No, set sail",
+      beginnerGuide: "Beginner's guide", guideHeadline: "Survive, trade, upgrade", guideSailingTitle: "Sailing", guideSailingBody: "Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.",
+      guideIslandsTitle: "Islands", guideIslandsBody: "Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.",
+      guideToolsTitle: "Tools", guideToolsBody: "Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.",
+      guideProgressTitle: "Progress", guideProgressBody: "Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.", startPlaying: "Start playing",
+      cargo: "Cargo", noTarget: "No target", map: "Map", wind: "Wind", toggleWindMarkers: "Toggle wind markers", openMinimap: "Open minimap", gold: "Gold", openLeaderboard: "Open leaderboard", close: "Close", harborMarket: "Harbor Market",
+      goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", upgradesTab: "Upgrades", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
+      lvlInfinite: "Lvl. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
+      dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop",
+      unchartedShop: "{island} is uncharted. There are no shops, shipwrights, or trade goods here.", marketIntro: "{culture} market | Hold {hold}/{capacity}{blubber}. Buy low, then sell where demand is higher.", blubberInHold: " | Blubber {count} in hold",
+      buy: "Buy", sell: "Sell", buyPrice: "Buy {price}g", sellPrice: "Sell {price}g", owned: "Owned {count}.", blubberTrade: "Owned {owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.",
+      sellHere: "Sell here for {price}g.", bestKnownResale: "Best known resale is {price}g at {island}.", betterSellHere: "This is one of the better places to sell it.", possibleProfit: "{profit}g possible profit if you haul it there.", weakTradeRoute: "Buying here is not a strong trade route right now.",
+      shipwrightIntro: "{island} shipwrights sell {culture} hulls. Faster ships usually have less armor; larger ships carry and push more.", price: "{price}g", sailing: "Sailing", shipStats: "HP {hp} / Armor {armor}% / Speed {speed} / Regen {regen}/s / Hold {hold}", vsYourShip: "Vs your {ship}: {stats}",
+      emptySlot: "Empty", emptySlotTitle: "Empty slot", hotbarFull: "Hotbar Full", replaceAmmoPrompt: "Replace one non-basic slot with {ammo}.", slot: "Slot {slot}", basic: "Basic", hotAirBalloon: "Hot Air Balloon", balloonShopDesc: "Owned {owned}/{max}. Ballooners can launch them for scouting and bombing.", each: "{price}g each", buyFive: "Buy 5",
+      upgradePoints: "Upgrade points: <b>{points}</b>", spend: "Spend", max: "Max", cannonDamage: "Cannon Damage", fireRate: "Fire Rate", cannonRange: "Cannon Range",
+      speedVeryFast: "very fast", speedQuick: "quick", speedSlow: "slow", speedSteady: "steady", noArmor: "no armor", heavyArmor: "heavy armor", solidArmor: "solid armor", lightArmor: "light armor", hugeHold: "huge cargo hold", largeHold: "large cargo hold", smallHold: "small cargo hold", usefulHold: "useful cargo hold", massiveHp: "massive hull HP", highHp: "high hull HP", lightHp: "light hull HP", goodHp: "good hull HP",
+      speedBuild: "Built for speed, not soaking hits.", heavyBuild: "Heavy and hard to push, but slow to reposition.", balancedBuild: "Balanced enough for trading and fights.", shipRole: "{speed} ship with {durability}, {defense}, and a {hold}. {handling}",
+      hotshotDesc: "Same direct hit as Basic Shell, then burns for {dps}/s for {duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.", grapeshotDesc: "{pellets} pellets in a wide spread. Each pellet does {damage}% direct damage and reaches {range}% of cannon range. Best up close.", harpoonDesc: "Fixed 20 damage to ships. Whales take 100 damage, or 150 from a Whaler, and cannon damage upgrades do not boost it.", airburstDesc: "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.", basicDesc: "Reliable single cannonball with infinite ammo.",
+      damageUpgradeDesc: "Current {damage} direct damage. Each point adds +2 direct damage; Hotshot fire stays separate.", reloadUpgradeDesc: "Current {reload}s reload. Each point lowers reload by 0.02s, up to Lv.{max}.", rangeUpgradeDesc: "Current {range}m range. Each point adds +4m. Farther hits also deal up to +50% direct damage.",
+      dangerous: "Dangerous", wounded: "Wounded", manageable: "Manageable", hostile: "Hostile", crates: "Crates", distanceMeter: "{distance}m",
+      spyDetails: "Lv.{level} | {distance} | {threat}<br>HP {hp}/{max} ({pct}%) | Armor {armor}%<br>Speed {speed} | Regen {regen}/s | Crates {crates}",
+      toastStopShip: "Stop your ship before walking around.", toastDeckView: "Deck view. Press C for sailing controls.", toastReturnedDeck: "Returned to the deck.", toastSailingControls: "Sailing controls restored.", toastAmmoSlotEmpty: "That ammo slot is empty.", toastPutShotHotbar: "Put that shot in a hotbar slot first.", toastBasicSlot: "Basic Shell stays in slot 1.", toastWindShown: "Wind markers shown.", toastWindHidden: "Wind markers hidden.", toastGetCloser: "Get closer to an island to dock.", toastLineRetracted: "Line retracted.", toastWhalerOnly: "Only the Whaler can use side nets at sea.", toastNetsOut: "Whaler nets extended. Speed reduced.", toastNetsIn: "Whaler nets retracted.", toastDockCancel: "Docking cancelled. Stay close to the island.", toastSailsRaised: "Sails raised.", toastDockBeforeShop: "Dock at an island before shopping.", toastHoldFull: "Your hold is full.", toastBlubberFull: "Your blubber hold is full.", toastRecoveredBlubber: "Recovered whale blubber.", toastSpyShip: "Use the spyglass from your ship.", toastSpyNone: "Spyglass found no ships. Aim toward a sail.", toastNotEnoughGold: "Not enough gold.", toastNoCargoSell: "No cargo to sell.", toastBalloonMax: "You already have the maximum number of balloons.", toastBalloonBought: "Hot air balloon purchased.", toastNeedPoints: "Level up to earn upgrade points.", toastReloadMax: "Reload upgrade is maxed.", toastUpgradeInstalled: "Upgrade installed.", toastBalloonerOnly: "Only a Ballooner can launch hot air balloons.", toastThreeBalloons: "Only 3 balloons can be launched at once.", toastNoBalloons: "No spare hot air balloons.", toastBalloonLaunched: "Balloon launched. Press V to switch view.", toastShipView: "Ship view.", toastBalloonView: "Balloon view.", toastNextBalloon: "Next balloon view.", toastBalloonDescending: "Balloon descending. Keep it above the Ballooner.", toastBombUsed: "This balloon has already dropped its bomb.", toastBombAway: "Bomb away.", toastBalloonRecovered: "Balloon recovered.", toastBalloonSplash: "Balloon splashed down.", toastWaterfall: "You crossed the waterfall at the edge of the world.", toastJumpWater: "You jumped into the water. Press F to return to your ship.", toastSwimming: "You are swimming. Press F to return to your ship.", toastGoldDiggerBlock: "GoldDigger teleport blocked: island.", toastGoldDiggerMinimap: "GoldDigger minimap teleport.", toastConnected: "Connected to multiplayer waters.", toastReconnected: "Reconnected to multiplayer waters.", toastDisconnected: "Multiplayer disconnected. Reconnecting..."
+    },
+    goods: { Silk: "Silk", Spice: "Spice", Iron: "Iron", Tea: "Tea", Pearls: "Pearls", "Whale Blubber": "Whale Blubber" },
+    ammo: { basic: "Basic Shell", grapeshot: "Grapeshot", hotshot: "Hotshot", harpoon: "Harpoon", airburst: "Airburst Shell" },
+    ammoShort: { basic: "Shell", grapeshot: "Grape", hotshot: "Hot", harpoon: "Harpoon", airburst: "Air" },
+    entities: { Fish: "Fish", Squid: "Squid", Crate: "Crate", Treasure: "Treasure", "Kraken tentacle": "Kraken tentacle" },
+    islands: { "Port Azure": "Port Azure", Vikholm: "Vikholm", Seville: "Seville", Venice: "Venice", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzibar", Canton: "Canton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisbon", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Crown Harbor", Blackreef: "Blackreef", "New Albion": "New Albion", "Gull Keys": "Gull Keys", "Twin Shoals": "Twin Shoals", "Mistfall Cay": "Mistfall Cay", "Broken Tooth": "Broken Tooth", Greenneedle: "Greenneedle" },
+    cultures: { Freeport: "Freeport", Viking: "Viking", Spanish: "Spanish", Venetian: "Venetian", Dutch: "Dutch", "Royal Navy": "Royal Navy", "Swahili-Arab": "Swahili-Arab", Chinese: "Chinese", American: "American", French: "French", Portuguese: "Portuguese", "Indian Ocean": "Indian Ocean", Polynesian: "Polynesian", "Crown Colony": "Crown Colony", Privateer: "Privateer", Merchant: "Merchant", Uncharted: "Uncharted" },
+    ships: {}
+  },
+  zh: {
+    ui: {
+      captainName: "船长姓名", enterName: "输入你的名字", developerToken: "开发者口令", optional: "可选", language: "语言", setSail: "扬帆出航",
+      firstVoyage: "首次航行", newQuestion: "你是 Islandwake 的新玩家吗？", newQuestionBody: "一份简短船长指南会介绍航行、岛屿、商店、钓鱼、战斗和战利品。", showGuide: "是，显示指南", noSetSail: "否，直接出航",
+      beginnerGuide: "新手指南", guideHeadline: "生存、贸易、升级", guideSailingTitle: "航行", guideSailingBody: "用 WASD 驾驶船只。用鼠标瞄准并点击发射当前炮弹。小地图会显示岛屿、首领、风暴、气球和风向。",
+      guideIslandsTitle: "岛屿", guideIslandsBody: "靠近岛屿后按 T 停靠。上岸后按 R 购物，按 C 重新出海。商店出售船只、货物、炮弹、气球和升级。",
+      guideToolsTitle: "工具", guideToolsBody: "按 1 使用火炮，按 2 使用鱼竿，按 3 或 G 使用望远镜。鱼和鱿鱼会咬饵，木箱和宝藏可收集，望远镜点击船只可识别目标。",
+      guideProgressTitle: "进度", guideProgressBody: "把货物卖到价格更高的地方，击沉船只获得木箱，购买更强的船，并用升级点提升伤害、装填和射程。前期远离海怪和地图边缘。", startPlaying: "开始游戏",
+      cargo: "货舱", noTarget: "无目标", map: "地图", wind: "风", toggleWindMarkers: "切换风向标记", openMinimap: "打开地图", gold: "金币", openLeaderboard: "打开排行榜", close: "关闭", harborMarket: "港口市场",
+      goodsTab: "货物", shipsTab: "船只", shotTab: "炮弹", upgradesTab: "升级", captain: "船长", atSea: "海上", swimming: "游泳中", onDeck: "甲板上", docked: "停靠：{island}",
+      lvlInfinite: "等级：无限", lvlMax: "{level}级 满级", lvl: "{level}级", hp: "耐久", armor: "护甲", speed: "速度", regen: "回复", hold: "货舱", blubber: "鲸脂", nets: "渔网", out: "展开", in: "收回", burning: "燃烧 {seconds}秒", emptyHold: "货舱为空",
+      dockingPrompt: "正在停靠 {island}：<b>{seconds}秒</b>", pressDock: "按 <b>T</b> 停靠在 {island}", pressSailShop: "按 <b>C</b> 出航，或按 <b>R</b> 打开商店",
+      buy: "购买", sell: "出售", buyPrice: "买 {price}金", sellPrice: "卖 {price}金", owned: "拥有 {count}。", unchartedShop: "{island} 是未知岛屿。这里没有商店、船厂或贸易货物。", marketIntro: "{culture} 市场 | 货舱 {hold}/{capacity}{blubber}。低买高卖。", blubberInHold: " | 货舱中鲸脂 {count}",
+      blubberTrade: "拥有 {owned}。朴茨茅斯每个出价 200金；其他港口不收。它占普通货舱，除非你驾驶捕鲸船，可携带 50 个鲸脂。", sellHere: "此地售价 {price}金。", bestKnownResale: "已知最佳转卖价为 {price}金，地点：{island}。", betterSellHere: "这里是比较好的出售地点。", possibleProfit: "运到那里可赚 {profit}金。", weakTradeRoute: "现在在这里买入不是好路线。",
+      shipwrightIntro: "{island} 的船匠出售 {culture} 船体。更快的船通常护甲更低；更大的船能载更多也更能推动别人。", price: "{price}金", sailing: "正在使用", shipStats: "耐久 {hp} / 护甲 {armor}% / 速度 {speed} / 回复 {regen}/秒 / 货舱 {hold}", vsYourShip: "对比你的 {ship}：{stats}",
+      emptySlot: "空", emptySlotTitle: "空槽位", hotbarFull: "快捷栏已满", replaceAmmoPrompt: "用 {ammo} 替换一个非基础槽位。", slot: "槽位 {slot}", basic: "基础", hotAirBalloon: "热气球", balloonShopDesc: "拥有 {owned}/{max}。气球船可放出气球侦察和投弹。", each: "每个 {price}金", buyFive: "买 5 个",
+      upgradePoints: "升级点：<b>{points}</b>", spend: "花费", max: "最高", cannonDamage: "火炮伤害", fireRate: "射速", cannonRange: "火炮射程",
+      speedVeryFast: "极快", speedQuick: "快速", speedSlow: "缓慢", speedSteady: "稳定", noArmor: "无护甲", heavyArmor: "重护甲", solidArmor: "坚实护甲", lightArmor: "轻护甲", hugeHold: "巨大货舱", largeHold: "大货舱", smallHold: "小货舱", usefulHold: "实用货舱", massiveHp: "超高船体耐久", highHp: "高船体耐久", lightHp: "轻型船体耐久", goodHp: "不错的船体耐久",
+      speedBuild: "为速度而造，不适合硬扛伤害。", heavyBuild: "沉重且难以推动，但转移很慢。", balancedBuild: "适合贸易和战斗的均衡船。", shipRole: "{speed}船只，拥有{durability}、{defense}和{hold}。{handling}",
+      hotshotDesc: "直接命中伤害与基础炮弹相同，然后造成 {dps}/秒，持续 {duration}秒。燃烧不受火炮伤害升级影响，移动中的船会更快熄灭。", grapeshotDesc: "{pellets} 发散弹。每发造成 {damage}% 直接伤害，射程为火炮射程的 {range}%。近距离最佳。", harpoonDesc: "对船固定造成 20 伤害。鲸鱼受到 100 伤害，捕鲸船发射时为 150；火炮伤害升级不会增强。", airburstDesc: "在瞄准点上方爆炸，像霰弹一样不太精确。对气球最多造成 60 爆炸伤害，边缘更低。", basicDesc: "可靠的单发炮弹，弹药无限。",
+      damageUpgradeDesc: "当前直接伤害 {damage}。每点 +2 直接伤害；炽热弹燃烧单独计算。", reloadUpgradeDesc: "当前装填 {reload}秒。每点减少 0.02秒，最高 Lv.{max}。", rangeUpgradeDesc: "当前射程 {range}米。每点 +4米。远距离命中最多额外 +50% 直接伤害。",
+      dangerous: "危险", wounded: "受创", manageable: "可应对", hostile: "敌对", crates: "木箱", distanceMeter: "{distance}米", spyDetails: "{level}级 | {distance} | {threat}<br>耐久 {hp}/{max} ({pct}%) | 护甲 {armor}%<br>速度 {speed} | 回复 {regen}/秒 | 木箱 {crates}",
+      toastStopShip: "先让船停稳，才能四处走动。", toastDeckView: "甲板视角。按 C 回到航行控制。", toastReturnedDeck: "已回到甲板。", toastSailingControls: "航行控制已恢复。", toastAmmoSlotEmpty: "这个弹药槽是空的。", toastPutShotHotbar: "先把这种炮弹放进快捷栏。", toastBasicSlot: "基础炮弹固定在 1 号槽。", toastWindShown: "已显示风向标记。", toastWindHidden: "已隐藏风向标记。", toastGetCloser: "靠近岛屿才能停靠。", toastLineRetracted: "鱼线已收回。", toastWhalerOnly: "只有捕鲸船能使用侧网。", toastNetsOut: "捕鲸船侧网已展开，速度降低。", toastNetsIn: "捕鲸船侧网已收回。", toastDockCancel: "停靠取消。请保持靠近岛屿。", toastSailsRaised: "船帆升起。", toastDockBeforeShop: "先停靠岛屿才能购物。", toastHoldFull: "货舱已满。", toastBlubberFull: "鲸脂货舱已满。", toastRecoveredBlubber: "获得鲸脂。", toastSpyShip: "望远镜只能在船上使用。", toastSpyNone: "望远镜没有发现船只。请瞄准船帆。", toastNotEnoughGold: "金币不足。", toastNoCargoSell: "没有可出售的货物。", toastBalloonMax: "你已经拥有最多数量的气球。", toastBalloonBought: "已购买热气球。", toastNeedPoints: "升级可获得升级点。", toastReloadMax: "装填升级已满。", toastUpgradeInstalled: "升级已安装。", toastBalloonerOnly: "只有气球船能放出热气球。", toastThreeBalloons: "最多只能同时放出 3 个气球。", toastNoBalloons: "没有备用热气球。", toastBalloonLaunched: "气球已发射。按 V 切换视角。", toastShipView: "船只视角。", toastBalloonView: "气球视角。", toastNextBalloon: "下一个气球视角。", toastBalloonDescending: "气球正在下降。保持在气球船上方。", toastBombUsed: "这个气球已经投过炸弹。", toastBombAway: "炸弹投下。", toastBalloonRecovered: "气球已回收。", toastBalloonSplash: "气球落水。", toastWaterfall: "你越过了世界边缘的瀑布。", toastJumpWater: "你跳进了水里。按 F 返回船上。", toastSwimming: "你正在游泳。按 F 返回船上。", toastGoldDiggerBlock: "GoldDigger 传送被岛屿阻挡。", toastGoldDiggerMinimap: "GoldDigger 小地图传送。", toastConnected: "已连接多人海域。", toastReconnected: "已重新连接多人海域。", toastDisconnected: "多人连接断开，正在重连..."
+    },
+    goods: { Silk: "丝绸", Spice: "香料", Iron: "铁", Tea: "茶叶", Pearls: "珍珠", "Whale Blubber": "鲸脂" },
+    ammo: { basic: "基础炮弹", grapeshot: "霰弹", hotshot: "炽热弹", harpoon: "鱼叉", airburst: "空爆弹" },
+    ammoShort: { basic: "炮弹", grapeshot: "霰弹", hotshot: "热弹", harpoon: "鱼叉", airburst: "空爆" },
+    entities: { Fish: "鱼", Squid: "鱿鱼", Crate: "木箱", Treasure: "宝藏", "Kraken tentacle": "海怪触手" },
+    islands: { "Port Azure": "蔚蓝港", Vikholm: "维克霍姆", Seville: "塞维利亚", Venice: "威尼斯", Amsterdam: "阿姆斯特丹", Portsmouth: "朴茨茅斯", Zanzibar: "桑给巴尔", Canton: "广州", Baltimore: "巴尔的摩", Brest: "布雷斯特", Lisbon: "里斯本", Calicut: "卡利卡特", Tonga: "汤加", "Crown Harbor": "王冠港", Blackreef: "黑礁", "New Albion": "新阿尔比恩", "Gull Keys": "鸥群礁", "Twin Shoals": "双浅滩", "Mistfall Cay": "雾瀑岛", "Broken Tooth": "断齿岛", Greenneedle: "绿针岛" },
+    cultures: { Freeport: "自由港", Viking: "维京", Spanish: "西班牙", Venetian: "威尼斯", Dutch: "荷兰", "Royal Navy": "皇家海军", "Swahili-Arab": "斯瓦希里-阿拉伯", Chinese: "中国", American: "美洲", French: "法国", Portuguese: "葡萄牙", "Indian Ocean": "印度洋", Polynesian: "波利尼西亚", "Crown Colony": "王冠殖民地", Privateer: "私掠者", Merchant: "商人", Uncharted: "未知" },
+    ships: {}
+  },
+  fr: {
+    ui: {
+      captainName: "Nom du capitaine", enterName: "Entrez votre nom", developerToken: "Jeton développeur", optional: "Facultatif", language: "Langue", setSail: "Prendre la mer",
+      firstVoyage: "Premier voyage", newQuestion: "Découvres-tu Islandwake ?", newQuestionBody: "Un bref guide de capitaine peut expliquer la navigation, les îles, les boutiques, la pêche, le combat et le butin.", showGuide: "Oui, afficher le guide", noSetSail: "Non, partir",
+      beginnerGuide: "Guide débutant", guideHeadline: "Survivre, commercer, améliorer", guideSailingTitle: "Navigation", guideSailingBody: "Utilise WASD pour diriger ton navire. Vise avec la souris et clique pour tirer le boulet sélectionné. La mini-carte affiche les îles, boss, orages, ballons et vents.",
+      guideIslandsTitle: "Îles", guideIslandsBody: "Approche-toi d'une île et appuie sur T pour accoster. À terre, appuie sur R pour le marché et C pour repartir. Les boutiques vendent navires, marchandises, boulets, ballons et améliorations.",
+      guideToolsTitle: "Outils", guideToolsBody: "Utilise 1 pour le canon, 2 pour la canne à pêche, et 3 ou G pour la longue-vue. Les poissons et calmars mordent à l'appât, les caisses et trésors se ramassent, et la longue-vue identifie les navires.",
+      guideProgressTitle: "Progression", guideProgressBody: "Vends les marchandises où elles valent plus cher, coule des navires pour obtenir des caisses, achète de meilleurs navires et dépense tes points en dégâts, rechargement et portée. Évite le Kraken et le bord de carte au début.", startPlaying: "Commencer",
+      cargo: "Cargaison", noTarget: "Aucune cible", map: "Carte", wind: "Vent", toggleWindMarkers: "Afficher/masquer les vents", openMinimap: "Ouvrir la carte", gold: "Or", openLeaderboard: "Ouvrir le classement", close: "Fermer", harborMarket: "Marché du port",
+      goodsTab: "Marchandises", shipsTab: "Navires", shotTab: "Munitions", upgradesTab: "Améliorations", captain: "Capitaine", atSea: "En mer", swimming: "À la nage", onDeck: "Sur le pont", docked: "Accosté : {island}",
+      lvlInfinite: "Niv. infini", lvlMax: "Niv.{level} MAX", lvl: "Niv.{level}", hp: "PV", armor: "Armure", speed: "Vitesse", regen: "Régén.", hold: "Cale", blubber: "Graisse", nets: "Filets", out: "sortis", in: "rentrés", burning: "En feu {seconds}s", emptyHold: "Cale vide",
+      dockingPrompt: "Accostage à {island} : <b>{seconds}s</b>", pressDock: "Appuie sur <b>T</b> pour accoster à {island}", pressSailShop: "Appuie sur <b>C</b> pour partir ou <b>R</b> pour le marché",
+      buy: "Acheter", sell: "Vendre", buyPrice: "Achat {price}o", sellPrice: "Vente {price}o", owned: "Possédé {count}.", unchartedShop: "{island} est inexplorée. Il n'y a ni boutiques, ni chantiers navals, ni marchandises.", marketIntro: "Marché {culture} | Cale {hold}/{capacity}{blubber}. Achète bas, vends haut.", blubberInHold: " | Graisse {count} en cale",
+      blubberTrade: "Possédé {owned}. Portsmouth paie 200o pièce ; les autres ports n'en achètent pas. Elle occupe la cale normale sauf sur un baleinier, qui peut en porter 50.", sellHere: "Vente ici pour {price}o.", bestKnownResale: "Meilleure revente connue : {price}o à {island}.", betterSellHere: "C'est l'un des meilleurs endroits pour vendre.", possibleProfit: "{profit}o de profit possible si tu l'y transportes.", weakTradeRoute: "Acheter ici n'est pas une bonne route commerciale pour l'instant.",
+      shipwrightIntro: "Les chantiers de {island} vendent des coques {culture}. Les navires rapides ont souvent moins d'armure ; les grands navires portent plus et poussent mieux.", price: "{price}o", sailing: "En mer", shipStats: "PV {hp} / Armure {armor}% / Vitesse {speed} / Régén. {regen}/s / Cale {hold}", vsYourShip: "Vs ton {ship} : {stats}",
+      emptySlot: "Vide", emptySlotTitle: "Emplacement vide", hotbarFull: "Barre pleine", replaceAmmoPrompt: "Remplace un emplacement non basique par {ammo}.", slot: "Empl. {slot}", basic: "Basique", hotAirBalloon: "Montgolfière", balloonShopDesc: "Possédées {owned}/{max}. Les Ballooners peuvent les lancer pour explorer et bombarder.", each: "{price}o chacune", buyFive: "Acheter 5",
+      upgradePoints: "Points d'amélioration : <b>{points}</b>", spend: "Dépenser", max: "Max", cannonDamage: "Dégâts du canon", fireRate: "Cadence", cannonRange: "Portée du canon",
+      speedVeryFast: "très rapide", speedQuick: "rapide", speedSlow: "lent", speedSteady: "stable", noArmor: "sans armure", heavyArmor: "armure lourde", solidArmor: "bonne armure", lightArmor: "armure légère", hugeHold: "cale immense", largeHold: "grande cale", smallHold: "petite cale", usefulHold: "cale utile", massiveHp: "PV de coque énormes", highHp: "PV de coque élevés", lightHp: "coque légère", goodHp: "bons PV de coque",
+      speedBuild: "Construit pour la vitesse, pas pour encaisser.", heavyBuild: "Lourd et difficile à pousser, mais lent à repositionner.", balancedBuild: "Assez équilibré pour le commerce et le combat.", shipRole: "Navire {speed} avec {durability}, {defense} et une {hold}. {handling}",
+      hotshotDesc: "Même impact direct que le boulet basique, puis brûle à {dps}/s pendant {duration}s. Le feu ignore les améliorations de dégâts et s'éteint plus vite sur les navires en mouvement.", grapeshotDesc: "{pellets} projectiles en large dispersion. Chaque projectile inflige {damage}% de dégâts directs et atteint {range}% de la portée du canon. Idéal de près.", harpoonDesc: "20 dégâts fixes aux navires. Les baleines subissent 100 dégâts, ou 150 depuis un baleinier ; les améliorations de dégâts ne l'augmentent pas.", airburstDesc: "Explose au-dessus du point visé avec une imprécision de mitraille. Inflige jusqu'à 60 dégâts aux ballons dans un petit rayon.", basicDesc: "Boulet fiable, tir unique, munitions infinies.",
+      damageUpgradeDesc: "Dégâts directs actuels : {damage}. Chaque point ajoute +2 ; le feu du boulet rouge est séparé.", reloadUpgradeDesc: "Rechargement actuel : {reload}s. Chaque point baisse de 0,02s, jusqu'au niv.{max}.", rangeUpgradeDesc: "Portée actuelle : {range}m. Chaque point ajoute +4m. Les tirs lointains gagnent jusqu'à +50% de dégâts directs.",
+      dangerous: "Dangereux", wounded: "Blessé", manageable: "Gérable", hostile: "Hostile", crates: "Caisses", distanceMeter: "{distance}m", spyDetails: "Niv.{level} | {distance} | {threat}<br>PV {hp}/{max} ({pct}%) | Armure {armor}%<br>Vitesse {speed} | Régén. {regen}/s | Caisses {crates}"
+    },
+    goods: { Silk: "Soie", Spice: "Épices", Iron: "Fer", Tea: "Thé", Pearls: "Perles", "Whale Blubber": "Graisse de baleine" },
+    ammo: { basic: "Boulet basique", grapeshot: "Mitraille", hotshot: "Boulet rouge", harpoon: "Harpon", airburst: "Obus airburst" },
+    ammoShort: { basic: "Boulet", grapeshot: "Mitr.", hotshot: "Rouge", harpoon: "Harpon", airburst: "Air" },
+    entities: { Fish: "Poisson", Squid: "Calmar", Crate: "Caisse", Treasure: "Trésor", "Kraken tentacle": "Tentacule du Kraken" },
+    islands: { "Port Azure": "Port Azur", Vikholm: "Vikholm", Seville: "Séville", Venice: "Venise", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzibar", Canton: "Canton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisbonne", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Port de la Couronne", Blackreef: "Récif Noir", "New Albion": "Nouvelle Albion", "Gull Keys": "Îlots des Mouettes", "Twin Shoals": "Doubles Hauts-fonds", "Mistfall Cay": "Caye Brumechute", "Broken Tooth": "Dent Brisée", Greenneedle: "Aiguille Verte" },
+    cultures: { Freeport: "port libre", Viking: "viking", Spanish: "espagnoles", Venetian: "vénitiennes", Dutch: "néerlandaises", "Royal Navy": "de la Royal Navy", "Swahili-Arab": "swahili-arabes", Chinese: "chinoises", American: "américaines", French: "françaises", Portuguese: "portugaises", "Indian Ocean": "de l'océan Indien", Polynesian: "polynésiennes", "Crown Colony": "coloniales", Privateer: "corsaires", Merchant: "marchandes", Uncharted: "inexplorées" },
+    ships: {}
+  },
+  de: {
+    ui: {
+      captainName: "Kapitänsname", enterName: "Namen eingeben", developerToken: "Entwickler-Token", optional: "Optional", language: "Sprache", setSail: "Segel setzen",
+      firstVoyage: "Erste Reise", newQuestion: "Bist du neu in Islandwake?", newQuestionBody: "Ein kurzer Kapitänsführer erklärt Segeln, Inseln, Läden, Angeln, Kampf und Beute.", showGuide: "Ja, Anleitung zeigen", noSetSail: "Nein, losfahren",
+      beginnerGuide: "Anfängerführer", guideHeadline: "Überleben, handeln, aufrüsten", guideSailingTitle: "Segeln", guideSailingBody: "Steuere dein Schiff mit WASD. Ziele mit der Maus und klicke, um die gewählte Kugel abzufeuern. Die Minikarte zeigt Inseln, Bosse, Stürme, Ballons und Wind.",
+      guideIslandsTitle: "Inseln", guideIslandsBody: "Fahre nah an eine Insel und drücke T zum Anlegen. An Land öffnet R den Markt und C setzt wieder Segel. Läden verkaufen Schiffe, Waren, Kugeln, Ballons und Upgrades.",
+      guideToolsTitle: "Werkzeuge", guideToolsBody: "1 nutzt die Kanone, 2 die Angel, 3 oder G das Fernrohr. Fische und Kalmare beißen den Köder, Kisten und Schätze können gesammelt werden, und das Fernrohr identifiziert Schiffe.",
+      guideProgressTitle: "Fortschritt", guideProgressBody: "Verkaufe Waren dort, wo sie mehr wert sind, versenke Schiffe für Kisten, kaufe stärkere Schiffe und investiere Punkte in Schaden, Nachladen und Reichweite. Meide Kraken und Kartenrand am Anfang.", startPlaying: "Spielen",
+      cargo: "Ladung", noTarget: "Kein Ziel", map: "Karte", wind: "Wind", toggleWindMarkers: "Windmarkierungen umschalten", openMinimap: "Karte öffnen", gold: "Gold", openLeaderboard: "Bestenliste öffnen", close: "Schließen", harborMarket: "Hafenmarkt",
+      goodsTab: "Waren", shipsTab: "Schiffe", shotTab: "Munition", upgradesTab: "Upgrades", captain: "Kapitän", atSea: "Auf See", swimming: "Schwimmen", onDeck: "An Deck", docked: "Angelegt: {island}",
+      lvlInfinite: "Stufe unendlich", lvlMax: "Stufe {level} MAX", lvl: "Stufe {level}", hp: "TP", armor: "Panzerung", speed: "Tempo", regen: "Reg.", hold: "Laderaum", blubber: "Waltran", nets: "Netze", out: "aus", in: "ein", burning: "Brennt {seconds}s", emptyHold: "Laderaum leer",
+      dockingPrompt: "Anlegen bei {island}: <b>{seconds}s</b>", pressDock: "Drücke <b>T</b>, um bei {island} anzulegen", pressSailShop: "Drücke <b>C</b> zum Auslaufen oder <b>R</b> für den Laden",
+      buy: "Kaufen", sell: "Verkaufen", buyPrice: "Kauf {price}g", sellPrice: "Verkauf {price}g", owned: "Besitz {count}.", unchartedShop: "{island} ist unerforscht. Hier gibt es keine Läden, Werften oder Handelswaren.", marketIntro: "{culture}-Markt | Laderaum {hold}/{capacity}{blubber}. Billig kaufen, teuer verkaufen.", blubberInHold: " | Waltran {count} im Laderaum",
+      blubberTrade: "Besitz {owned}. Portsmouth zahlt 200g pro Stück; andere Häfen kaufen es nicht. Es nutzt normalen Laderaum, außer auf einem Walfänger, der 50 tragen kann.", sellHere: "Hier für {price}g verkaufen.", bestKnownResale: "Bester bekannter Wiederverkauf: {price}g in {island}.", betterSellHere: "Dies ist einer der besseren Verkaufsorte.", possibleProfit: "{profit}g möglicher Gewinn, wenn du es dorthin bringst.", weakTradeRoute: "Hier zu kaufen ist derzeit keine gute Handelsroute.",
+      shipwrightIntro: "Die Werften von {island} verkaufen {culture}e Rümpfe. Schnellere Schiffe haben meist weniger Panzerung; größere tragen mehr und schieben stärker.", price: "{price}g", sailing: "Aktiv", shipStats: "TP {hp} / Panzerung {armor}% / Tempo {speed} / Reg. {regen}/s / Laderaum {hold}", vsYourShip: "Gegen dein {ship}: {stats}",
+      emptySlot: "Leer", emptySlotTitle: "Leerer Platz", hotbarFull: "Leiste voll", replaceAmmoPrompt: "Ersetze einen Nicht-Basis-Platz mit {ammo}.", slot: "Platz {slot}", basic: "Basis", hotAirBalloon: "Heißluftballon", balloonShopDesc: "Besitz {owned}/{max}. Ballooner können sie zum Erkunden und Bombardieren starten.", each: "{price}g pro Stück", buyFive: "5 kaufen",
+      upgradePoints: "Upgradepunkte: <b>{points}</b>", spend: "Ausgeben", max: "Max", cannonDamage: "Kanonenschaden", fireRate: "Feuerrate", cannonRange: "Kanonereichweite",
+      speedVeryFast: "sehr schnelles", speedQuick: "schnelles", speedSlow: "langsames", speedSteady: "stabiles", noArmor: "keine Panzerung", heavyArmor: "schwere Panzerung", solidArmor: "solide Panzerung", lightArmor: "leichte Panzerung", hugeHold: "riesiger Laderaum", largeHold: "großer Laderaum", smallHold: "kleiner Laderaum", usefulHold: "nützlicher Laderaum", massiveHp: "massive Rumpf-TP", highHp: "hohe Rumpf-TP", lightHp: "leichte Rumpf-TP", goodHp: "gute Rumpf-TP",
+      speedBuild: "Für Tempo gebaut, nicht zum Einstecken.", heavyBuild: "Schwer und kaum zu schieben, aber langsam beim Umsetzen.", balancedBuild: "Ausgewogen genug für Handel und Kämpfe.", shipRole: "{speed} Schiff mit {durability}, {defense} und {hold}. {handling}",
+      hotshotDesc: "Gleicher Direkttreffer wie Basis-Kugel, danach {dps}/s Feuer für {duration}s. Feuer ignoriert Schadens-Upgrades und erlischt bei bewegten Schiffen schneller.", grapeshotDesc: "{pellets} Projektile in breiter Streuung. Jedes verursacht {damage}% Direktschaden und erreicht {range}% Reichweite. Am besten nah.", harpoonDesc: "20 fester Schaden gegen Schiffe. Wale nehmen 100 Schaden, oder 150 vom Walfänger; Schadens-Upgrades erhöhen es nicht.", airburstDesc: "Explodiert hoch über dem Zielpunkt mit Kartätschen-Ungenauigkeit. Bis zu 60 Ballonschaden in kleinem Radius.", basicDesc: "Zuverlässige Einzelkugel mit unendlicher Munition.",
+      damageUpgradeDesc: "Aktueller Direktschaden {damage}. Jeder Punkt gibt +2; Hotshot-Feuer bleibt separat.", reloadUpgradeDesc: "Aktuelles Nachladen {reload}s. Jeder Punkt senkt um 0,02s, bis Stufe {max}.", rangeUpgradeDesc: "Aktuelle Reichweite {range}m. Jeder Punkt gibt +4m. Weite Treffer verursachen bis zu +50% Direktschaden.",
+      dangerous: "Gefährlich", wounded: "Verwundet", manageable: "Machbar", hostile: "Feindlich", crates: "Kisten", distanceMeter: "{distance}m", spyDetails: "Stufe {level} | {distance} | {threat}<br>TP {hp}/{max} ({pct}%) | Panzerung {armor}%<br>Tempo {speed} | Reg. {regen}/s | Kisten {crates}"
+    },
+    goods: { Silk: "Seide", Spice: "Gewürze", Iron: "Eisen", Tea: "Tee", Pearls: "Perlen", "Whale Blubber": "Waltran" },
+    ammo: { basic: "Basis-Kugel", grapeshot: "Kartätsche", hotshot: "Glühkugel", harpoon: "Harpune", airburst: "Luftdetonation" },
+    ammoShort: { basic: "Kugel", grapeshot: "Kart.", hotshot: "Glüh", harpoon: "Harp.", airburst: "Luft" },
+    entities: { Fish: "Fisch", Squid: "Kalmar", Crate: "Kiste", Treasure: "Schatz", "Kraken tentacle": "Kraken-Tentakel" },
+    islands: { "Port Azure": "Azurhafen", Vikholm: "Vikholm", Seville: "Sevilla", Venice: "Venedig", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Sansibar", Canton: "Kanton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lissabon", Calicut: "Kalikut", Tonga: "Tonga", "Crown Harbor": "Kronenhafen", Blackreef: "Schwarzriff", "New Albion": "Neu-Albion", "Gull Keys": "Möweninseln", "Twin Shoals": "Zwillingsbänke", "Mistfall Cay": "Nebelfall-Cay", "Broken Tooth": "Gebrochener Zahn", Greenneedle: "Grüne Nadel" },
+    cultures: { Freeport: "Freihafen", Viking: "Wikinger", Spanish: "spanisch", Venetian: "venezianisch", Dutch: "niederländisch", "Royal Navy": "Royal-Navy", "Swahili-Arab": "swahili-arabisch", Chinese: "chinesisch", American: "amerikanisch", French: "französisch", Portuguese: "portugiesisch", "Indian Ocean": "Indischer-Ozean", Polynesian: "polynesisch", "Crown Colony": "Kronkolonie", Privateer: "Freibeuter", Merchant: "Händler", Uncharted: "unerforscht" },
+    ships: {}
+  },
+  es: {
+    ui: {
+      captainName: "Nombre del capitán", enterName: "Escribe tu nombre", developerToken: "Token de desarrollador", optional: "Opcional", language: "Idioma", setSail: "Zarpar",
+      firstVoyage: "Primer viaje", newQuestion: "¿Eres nuevo en Islandwake?", newQuestionBody: "Una guía breve puede enseñarte navegación, islas, tiendas, pesca, combate y botín.", showGuide: "Sí, mostrar guía", noSetSail: "No, zarpar",
+      beginnerGuide: "Guía para principiantes", guideHeadline: "Sobrevive, comercia, mejora", guideSailingTitle: "Navegación", guideSailingBody: "Usa WASD para mover tu barco. Apunta con el ratón y haz clic para disparar la munición seleccionada. El minimapa muestra islas, jefes, tormentas, globos y viento.",
+      guideIslandsTitle: "Islas", guideIslandsBody: "Acércate a una isla y pulsa T para atracar. En tierra, pulsa R para comprar y C para volver a zarpar. Las tiendas venden barcos, mercancías, munición, globos y mejoras.",
+      guideToolsTitle: "Herramientas", guideToolsBody: "Usa 1 para cañón, 2 para caña de pescar, y 3 o G para catalejo. Peces y calamares muerden el cebo, cajas y tesoros se recogen, y el catalejo identifica barcos.",
+      guideProgressTitle: "Progreso", guideProgressBody: "Vende mercancías donde valgan más, hunde barcos para obtener cajas, compra barcos mejores y usa puntos en daño, recarga y alcance. Al principio evita el Kraken y el borde del mapa.", startPlaying: "Empezar",
+      cargo: "Carga", noTarget: "Sin objetivo", map: "Mapa", wind: "Viento", toggleWindMarkers: "Alternar viento", openMinimap: "Abrir mapa", gold: "Oro", openLeaderboard: "Abrir clasificación", close: "Cerrar", harborMarket: "Mercado del puerto",
+      goodsTab: "Mercancías", shipsTab: "Barcos", shotTab: "Munición", upgradesTab: "Mejoras", captain: "Capitán", atSea: "En el mar", swimming: "Nadando", onDeck: "En cubierta", docked: "Atracado: {island}",
+      lvlInfinite: "Niv. infinito", lvlMax: "Niv.{level} MAX", lvl: "Niv.{level}", hp: "PV", armor: "Blindaje", speed: "Velocidad", regen: "Reg.", hold: "Bodega", blubber: "Grasa", nets: "Redes", out: "fuera", in: "dentro", burning: "Ardiendo {seconds}s", emptyHold: "Bodega vacía",
+      dockingPrompt: "Atracando en {island}: <b>{seconds}s</b>", pressDock: "Pulsa <b>T</b> para atracar en {island}", pressSailShop: "Pulsa <b>C</b> para zarpar o <b>R</b> para la tienda",
+      buy: "Comprar", sell: "Vender", buyPrice: "Comprar {price}o", sellPrice: "Vender {price}o", owned: "Tienes {count}.", unchartedShop: "{island} está sin cartografiar. No hay tiendas, astilleros ni mercancías.", marketIntro: "Mercado {culture} | Bodega {hold}/{capacity}{blubber}. Compra barato y vende caro.", blubberInHold: " | Grasa {count} en bodega",
+      blubberTrade: "Tienes {owned}. Portsmouth paga 200o cada una; otros puertos no la compran. Usa bodega normal salvo en un ballenero, que puede llevar 50.", sellHere: "Vender aquí por {price}o.", bestKnownResale: "Mejor reventa conocida: {price}o en {island}.", betterSellHere: "Este es uno de los mejores sitios para venderlo.", possibleProfit: "{profit}o de ganancia posible si lo llevas allí.", weakTradeRoute: "Comprar aquí no es una buena ruta ahora.",
+      shipwrightIntro: "Los astilleros de {island} venden cascos {culture}. Los barcos rápidos suelen tener menos blindaje; los grandes cargan y empujan más.", price: "{price}o", sailing: "Navegando", shipStats: "PV {hp} / Blindaje {armor}% / Vel. {speed} / Reg. {regen}/s / Bodega {hold}", vsYourShip: "Vs tu {ship}: {stats}",
+      emptySlot: "Vacío", emptySlotTitle: "Ranura vacía", hotbarFull: "Barra llena", replaceAmmoPrompt: "Reemplaza una ranura no básica con {ammo}.", slot: "Ranura {slot}", basic: "Básica", hotAirBalloon: "Globo aerostático", balloonShopDesc: "Tienes {owned}/{max}. Los Ballooner pueden lanzarlos para explorar y bombardear.", each: "{price}o cada uno", buyFive: "Comprar 5",
+      upgradePoints: "Puntos de mejora: <b>{points}</b>", spend: "Gastar", max: "Máx", cannonDamage: "Daño de cañón", fireRate: "Cadencia", cannonRange: "Alcance de cañón",
+      speedVeryFast: "muy rápido", speedQuick: "rápido", speedSlow: "lento", speedSteady: "estable", noArmor: "sin blindaje", heavyArmor: "blindaje pesado", solidArmor: "blindaje sólido", lightArmor: "blindaje ligero", hugeHold: "bodega enorme", largeHold: "bodega grande", smallHold: "bodega pequeña", usefulHold: "bodega útil", massiveHp: "PV de casco enormes", highHp: "PV de casco altos", lightHp: "PV de casco ligeros", goodHp: "buenos PV de casco",
+      speedBuild: "Hecho para velocidad, no para aguantar golpes.", heavyBuild: "Pesado y difícil de empujar, pero lento para reposicionarse.", balancedBuild: "Equilibrado para comercio y combates.", shipRole: "Barco {speed} con {durability}, {defense} y {hold}. {handling}",
+      hotshotDesc: "Mismo impacto directo que la munición básica, luego quema {dps}/s durante {duration}s. El fuego ignora mejoras de daño y se apaga antes si el barco se mueve.", grapeshotDesc: "{pellets} proyectiles con dispersión amplia. Cada uno hace {damage}% de daño directo y llega al {range}% del alcance. Mejor de cerca.", harpoonDesc: "20 de daño fijo a barcos. Las ballenas reciben 100, o 150 desde un ballenero; las mejoras de daño no lo aumentan.", airburstDesc: "Explota sobre el punto apuntado con imprecisión similar a metralla. Hace hasta 60 de daño a globos en un radio pequeño.", basicDesc: "Munición simple y fiable con disparos infinitos.",
+      damageUpgradeDesc: "Daño directo actual {damage}. Cada punto añade +2; el fuego de Hotshot va aparte.", reloadUpgradeDesc: "Recarga actual {reload}s. Cada punto reduce 0.02s, hasta niv.{max}.", rangeUpgradeDesc: "Alcance actual {range}m. Cada punto añade +4m. Los impactos lejanos hacen hasta +50% de daño directo.",
+      dangerous: "Peligroso", wounded: "Herido", manageable: "Manejable", hostile: "Hostil", crates: "Cajas", distanceMeter: "{distance}m", spyDetails: "Niv.{level} | {distance} | {threat}<br>PV {hp}/{max} ({pct}%) | Blindaje {armor}%<br>Vel. {speed} | Reg. {regen}/s | Cajas {crates}"
+    },
+    goods: { Silk: "Seda", Spice: "Especias", Iron: "Hierro", Tea: "Té", Pearls: "Perlas", "Whale Blubber": "Grasa de ballena" },
+    ammo: { basic: "Bala básica", grapeshot: "Metralla", hotshot: "Bala incendiaria", harpoon: "Arpón", airburst: "Bala airburst" },
+    ammoShort: { basic: "Bala", grapeshot: "Metr.", hotshot: "Fuego", harpoon: "Arpón", airburst: "Aire" },
+    entities: { Fish: "Pez", Squid: "Calamar", Crate: "Caja", Treasure: "Tesoro", "Kraken tentacle": "Tentáculo del Kraken" },
+    islands: { "Port Azure": "Puerto Azur", Vikholm: "Vikholm", Seville: "Sevilla", Venice: "Venecia", Amsterdam: "Ámsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzíbar", Canton: "Cantón", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisboa", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Puerto Corona", Blackreef: "Arrecife Negro", "New Albion": "Nueva Albión", "Gull Keys": "Cayos Gaviota", "Twin Shoals": "Bajos Gemelos", "Mistfall Cay": "Cayo Brumacaída", "Broken Tooth": "Diente Roto", Greenneedle: "Aguja Verde" },
+    cultures: { Freeport: "puerto libre", Viking: "vikingos", Spanish: "españoles", Venetian: "venecianos", Dutch: "neerlandeses", "Royal Navy": "de la Marina Real", "Swahili-Arab": "suajili-árabes", Chinese: "chinos", American: "americanos", French: "franceses", Portuguese: "portugueses", "Indian Ocean": "del Índico", Polynesian: "polinesios", "Crown Colony": "coloniales", Privateer: "corsarios", Merchant: "mercantes", Uncharted: "sin cartografiar" },
+    ships: {}
+  },
+};
 function spreadIslandData(data) {
   return {
     ...data,
@@ -245,6 +416,30 @@ const shipBalance = {
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
 };
 
+Object.assign(I18N.en.ships, Object.fromEntries(shipCatalog.map((ship) => [ship.id, ship.name])));
+Object.assign(I18N.zh.ships, {
+  skiff: "小艇", shallop: "浅水帆船", pinnace: "小型快艇", hoy: "霍伊船", yawl: "偏帆小船", balinger: "巴林杰帆船", felucca: "费卢卡帆船", bilander: "双桅小商船", cog: "柯克船", longship: "长船", dogger: "多格尔渔船", dhow: "独桅三角帆船", sloop: "单桅帆船", knarr: "克纳尔货船", lugger: "斜桅小帆船", tartane: "塔尔塔纳帆船", pink: "平克帆船", cat: "双体帆船", dart: "快艇", junk: "中式帆船", ketch: "双桅帆船", schooner: "纵帆船", galley: "桨帆船", xebec: "三桅小帆船", brigantine: "双桅纵帆船", caravel: "卡拉维尔帆船", snow: "斯诺双桅船", packet: "邮船", barquentine: "巴肯廷帆船", clipper: "飞剪船", fluyt: "荷兰货船", bombketch: "臼炮双桅船", barque: "三桅帆船", corvette: "轻型护卫舰", frigate: "护卫舰", storm: "战争单桅船", galleon: "盖伦船", merchantman: "武装商船", eastindiaman: "东印度商船", carrack: "卡拉克帆船", treasure: "宝船", whaler: "捕鲸船", razee: "削层护卫舰", ballooner: "气球船", fourthrate: "四级战列舰", grandfrigate: "大型护卫舰", manowar: "战列舰", windrunner: "逐风船", firstrate: "一级战列舰",
+});
+Object.assign(I18N.fr.ships, {
+  skiff: "Esquif", shallop: "Chaloupe", pinnace: "Pinasse", hoy: "Hoy", yawl: "Yawl", balinger: "Balinger", felucca: "Feluque", bilander: "Bilander", cog: "Cogue", longship: "Drakkar", dogger: "Dogre", dhow: "Dhow", sloop: "Sloop", knarr: "Knarr", lugger: "Lougre", tartane: "Tartane", pink: "Pinque", cat: "Catamaran", dart: "Cotre", junk: "Jonque", ketch: "Ketch", schooner: "Goélette", galley: "Galère", xebec: "Chebec", brigantine: "Brigantin", caravel: "Caravelle", snow: "Senau", packet: "Paquebot", barquentine: "Barquentine", clipper: "Clipper", fluyt: "Flûte", bombketch: "Ketch à bombes", barque: "Barque", corvette: "Corvette", frigate: "Frégate", storm: "Sloop de guerre", galleon: "Galion", merchantman: "Navire marchand", eastindiaman: "Indiaman", carrack: "Caraque", treasure: "Jonque au trésor", whaler: "Baleinier", razee: "Frégate rasée", ballooner: "Ballooner", fourthrate: "Quatrième rang", grandfrigate: "Grande frégate", manowar: "Vaisseau de ligne", windrunner: "Coureur des vents", firstrate: "Premier rang",
+});
+Object.assign(I18N.de.ships, {
+  skiff: "Skiff", shallop: "Schaluppe", pinnace: "Pinasse", hoy: "Hoy", yawl: "Yawl", balinger: "Balinger", felucca: "Feluke", bilander: "Bilander", cog: "Kogge", longship: "Langschiff", dogger: "Dogger", dhow: "Dhau", sloop: "Sloop", knarr: "Knarr", lugger: "Lugger", tartane: "Tartane", pink: "Pink", cat: "Katamaran", dart: "Kutter", junk: "Dschunke", ketch: "Ketsch", schooner: "Schoner", galley: "Galeere", xebec: "Schebecke", brigantine: "Brigantine", caravel: "Karavelle", snow: "Snow", packet: "Paketschiff", barquentine: "Barkentine", clipper: "Klipper", fluyt: "Fleute", bombketch: "Bombenketsch", barque: "Bark", corvette: "Korvette", frigate: "Fregatte", storm: "Kriegssloop", galleon: "Galeone", merchantman: "Handelsschiff", eastindiaman: "Ostindienfahrer", carrack: "Karacke", treasure: "Schatzdschunke", whaler: "Walfänger", razee: "Razee-Fregatte", ballooner: "Ballooner", fourthrate: "Vierter Rang", grandfrigate: "Große Fregatte", manowar: "Linienschiff", windrunner: "Windläufer", firstrate: "Erster Rang",
+});
+Object.assign(I18N.es.ships, {
+  skiff: "Esquife", shallop: "Chalupa", pinnace: "Pinaza", hoy: "Hoy", yawl: "Yola", balinger: "Balinger", felucca: "Faluca", bilander: "Bilander", cog: "Coca", longship: "Drakkar", dogger: "Dogger", dhow: "Dhow", sloop: "Balandra", knarr: "Knarr", lugger: "Lugre", tartane: "Tartana", pink: "Pinque", cat: "Catamarán", dart: "Cúter", junk: "Junco", ketch: "Queche", schooner: "Goleta", galley: "Galera", xebec: "Jabeque", brigantine: "Bergantín-goleta", caravel: "Carabela", snow: "Bergantín snow", packet: "Paquebote", barquentine: "Barquentina", clipper: "Clipper", fluyt: "Filibote", bombketch: "Queche bombardero", barque: "Barca", corvette: "Corbeta", frigate: "Fragata", storm: "Balandra de guerra", galleon: "Galeón", merchantman: "Mercante", eastindiaman: "Indiaman", carrack: "Carraca", treasure: "Junco del tesoro", whaler: "Ballenero", razee: "Fragata razee", ballooner: "Ballooner", fourthrate: "Cuarta clase", grandfrigate: "Gran fragata", manowar: "Navío de línea", windrunner: "Correvientos", firstrate: "Primera clase",
+});
+
+Object.assign(I18N.fr.ui, {
+  toastStopShip: "Arrete ton navire avant de marcher.", toastDeckView: "Vue pont. Appuie sur C pour reprendre la navigation.", toastReturnedDeck: "Retour sur le pont.", toastSailingControls: "Commandes de navigation restaurees.", toastAmmoSlotEmpty: "Cet emplacement est vide.", toastPutShotHotbar: "Place d'abord cette munition dans la barre.", toastBasicSlot: "Le boulet basique reste en emplacement 1.", toastWindShown: "Marqueurs de vent affiches.", toastWindHidden: "Marqueurs de vent masques.", toastGetCloser: "Approche-toi d'une ile pour accoster.", toastLineRetracted: "Ligne rentree.", toastWhalerOnly: "Seul le baleinier peut utiliser les filets lateraux.", toastNetsOut: "Filets du baleinier sortis. Vitesse reduite.", toastNetsIn: "Filets du baleinier rentres.", toastDockCancel: "Accostage annule. Reste pres de l'ile.", toastSailsRaised: "Voiles hissees.", toastDockBeforeShop: "Accoste a une ile avant d'acheter.", toastHoldFull: "Ta cale est pleine.", toastBlubberFull: "La cale a graisse est pleine.", toastRecoveredBlubber: "Graisse de baleine recuperee.", toastSpyShip: "Utilise la longue-vue depuis ton navire.", toastSpyNone: "Aucun navire trouve. Vise une voile.", toastNotEnoughGold: "Pas assez d'or.", toastNoCargoSell: "Aucune cargaison a vendre.", toastBalloonMax: "Tu as deja le maximum de ballons.", toastBalloonBought: "Montgolfiere achetee.", toastNeedPoints: "Monte de niveau pour gagner des points.", toastReloadMax: "Amelioration de rechargement au maximum.", toastUpgradeInstalled: "Amelioration installee.", toastBalloonerOnly: "Seul un Ballooner peut lancer des montgolfieres.", toastThreeBalloons: "Seulement 3 ballons peuvent etre lances a la fois.", toastNoBalloons: "Aucune montgolfiere de rechange.", toastBalloonLaunched: "Ballon lance. Appuie sur V pour changer de vue.", toastShipView: "Vue navire.", toastBalloonView: "Vue ballon.", toastNextBalloon: "Vue du ballon suivant.", toastBalloonDescending: "Ballon en descente. Garde-le au-dessus du Ballooner.", toastBombUsed: "Ce ballon a deja largue sa bombe.", toastBombAway: "Bombe larguee.", toastBalloonRecovered: "Ballon recupere.", toastBalloonSplash: "Ballon tombe a l'eau.", toastWaterfall: "Tu as franchi la cascade du bord du monde.", toastJumpWater: "Tu as saute a l'eau. Appuie sur F pour revenir au navire.", toastSwimming: "Tu nages. Appuie sur F pour revenir au navire.", toastGoldDiggerBlock: "Teleportation GoldDigger bloquee par l'ile.", toastGoldDiggerMinimap: "Teleportation GoldDigger via la mini-carte.", toastConnected: "Connecte aux eaux multijoueurs.", toastReconnected: "Reconnecte aux eaux multijoueurs.", toastDisconnected: "Multijoueur deconnecte. Reconnexion..."
+});
+Object.assign(I18N.de.ui, {
+  toastStopShip: "Halte dein Schiff an, bevor du herumlaeufst.", toastDeckView: "Deckansicht. Druecke C fuer Segelsteuerung.", toastReturnedDeck: "Zurueck an Deck.", toastSailingControls: "Segelsteuerung wiederhergestellt.", toastAmmoSlotEmpty: "Dieser Munitionsplatz ist leer.", toastPutShotHotbar: "Lege diese Munition zuerst in die Leiste.", toastBasicSlot: "Basis-Kugel bleibt auf Platz 1.", toastWindShown: "Windmarkierungen angezeigt.", toastWindHidden: "Windmarkierungen ausgeblendet.", toastGetCloser: "Fahre naeher an eine Insel zum Anlegen.", toastLineRetracted: "Leine eingeholt.", toastWhalerOnly: "Nur der Walfaenger kann Seitennetze nutzen.", toastNetsOut: "Walfaenger-Netze ausgefahren. Tempo reduziert.", toastNetsIn: "Walfaenger-Netze eingefahren.", toastDockCancel: "Anlegen abgebrochen. Bleib nahe an der Insel.", toastSailsRaised: "Segel gesetzt.", toastDockBeforeShop: "Lege an einer Insel an, bevor du einkaufst.", toastHoldFull: "Dein Laderaum ist voll.", toastBlubberFull: "Dein Waltran-Laderaum ist voll.", toastRecoveredBlubber: "Waltran geborgen.", toastSpyShip: "Benutze das Fernrohr von deinem Schiff aus.", toastSpyNone: "Kein Schiff gefunden. Ziele auf ein Segel.", toastNotEnoughGold: "Nicht genug Gold.", toastNoCargoSell: "Keine Ladung zum Verkaufen.", toastBalloonMax: "Du hast bereits die maximale Ballonzahl.", toastBalloonBought: "Heissluftballon gekauft.", toastNeedPoints: "Steige auf, um Upgradepunkte zu erhalten.", toastReloadMax: "Nachlade-Upgrade ist maximal.", toastUpgradeInstalled: "Upgrade installiert.", toastBalloonerOnly: "Nur ein Ballooner kann Heissluftballons starten.", toastThreeBalloons: "Nur 3 Ballons koennen gleichzeitig starten.", toastNoBalloons: "Keine Ersatzballons.", toastBalloonLaunched: "Ballon gestartet. Druecke V zum Wechseln.", toastShipView: "Schiffsansicht.", toastBalloonView: "Ballonansicht.", toastNextBalloon: "Naechste Ballonansicht.", toastBalloonDescending: "Ballon sinkt. Halte ihn ueber dem Ballooner.", toastBombUsed: "Dieser Ballon hat seine Bombe schon abgeworfen.", toastBombAway: "Bombe abgeworfen.", toastBalloonRecovered: "Ballon geborgen.", toastBalloonSplash: "Ballon ins Wasser gefallen.", toastWaterfall: "Du hast den Wasserfall am Rand der Welt ueberquert.", toastJumpWater: "Du bist ins Wasser gesprungen. Druecke F, um zurueckzukehren.", toastSwimming: "Du schwimmst. Druecke F, um zum Schiff zurueckzukehren.", toastGoldDiggerBlock: "GoldDigger-Teleport von Insel blockiert.", toastGoldDiggerMinimap: "GoldDigger-Minimap-Teleport.", toastConnected: "Mit Mehrspieler-Gewaessern verbunden.", toastReconnected: "Wieder mit Mehrspieler-Gewaessern verbunden.", toastDisconnected: "Mehrspieler getrennt. Neuverbindung..."
+});
+Object.assign(I18N.es.ui, {
+  toastStopShip: "Deten tu barco antes de caminar.", toastDeckView: "Vista de cubierta. Pulsa C para controles de navegacion.", toastReturnedDeck: "Volviste a cubierta.", toastSailingControls: "Controles de navegacion restaurados.", toastAmmoSlotEmpty: "Esa ranura esta vacia.", toastPutShotHotbar: "Pon esa municion en la barra primero.", toastBasicSlot: "La bala basica se queda en la ranura 1.", toastWindShown: "Marcadores de viento mostrados.", toastWindHidden: "Marcadores de viento ocultos.", toastGetCloser: "Acercate a una isla para atracar.", toastLineRetracted: "Sedal recogido.", toastWhalerOnly: "Solo el ballenero puede usar redes laterales.", toastNetsOut: "Redes del ballenero extendidas. Velocidad reducida.", toastNetsIn: "Redes del ballenero recogidas.", toastDockCancel: "Atracado cancelado. Quedate cerca de la isla.", toastSailsRaised: "Velas izadas.", toastDockBeforeShop: "Atraca en una isla antes de comprar.", toastHoldFull: "Tu bodega esta llena.", toastBlubberFull: "Tu bodega de grasa esta llena.", toastRecoveredBlubber: "Grasa de ballena recuperada.", toastSpyShip: "Usa el catalejo desde tu barco.", toastSpyNone: "El catalejo no encontro barcos. Apunta a una vela.", toastNotEnoughGold: "No tienes suficiente oro.", toastNoCargoSell: "No hay carga para vender.", toastBalloonMax: "Ya tienes el maximo de globos.", toastBalloonBought: "Globo aerostatico comprado.", toastNeedPoints: "Sube de nivel para ganar puntos.", toastReloadMax: "Mejora de recarga al maximo.", toastUpgradeInstalled: "Mejora instalada.", toastBalloonerOnly: "Solo un Ballooner puede lanzar globos.", toastThreeBalloons: "Solo se pueden lanzar 3 globos a la vez.", toastNoBalloons: "No hay globos de repuesto.", toastBalloonLaunched: "Globo lanzado. Pulsa V para cambiar vista.", toastShipView: "Vista de barco.", toastBalloonView: "Vista de globo.", toastNextBalloon: "Siguiente vista de globo.", toastBalloonDescending: "Globo descendiendo. Mantenlo sobre el Ballooner.", toastBombUsed: "Este globo ya lanzo su bomba.", toastBombAway: "Bomba lanzada.", toastBalloonRecovered: "Globo recuperado.", toastBalloonSplash: "Globo cayo al agua.", toastWaterfall: "Cruzaste la cascada del borde del mundo.", toastJumpWater: "Saltaste al agua. Pulsa F para volver al barco.", toastSwimming: "Estas nadando. Pulsa F para volver al barco.", toastGoldDiggerBlock: "Teletransporte GoldDigger bloqueado por isla.", toastGoldDiggerMinimap: "Teletransporte GoldDigger en minimapa.", toastConnected: "Conectado a aguas multijugador.", toastReconnected: "Reconectado a aguas multijugador.", toastDisconnected: "Multijugador desconectado. Reconectando..."
+});
+
 function armorCapForSpeed(speed) {
   if (speed > 22) return 0;
   if (speed >= 20) return 0.04;
@@ -310,11 +505,16 @@ function saveValue(key, value) {
   }
 }
 
+function normalizeLanguage(value) {
+  return I18N[value] ? value : DEFAULT_LANGUAGE;
+}
+
 const captainId = readSavedValue("islandwakeId") || crypto.randomUUID();
 saveValue("islandwakeId", captainId);
 const playerId = crypto.randomUUID();
 const state = {
   name: readSavedValue("islandwakeName"),
+  language: normalizeLanguage(readSavedValue("islandwakeLanguage", DEFAULT_LANGUAGE)),
   devToken: "",
   infiniteGold: false,
   infiniteLevels: false,
@@ -364,6 +564,206 @@ const state = {
   fishing: null,
   spyTarget: null,
 };
+
+const TOAST_EXACT_KEYS = {
+  "Stop your ship before walking around.": "toastStopShip",
+  "Deck view. Press C for sailing controls.": "toastDeckView",
+  "Returned to the deck.": "toastReturnedDeck",
+  "Sailing controls restored.": "toastSailingControls",
+  "That ammo slot is empty.": "toastAmmoSlotEmpty",
+  "Put that shot in a hotbar slot first.": "toastPutShotHotbar",
+  "Basic Shell stays in slot 1.": "toastBasicSlot",
+  "Wind markers shown.": "toastWindShown",
+  "Wind markers hidden.": "toastWindHidden",
+  "Get closer to an island to dock.": "toastGetCloser",
+  "Line retracted.": "toastLineRetracted",
+  "Only the Whaler can use side nets at sea.": "toastWhalerOnly",
+  "Whaler nets extended. Speed reduced.": "toastNetsOut",
+  "Whaler nets retracted.": "toastNetsIn",
+  "Docking cancelled. Stay close to the island.": "toastDockCancel",
+  "Sails raised.": "toastSailsRaised",
+  "Dock at an island before shopping.": "toastDockBeforeShop",
+  "Your hold is full.": "toastHoldFull",
+  "Your blubber hold is full.": "toastBlubberFull",
+  "Recovered whale blubber.": "toastRecoveredBlubber",
+  "Use the spyglass from your ship.": "toastSpyShip",
+  "Spyglass found no ships. Aim toward a sail.": "toastSpyNone",
+  "Not enough gold.": "toastNotEnoughGold",
+  "No cargo to sell.": "toastNoCargoSell",
+  "You already have the maximum number of balloons.": "toastBalloonMax",
+  "Hot air balloon purchased.": "toastBalloonBought",
+  "Level up to earn upgrade points.": "toastNeedPoints",
+  "Reload upgrade is maxed.": "toastReloadMax",
+  "Upgrade installed.": "toastUpgradeInstalled",
+  "Only a Ballooner can launch hot air balloons.": "toastBalloonerOnly",
+  "Only 3 balloons can be launched at once.": "toastThreeBalloons",
+  "No spare hot air balloons.": "toastNoBalloons",
+  "Balloon launched. Press V to switch view.": "toastBalloonLaunched",
+  "Ship view.": "toastShipView",
+  "Balloon view.": "toastBalloonView",
+  "Next balloon view.": "toastNextBalloon",
+  "Balloon descending. Keep it above the Ballooner.": "toastBalloonDescending",
+  "This balloon has already dropped its bomb.": "toastBombUsed",
+  "Bomb away.": "toastBombAway",
+  "Balloon recovered.": "toastBalloonRecovered",
+  "Balloon splashed down.": "toastBalloonSplash",
+  "You crossed the waterfall at the edge of the world.": "toastWaterfall",
+  "You jumped into the water. Press F to return to your ship.": "toastJumpWater",
+  "You are swimming. Press F to return to your ship.": "toastSwimming",
+  "GoldDigger teleport blocked: island.": "toastGoldDiggerBlock",
+  "GoldDigger minimap teleport.": "toastGoldDiggerMinimap",
+  "Connected to multiplayer waters.": "toastConnected",
+  "Reconnected to multiplayer waters.": "toastReconnected",
+  "Multiplayer disconnected. Reconnecting...": "toastDisconnected",
+};
+
+function formatText(template, values = {}) {
+  return String(template).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+}
+
+function t(key, values = {}) {
+  const current = I18N[state.language]?.ui?.[key];
+  const fallback = I18N.en.ui[key] || key;
+  return formatText(current || fallback, values);
+}
+
+function localize(group, key, fallback = key) {
+  return I18N[state.language]?.[group]?.[key] || I18N.en[group]?.[key] || fallback;
+}
+
+function shipName(shipOrType) {
+  const ship = typeof shipOrType === "object" ? shipOrType : getShipStats(shipOrType);
+  return localize("ships", ship.id, ship.name || ship.id);
+}
+
+function goodName(name) {
+  return localize("goods", name, name);
+}
+
+function islandName(islandOrName) {
+  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
+  return localize("islands", name, name);
+}
+
+function cultureName(culture) {
+  return localize("cultures", culture, culture);
+}
+
+function ammoName(ammoOrType) {
+  const id = typeof ammoOrType === "object" ? ammoOrType.id : ammoOrType;
+  const ammo = CANNONBALL_TYPES[id] || CANNONBALL_TYPES.basic;
+  return localize("ammo", id, ammo.name);
+}
+
+function ammoShortName(ammoOrType) {
+  const id = typeof ammoOrType === "object" ? ammoOrType.id : ammoOrType;
+  const ammo = CANNONBALL_TYPES[id] || CANNONBALL_TYPES.basic;
+  return localize("ammoShort", id, ammo.short);
+}
+
+function entityName(name) {
+  return localize("entities", name, name);
+}
+
+function translateLooseName(value) {
+  const text = String(value || "");
+  const ship = shipCatalog.find((item) => item.name === text || item.id === text);
+  if (ship) return shipName(ship);
+  if (goods.includes(text) || text === "Whale Blubber") return goodName(text);
+  const ammo = Object.values(CANNONBALL_TYPES).find((item) => item.name === text || item.id === text);
+  if (ammo) return ammoName(ammo);
+  if (I18N.en.entities[text]) return entityName(text);
+  if (I18N.en.islands[text]) return islandName(text);
+  return text;
+}
+
+function translateMessage(message) {
+  const text = String(message || "");
+  const exact = TOAST_EXACT_KEYS[text];
+  if (exact) return t(exact);
+  let match = text.match(/^Level (\d+)! Upgrade point earned\.$/);
+  if (match) return state.language === "en" ? text : `${t("lvl", { level: match[1] })}! ${t("toastNeedPoints")}`;
+  match = text.match(/^(.+) is empty\.$/);
+  if (match) return `${translateLooseName(match[1])} ${state.language === "en" ? "is empty." : t("emptySlot").toLowerCase()}.`;
+  match = text.match(/^(.+) equipped\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} ✓`;
+  match = text.match(/^Docking at (.+): 5 seconds\.$/);
+  if (match) return t("dockingPrompt", { island: islandName(match[1]), seconds: 5 }).replace(/<[^>]+>/g, "");
+  match = text.match(/^Docked at (.+)\. Press R for the market or C to set sail\.$/);
+  if (match) return `${t("docked", { island: islandName(match[1]) })}. ${t("pressSailShop").replace(/<[^>]+>/g, "")}`;
+  match = text.match(/^Bought (\d+) (.+)\. Replace a hotbar slot\.$/);
+  if (match) return state.language === "en" ? text : `${t("buy")} ${match[1]} ${translateLooseName(match[2])}. ${t("replaceAmmoPrompt", { ammo: translateLooseName(match[2]) })}`;
+  match = text.match(/^Bought (\d+) (.+)\.$/);
+  if (match) return state.language === "en" ? text : `${t("buy")} ${match[1]} ${translateLooseName(match[2])}.`;
+  match = text.match(/^Bought (.+)\.$/);
+  if (match) return state.language === "en" ? text : `${t("buy")} ${translateLooseName(match[1])}.`;
+  match = text.match(/^Sold (.+)\.$/);
+  if (match) return state.language === "en" ? text : `${t("sell")} ${translateLooseName(match[1])}.`;
+  match = text.match(/^(.+) assigned to slot (\d+)\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} → ${t("slot", { slot: match[2] })}`;
+  match = text.match(/^(.+) launched\.$/);
+  if (match) return state.language === "en" ? text : `${shipName(shipCatalog.find((ship) => ship.name === match[1]) || match[1])} ${t("sailing")}.`;
+  match = text.match(/^Sell cargo first\. (.+) holds (\d+) regular cargo\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("hold")} ${match[2]}.`;
+  match = text.match(/^Sell cargo first\. (.+) holds (\d+)\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("hold")} ${match[2]}.`;
+  match = text.match(/^(.+) cannot carry that much whale blubber\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("toastBlubberFull")}`;
+  match = text.match(/^(.+) recovered: repairs, gold, and XP\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: +${t("hp")}, +${t("gold")}, +XP.`;
+  match = text.match(/^(.+) reeled in after a hard pull\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} +XP.`;
+  match = text.match(/^(.+) caught by (.+)\.$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${match[2]}.`;
+  match = text.match(/^(.+) on the line!$/);
+  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}!`;
+  match = text.match(/^Sank a level (\d+) ship\. Crates overboard!$/);
+  if (match) return state.language === "en" ? text : `${t("lvl", { level: match[1] })}: ${t("crates")}!`;
+  match = text.match(/^Your ship was sunk\. You lost (\d+)g and restarted in a Skiff\.$/);
+  if (match) return state.language === "en" ? text : `${t("toastSailsRaised")} ${t("gold")} -${match[1]}. ${shipName("skiff")}.`;
+  return text;
+}
+
+function refreshLanguageUI() {
+  document.documentElement.lang = state.language;
+  [ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
+    if (!select) return;
+    if (!select.options.length) {
+      Object.entries(LANGUAGE_OPTIONS).forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        select.appendChild(option);
+      });
+    }
+    select.value = state.language;
+  });
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((node) => {
+    node.title = t(node.dataset.i18nTitle);
+  });
+  const shopTitle = document.querySelector("#shop header strong");
+  if (shopTitle) shopTitle.textContent = t("harborMarket");
+  if (ui.shopIsland && state.dockedAt) ui.shopIsland.textContent = islandName(state.dockedAt);
+  if (ui.playerName) ui.playerName.title = t("captainName");
+  refreshIslandLabels();
+  updateAmmoHotbar(true);
+  updateHud();
+  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+}
+
+function setLanguage(value) {
+  const next = normalizeLanguage(value);
+  if (state.language === next) return;
+  state.language = next;
+  saveValue("islandwakeLanguage", next);
+  refreshLanguageUI();
+}
 
 let playerShip;
 let character;
@@ -451,13 +851,13 @@ function lerpAngle(current, target, amount) {
 }
 
 function toast(message) {
-  ui.toast.textContent = message;
+  ui.toast.textContent = translateMessage(message);
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (ui.toast.textContent = ""), 1800);
 }
 
 function captainName() {
-  return state.name.trim() || `Captain ${captainId.slice(0, 3).toUpperCase()}`;
+  return state.name.trim() || `${t("captain")} ${captainId.slice(0, 3).toUpperCase()}`;
 }
 
 function nameGateOpen() {
@@ -1046,20 +1446,20 @@ function updateAmmoHotbar(force = false) {
   const signature = state.ammoSlots.map((type, index) => {
     if (!type) return `${index}:empty`;
     const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
-    return `${index}:${type}:${ammo.infinite ? "inf" : ammoCount(type)}:${state.selectedAmmoSlot === index ? "active" : ""}`;
+    return `${index}:${type}:${ammo.infinite ? "inf" : ammoCount(type)}:${state.selectedAmmoSlot === index ? "active" : ""}:${state.language}`;
   }).join("|");
   if (!force && signature === ammoHotbarSignature) return;
   ammoHotbarSignature = signature;
   ui.ammoHotbar.innerHTML = state.ammoSlots.map((type, index) => {
     if (!type) {
       const active = state.selectedAmmoSlot === index ? " active" : "";
-      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="Empty slot"><span>${index + 1}</span><strong>Empty</strong><em>-</em></button>`;
+      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="${t("emptySlotTitle")}"><span>${index + 1}</span><strong>${t("emptySlot")}</strong><em>-</em></button>`;
     }
     const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
     const count = ammo.infinite ? "&infin;" : ammoCount(type);
     const active = state.selectedAmmoSlot === index ? " active" : "";
     const empty = !ammo.infinite && ammoCount(type) <= 0 ? " empty" : "";
-    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammo.name}"><span>${index + 1}</span><strong>${ammo.short}</strong><em>${count}</em></button>`;
+    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammoName(ammo)}"><span>${index + 1}</span><strong>${ammoShortName(ammo)}</strong><em>${count}</em></button>`;
   }).join("");
 }
 
@@ -1103,13 +1503,13 @@ function compareStatLabel(label, delta, suffix = "") {
 function shipCompareMarkup(ship) {
   const current = getShipStats();
   const parts = [
-    compareStatLabel("HP", ship.hp - current.hp),
-    compareStatLabel("Armor", Math.round((ship.armor - current.armor) * 100), "%"),
-    compareStatLabel("Speed", ship.speed - current.speed),
-    compareStatLabel("Regen", ship.regen - current.regen),
-    compareStatLabel("Hold", ship.capacity - current.capacity),
+    compareStatLabel(t("hp"), ship.hp - current.hp),
+    compareStatLabel(t("armor"), Math.round((ship.armor - current.armor) * 100), "%"),
+    compareStatLabel(t("speed"), ship.speed - current.speed),
+    compareStatLabel(t("regen"), ship.regen - current.regen),
+    compareStatLabel(t("hold"), ship.capacity - current.capacity),
   ];
-  return `<div class="ship-compare">Vs your ${current.name}: ${parts.join(" ")}</div>`;
+  return `<div class="ship-compare">${t("vsYourShip", { ship: shipName(current), stats: parts.join(" ") })}</div>`;
 }
 
 function availableShipsForIsland(island) {
@@ -1376,7 +1776,7 @@ function makeIsland(data) {
     const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.68, 1.2), mat(accent));
     pennant.position.set(radius * 0.2, 4.65, -radius * 0.22);
     group.add(pennant);
-    const label = makeLabel(data.name);
+    const label = makeLabel(islandName(data.name));
     label.position.set(data.x, 9, data.z);
     scene.add(label);
     labels.push(label);
@@ -1389,6 +1789,7 @@ function makeIsland(data) {
       obstacles,
       collisionBoxes,
       terrainFeatures,
+      label,
       dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.82),
       shop: new THREE.Vector3(data.x, 0, data.z),
     };
@@ -1803,7 +2204,7 @@ function makeIsland(data) {
     group.add(rock);
     obstacles.push({ x: data.x + rock.position.x, z: data.z + rock.position.z, r: 1.1 * Math.max(rock.scale.x, rock.scale.z) });
   }
-  const label = makeLabel(data.name);
+  const label = makeLabel(islandName(data.name));
   label.position.set(data.x, 12, data.z);
   scene.add(label);
   labels.push(label);
@@ -1816,13 +2217,15 @@ function makeIsland(data) {
     obstacles,
     collisionBoxes,
     terrainFeatures,
+    label,
     dockBox: { x: data.x, z: data.z + dockCenterZ, w: dockWidth + 0.25, d: dockLength + 0.4 },
     dock: new THREE.Vector3(data.x, 0, data.z + radius),
     shop: new THREE.Vector3(data.x - radius * 0.24, 0, data.z - radius * 0.05),
   };
 }
 
-function makeLabel(text) {
+function setLabelText(sprite, text) {
+  if (!sprite) return;
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 64;
@@ -1836,9 +2239,23 @@ function makeLabel(text) {
   ctx.textAlign = "center";
   ctx.fillText(text, 128, 37);
   const texture = new THREE.CanvasTexture(c);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+  if (sprite.material?.map) sprite.material.map.dispose();
+  sprite.material.map = texture;
+  sprite.material.needsUpdate = true;
+  sprite.userData.labelText = text;
+}
+
+function makeLabel(text) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
   sprite.scale.set(18, 4.5, 1);
+  setLabelText(sprite, text);
   return sprite;
+}
+
+function refreshIslandLabels() {
+  islands.forEach((island) => {
+    if (island.label) setLabelText(island.label, islandName(island.name));
+  });
 }
 
 function islandGroundY(island, point) {
@@ -5666,6 +6083,9 @@ function setTool(tool) {
 ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
 ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
 ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
+[ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
+  select?.addEventListener("change", () => setLanguage(select.value));
+});
 ui.guideYes?.addEventListener("click", () => showBeginnerGuide());
 ui.guideNo?.addEventListener("click", () => closeBeginnerGuide());
 ui.guideClose?.addEventListener("click", () => closeBeginnerGuide());
@@ -5763,7 +6183,7 @@ function setupNameGate() {
     ui.nameInput.select();
   }, 100);
   ui.playerName.style.cursor = "pointer";
-  ui.playerName.title = "Change captain name";
+  ui.playerName.title = t("captainName");
   ui.playerName.addEventListener("click", () => {
     ui.nameInput.value = state.name;
     ui.nameGate.classList.remove("hidden");
@@ -6123,7 +6543,7 @@ function inspectWithSpyglass(dir = null, requireShipHit = false) {
   const candidates = [
     ...bots.map((bot) => {
       const spec = getShipStats(bot.shipType);
-      return { kind: "Hostile", name: spec.name, level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
+      return { kind: "Hostile", name: shipName(bot.shipType), level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
     }),
     ...[...remotePlayers.values()].map((p) => {
       const spec = getShipStats(p.shipType);
@@ -6181,7 +6601,7 @@ function inspectWithSpyglass(dir = null, requireShipHit = false) {
 
 function openShop(island) {
   state.dockedAt = island.name;
-  ui.shopIsland.textContent = island.name;
+  ui.shopIsland.textContent = islandName(island.name);
   ui.shop.classList.remove("hidden");
   renderShop();
 }
@@ -6238,7 +6658,7 @@ function shipPreviewImage(type) {
 
 function tradeDescription(island, name, owned, buyPrice, sellPrice) {
   if (name === "Whale Blubber") {
-    return `Owned ${owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.`;
+    return t("blubberTrade", { owned });
   }
   const markets = islandData
     .map((item) => ({ name: item.name, sell: marketSellPrice(item, name) }))
@@ -6246,107 +6666,107 @@ function tradeDescription(island, name, owned, buyPrice, sellPrice) {
   const best = markets[0] || { name: island.name, sell: sellPrice };
   const profit = best.sell - buyPrice;
   const routeText = best.name === island.name
-    ? "This is one of the better places to sell it."
-    : `Best known resale is ${best.sell}g at ${best.name}.`;
+    ? t("betterSellHere")
+    : t("bestKnownResale", { price: best.sell, island: islandName(best.name) });
   const profitText = profit > 0
-    ? `${profit}g possible profit if you haul it there.`
-    : "Buying here is not a strong trade route right now.";
-  return `Owned ${owned}. Sell here for ${sellPrice}g. ${routeText} ${profitText}`;
+    ? t("possibleProfit", { profit })
+    : t("weakTradeRoute");
+  return `${t("owned", { count: owned })} ${t("sellHere", { price: sellPrice })} ${routeText} ${profitText}`;
 }
 
 function shipRoleDescription(ship) {
-  const speed = ship.speed >= 28 ? "very fast" : ship.speed >= 22 ? "quick" : ship.speed <= 12 ? "slow" : "steady";
-  const defense = ship.armor <= 0 ? "no armor" : ship.armor >= 0.14 ? "heavy armor" : ship.armor >= 0.08 ? "solid armor" : "light armor";
-  const hold = ship.capacity >= 38 ? "huge cargo hold" : ship.capacity >= 22 ? "large cargo hold" : ship.capacity <= 7 ? "small cargo hold" : "useful cargo hold";
-  const durability = ship.hp >= 2400 ? "massive hull HP" : ship.hp >= 1500 ? "high hull HP" : ship.hp <= 750 ? "light hull HP" : "good hull HP";
-  const handling = ship.speed > 22 && ship.armor <= 0 ? "Built for speed, not soaking hits." : ship.speed <= 12 ? "Heavy and hard to push, but slow to reposition." : "Balanced enough for trading and fights.";
-  return `${speed} ship with ${durability}, ${defense}, and a ${hold}. ${handling}`;
+  const speed = ship.speed >= 28 ? t("speedVeryFast") : ship.speed >= 22 ? t("speedQuick") : ship.speed <= 12 ? t("speedSlow") : t("speedSteady");
+  const defense = ship.armor <= 0 ? t("noArmor") : ship.armor >= 0.14 ? t("heavyArmor") : ship.armor >= 0.08 ? t("solidArmor") : t("lightArmor");
+  const hold = ship.capacity >= 38 ? t("hugeHold") : ship.capacity >= 22 ? t("largeHold") : ship.capacity <= 7 ? t("smallHold") : t("usefulHold");
+  const durability = ship.hp >= 2400 ? t("massiveHp") : ship.hp >= 1500 ? t("highHp") : ship.hp <= 750 ? t("lightHp") : t("goodHp");
+  const handling = ship.speed > 22 && ship.armor <= 0 ? t("speedBuild") : ship.speed <= 12 ? t("heavyBuild") : t("balancedBuild");
+  return t("shipRole", { speed, durability, defense, hold, handling });
 }
 
 function ammoDescription(ammo) {
   if (ammo.id === "hotshot") {
     const fire = ammo.fire || { dps: 0, duration: 0 };
-    return `Same direct hit as Basic Shell, then burns for ${fire.dps}/s for ${fire.duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.`;
+    return t("hotshotDesc", { dps: fire.dps, duration: fire.duration });
   }
   if (ammo.id === "grapeshot") {
-    return `${ammo.pellets} pellets in a wide spread. Each pellet does ${Math.round(ammo.damageScale * 100)}% direct damage and reaches ${Math.round(ammo.rangeScale * 100)}% of cannon range. Best up close.`;
+    return t("grapeshotDesc", { pellets: ammo.pellets, damage: Math.round(ammo.damageScale * 100), range: Math.round(ammo.rangeScale * 100) });
   }
   if (ammo.id === "harpoon") {
-    return "Fixed 20 damage to ships. Whales take 100 damage, or 150 from a Whaler, and cannon damage upgrades do not boost it.";
+    return t("harpoonDesc");
   }
   if (ammo.id === "airburst") {
-    return "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.";
+    return t("airburstDesc");
   }
-  return "Reliable single cannonball with infinite ammo.";
+  return t("basicDesc");
 }
 
 function upgradeDescription(id) {
   if (id === "damage") {
-    return `Current ${cannonDamage()} direct damage. Each point adds +2 direct damage; Hotshot fire stays separate.`;
+    return t("damageUpgradeDesc", { damage: cannonDamage() });
   }
   if (id === "fireRate") {
-    return `Current ${cannonReload().toFixed(2)}s reload. Each point lowers reload by 0.02s, up to Lv.${MAX_RELOAD_UPGRADES}.`;
+    return t("reloadUpgradeDesc", { reload: cannonReload().toFixed(2), max: MAX_RELOAD_UPGRADES });
   }
-  return `Current ${cannonRange()}m range. Each point adds +4m. Farther hits also deal up to +50% direct damage.`;
+  return t("rangeUpgradeDesc", { range: cannonRange() });
 }
 
 function renderShop() {
   const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
   ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
   if (island.exploreOnly) {
-    ui.shopBody.innerHTML = `<p class="stats">${island.name} is uncharted. There are no shops, shipwrights, or trade goods here.</p>`;
+    ui.shopBody.innerHTML = `<p class="stats">${t("unchartedShop", { island: islandName(island.name) })}</p>`;
     return;
   }
   if (state.shopTab === "goods") {
     const marketGoods = [...goods];
     if (island.name === "Portsmouth" || blubberCount() > 0) marketGoods.push("Whale Blubber");
     const blubberLabel = state.shipType === "whaler"
-      ? ` | Blubber ${blubberCount()}/${blubberCapacity()}`
+      ? ` | ${t("blubber")} ${blubberCount()}/${blubberCapacity()}`
       : blubberCount() > 0
-        ? ` | Blubber ${blubberCount()} in hold`
+        ? t("blubberInHold", { count: blubberCount() })
         : "";
-    ui.shopBody.innerHTML = `<p class="stats">${island.culture} market | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}. Buy low, then sell where demand is higher.</p>` + marketGoods.map((name) => {
+    ui.shopBody.innerHTML = `<p class="stats">${t("marketIntro", { culture: cultureName(island.culture), hold: cargoCount(), capacity: cargoCapacity(), blubber: blubberLabel })}</p>` + marketGoods.map((name) => {
       const owned = state.cargo[name] || 0;
       const buyPrice = marketBuyPrice(island, name);
       const sellPrice = marketSellPrice(island, name);
       const actions = name === "Whale Blubber"
-        ? `<button data-sell="${name}" ${sellPrice <= 0 ? "disabled" : ""}>Sell</button>`
-        : `<button data-buy="${name}">Buy</button><button data-sell="${name}">Sell</button>`;
-      return `<div class="row"><div><h3>${name} <span class="price">${buyPrice > 0 ? `Buy ${buyPrice}g / ` : ""}Sell ${sellPrice}g</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions">${actions}</div></div>`;
+        ? `<button data-sell="${name}" ${sellPrice <= 0 ? "disabled" : ""}>${t("sell")}</button>`
+        : `<button data-buy="${name}">${t("buy")}</button><button data-sell="${name}">${t("sell")}</button>`;
+      return `<div class="row"><div><h3>${goodName(name)} <span class="price">${buyPrice > 0 ? `${t("buyPrice", { price: buyPrice })} / ` : ""}${t("sellPrice", { price: sellPrice })}</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions">${actions}</div></div>`;
     }).join("");
   } else if (state.shopTab === "ships") {
     const ships = availableShipsForIsland(island);
-    ui.shopBody.innerHTML = `<p class="stats">${island.name} shipwrights sell ${island.culture} hulls. Faster ships usually have less armor; larger ships carry and push more.</p>` + ships.map((ship) => {
+    ui.shopBody.innerHTML = `<p class="stats">${t("shipwrightIntro", { island: islandName(island.name), culture: cultureName(island.culture) })}</p>` + ships.map((ship) => {
       const owned = ship.id === state.shipType;
       const preview = shipPreviewImage(ship.id);
       const previewMarkup = preview
-        ? `<img class="ship-preview" src="${preview}" alt="${ship.name} preview">`
+        ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
         : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${ship.name} <span class="price">${ship.price}g</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? "Sailing" : "Buy"}</button></div><p>${shipRoleDescription(ship)}</p><p>HP ${ship.hp} / Armor ${Math.round(ship.armor * 100)}% / Speed ${ship.speed} / Regen ${ship.regen}/s / Hold ${ship.capacity}</p>${shipCompareMarkup(ship)}</div></div>`;
+      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? t("sailing") : t("buy")}</button></div><p>${shipRoleDescription(ship)}</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })}</p>${shipCompareMarkup(ship)}</div></div>`;
     }).join("");
   } else if (state.shopTab === "ammo") {
     const slotStatus = `<div class="ammo-slot-status">${state.ammoSlots.map((type, index) => {
       const ammo = type ? CANNONBALL_TYPES[type] : null;
-      return `<span>${index + 1}: ${index === 0 ? "Basic" : ammo?.short || "Empty"}</span>`;
+      return `<span>${index + 1}: ${index === 0 ? t("basic") : ammo ? ammoShortName(ammo) : t("emptySlot")}</span>`;
     }).join("")}</div>`;
     const replacePrompt = state.pendingAmmoAssign && CANNONBALL_TYPES[state.pendingAmmoAssign]
-      ? `<div class="row"><div><h3>Hotbar Full</h3><p>Replace one non-basic slot with ${CANNONBALL_TYPES[state.pendingAmmoAssign].name}.</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">Slot ${slot + 1}</button>`).join("")}</div></div>`
+      ? `<div class="row"><div><h3>${t("hotbarFull")}</h3><p>${t("replaceAmmoPrompt", { ammo: ammoName(state.pendingAmmoAssign) })}</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">${t("slot", { slot: slot + 1 })}</button>`).join("")}</div></div>`
       : "";
-    const balloonRow = `<div class="row"><div><h3>Hot Air Balloon <span class="price">${BALLOON_COST}g each</span></h3><p>Owned ${state.balloonStock}/${state.maxBalloons}. Ballooners can launch them for scouting and bombing.</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>Buy</button></div></div>`;
+    const balloonRow = `<div class="row"><div><h3>${t("hotAirBalloon")} <span class="price">${t("each", { price: BALLOON_COST })}</span></h3><p>${t("balloonShopDesc", { owned: state.balloonStock, max: state.maxBalloons })}</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>${t("buy")}</button></div></div>`;
     ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
       const description = ammoDescription(ammo);
-      return `<div class="row"><div><h3>${ammo.name} <span class="price">${ammo.price}g each</span></h3><p>Owned ${owned}. ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">Buy</button><button data-buy-ammo="${id}" data-amount="5">Buy 5</button></div></div>`;
+      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button></div></div>`;
     }).join("") + balloonRow;
   } else {
     const ups = [
-      ["damage", "Cannon Damage", upgradeDescription("damage")],
-      ["fireRate", "Fire Rate", upgradeDescription("fireRate")],
-      ["range", "Cannon Range", upgradeDescription("range")],
+      ["damage", t("cannonDamage"), upgradeDescription("damage")],
+      ["fireRate", t("fireRate"), upgradeDescription("fireRate")],
+      ["range", t("cannonRange"), upgradeDescription("range")],
     ];
-    ui.shopBody.innerHTML = `<p class="stats">Upgrade points: <b>${state.points}</b></p>` + ups.map(([id, name, desc]) => (
-      `<div class="row"><div><h3>${name} Lv.${state.upgrades[id]}${id === "fireRate" ? `/${MAX_RELOAD_UPGRADES}` : ""}</h3><p>${desc}</p></div><button data-upgrade="${id}" ${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "disabled" : ""}>${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "Max" : "Spend"}</button></div>`
+    ui.shopBody.innerHTML = `<p class="stats">${t("upgradePoints", { points: state.points })}</p>` + ups.map(([id, name, desc]) => (
+      `<div class="row"><div><h3>${name} ${t("lvl", { level: state.upgrades[id] })}${id === "fireRate" ? `/${MAX_RELOAD_UPGRADES}` : ""}</h3><p>${desc}</p></div><button data-upgrade="${id}" ${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "disabled" : ""}>${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? t("max") : t("spend")}</button></div>`
     )).join("");
   }
 }
@@ -7770,36 +8190,36 @@ function updateHud() {
   const spec = getShipStats();
   ui.playerName.textContent = captainName();
   ui.modeLabel.textContent = state.viewMode === "swim"
-    ? "Swimming"
+    ? t("swimming")
     : state.viewMode === "deck"
-      ? "On deck"
-      : state.mode === "ship" ? "At sea" : `Docked: ${state.dockedAt}`;
+      ? t("onDeck")
+      : state.mode === "ship" ? t("atSea") : t("docked", { island: islandName(state.dockedAt) });
   ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
   ui.xpBar.style.width = state.infiniteLevels || state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
   const levelLabel = state.infiniteLevels
-    ? "Lvl. infinite"
+    ? t("lvlInfinite")
     : state.level >= MAX_PLAYER_LEVEL
-      ? `Lv.${MAX_PLAYER_LEVEL} MAX`
-      : `Lv.${state.level}`;
-  const fireLabel = state.fire ? ` | Burning ${Math.ceil(state.fire.remaining)}s` : "";
+      ? t("lvlMax", { level: MAX_PLAYER_LEVEL })
+      : t("lvl", { level: state.level });
+  const fireLabel = state.fire ? ` | ${t("burning", { seconds: Math.ceil(state.fire.remaining) })}` : "";
   const blubberLabel = state.shipType === "whaler"
-    ? ` | Blubber ${blubberCount()}/${blubberCapacity()}`
+    ? ` | ${t("blubber")} ${blubberCount()}/${blubberCapacity()}`
     : blubberCount() > 0
-      ? ` | Blubber ${blubberCount()}`
+      ? ` | ${t("blubber")} ${blubberCount()}`
       : "";
-  const netLabel = state.shipType === "whaler" ? ` | Nets ${state.whalerNets ? "out" : "in"}` : "";
-  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${spec.name} | HP ${Math.ceil(state.hp)}/${spec.hp} | Armor ${Math.round(spec.armor * 100)}% | Speed ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | Regen ${spec.regen} | Hold ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${fireLabel}`;
+  const netLabel = state.shipType === "whaler" ? ` | ${t("nets")} ${state.whalerNets ? t("out") : t("in")}` : "";
+  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${fireLabel}`;
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
-  ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${name} x${count}</span>`).join("") : "<span>Empty hold</span>";
+  ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${goodName(name)} x${count}</span>`).join("") : `<span>${t("emptyHold")}</span>`;
   const island = currentIsland();
   const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land");
   ui.dockPrompt.classList.toggle("hidden", !showPrompt);
   if (showPrompt) {
     ui.dockPrompt.innerHTML = state.docking
-      ? `Docking ${state.docking.island}: <b>${Math.ceil(state.docking.remaining)}s</b>`
+      ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
       : state.mode === "ship"
-      ? `Press <b>T</b> to dock at ${island.name}`
-      : `Press <b>C</b> to set sail or <b>R</b> for the shop`;
+      ? t("pressDock", { island: islandName(island.name) })
+      : t("pressSailShop");
   }
   updateSpyPanel();
   updateAmmoHotbar();
@@ -7811,7 +8231,7 @@ function renderLeaderboard() {
   const rows = [
     { name: captainName(), gold: Math.floor(state.gold), self: true },
     ...[...remotePlayers.values()].map((player) => ({
-      name: player.name || "Captain",
+      name: player.name || t("captain"),
       gold: Math.floor(Number(player.gold) || 0),
       self: false,
     })),
@@ -7843,8 +8263,19 @@ function updateSpyPanel() {
   const distance = Math.round(dist2(playerShip.position, target.pos));
   const hpPct = Math.round((target.hp / target.max) * 100);
   ui.spyPanel.classList.remove("hidden");
-  ui.spyName.textContent = target.name;
-  ui.spyDetails.innerHTML = `Lv.${target.level} | ${distance}m | ${target.threat}<br>HP ${Math.ceil(target.hp)}/${target.max} (${hpPct}%) | Armor ${Math.round(target.armor * 100)}%<br>Speed ${target.speed} | Regen ${target.regen}/s | Crates ${target.crateEstimate}`;
+  ui.spyName.textContent = target.kind === "Hostile" && target.shipType ? shipName(target.shipType) : target.name;
+  ui.spyDetails.innerHTML = t("spyDetails", {
+    level: target.level,
+    distance: t("distanceMeter", { distance }),
+    threat: t(String(target.threat || "").toLowerCase()) || target.threat,
+    hp: Math.ceil(target.hp),
+    max: target.max,
+    pct: hpPct,
+    armor: Math.round(target.armor * 100),
+    speed: target.speed,
+    regen: target.regen,
+    crates: target.crateEstimate,
+  });
 }
 
 function mapPoint(x, z) {
@@ -8816,6 +9247,7 @@ function frame() {
 }
 
 initWorld();
+refreshLanguageUI();
 setupNameGate();
 setupMultiplayer();
 updateHud();
