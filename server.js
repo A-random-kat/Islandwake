@@ -9,6 +9,7 @@ const clients = new Map();
 const bots = [];
 const crates = [];
 const bombs = [];
+const botBalloons = [];
 const whales = [];
 const storms = [];
 const worldBounds = 880;
@@ -45,6 +46,7 @@ const maxReloadUpgrades = 20;
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
+let nextBotBalloonId = 1;
 let kraken = null;
 
 function spreadIslandCenter(island) {
@@ -111,13 +113,23 @@ const shipStats = [
   { id: "carrack", hp: 2340, speed: 10, tier: 4 },
   { id: "eastindiaman", hp: 2460, speed: 12, tier: 5 },
   { id: "razee", hp: 2550, speed: 18, tier: 5 },
-  { id: "whaler", hp: 1650, speed: 12, tier: 4 },
+  { id: "whaler", hp: 1750, speed: 12, tier: 4 },
   { id: "ballooner", hp: 1350, speed: 16, tier: 4 },
   { id: "grandfrigate", hp: 3150, speed: 18, tier: 6 },
   { id: "windrunner", hp: 3000, speed: 28, tier: 6 },
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
 ];
+
+const shipRegen = {
+  skiff: 1, shallop: 1, pinnace: 1, hoy: 2, yawl: 1, balinger: 2, felucca: 1, bilander: 2,
+  cog: 2, longship: 1, dogger: 2, dhow: 2, sloop: 1, knarr: 2, lugger: 2, tartane: 2,
+  pink: 2, cat: 1, dart: 1, junk: 3, ketch: 2, schooner: 2, galley: 2, xebec: 2,
+  brigantine: 2, caravel: 3, snow: 3, packet: 2, barquentine: 2, clipper: 2, fluyt: 3,
+  storm: 2, bombketch: 3, barque: 3, corvette: 3, frigate: 3, merchantman: 4, carrack: 4,
+  galleon: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
+  fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
+};
 
 const playerShipTiers = {
   skiff: 0,
@@ -973,6 +985,25 @@ function spawnWhaleBits(x, z, count = 4) {
   }
 }
 
+function spawnBlubberBits(x, z, count = 0) {
+  const total = clamp(Math.floor(Number(count) || 0), 0, 80);
+  for (let i = 0; i < total; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 2.2 + Math.random() * Math.max(4, Math.sqrt(total) * 1.4);
+    crates.push({
+      id: crypto.randomUUID(),
+      kind: "whale",
+      born: Date.now(),
+      x: x + Math.sin(angle) * radius,
+      z: z + Math.cos(angle) * radius,
+      heal: 0,
+      xp: 0,
+      gold: 0,
+      blubber: 1,
+    });
+  }
+}
+
 function spawnTreasure(now = Date.now()) {
   if (crates.filter((crate) => crate.kind === "treasure").length >= maxTreasures) return null;
   const point = randomPoint(worldBounds * 0.94, 55);
@@ -1256,6 +1287,108 @@ function spawnBotBalloonBomb(bot, target) {
   };
   bombs.push(bomb);
   return bomb;
+}
+
+function spawnBotBalloon(bot, target) {
+  if (!bot || bot.shipType !== "ballooner") return null;
+  const now = Date.now();
+  const existing = botBalloons.filter((balloon) => balloon.owner === bot.id && !balloon.falling);
+  if (existing.length >= 3) return null;
+  const forwardX = Math.sin(bot.rotation);
+  const forwardZ = Math.cos(bot.rotation);
+  const balloon = {
+    id: `bot-balloon-${nextBotBalloonId++}`,
+    owner: bot.id,
+    born: now,
+    x: bot.x + forwardX * 3.8,
+    y: 24,
+    z: bot.z + forwardZ * 3.8,
+    vx: forwardX * 2.5,
+    vz: forwardZ * 2.5,
+    rotation: bot.rotation,
+    hp: 100,
+    bomb: true,
+    targetX: Number(target.x) || bot.x,
+    targetZ: Number(target.z) || bot.z,
+    targetVx: Number(target.vx) || 0,
+    targetVz: Number(target.vz) || 0,
+    dropAt: now + 1200 + Math.random() * 800,
+    expireAt: now + 10500 + Math.random() * 2500,
+    falling: false,
+    fallVelocity: 0,
+  };
+  botBalloons.push(balloon);
+  return balloon;
+}
+
+function dropBotBalloonBomb(balloon) {
+  if (!balloon?.bomb) return null;
+  balloon.bomb = false;
+  const targetVx = Number(balloon.targetVx) || 0;
+  const targetVz = Number(balloon.targetVz) || 0;
+  const bomb = {
+    id: `bomb-${nextBombId++}`,
+    owner: balloon.owner,
+    born: Date.now(),
+    x: balloon.x,
+    y: clamp(balloon.y - 1.2, 8, 95),
+    z: balloon.z,
+    startX: balloon.x,
+    startY: clamp(balloon.y - 1.2, 8, 95),
+    startZ: balloon.z,
+    vx: targetVx * 0.35 + (Math.random() - 0.5) * 5,
+    vy: -10,
+    vz: targetVz * 0.35 + (Math.random() - 0.5) * 5,
+  };
+  bombs.push(bomb);
+  return bomb;
+}
+
+function crashBotBalloon(balloon, cause = "crash") {
+  if (!balloon || balloon.falling) return;
+  balloon.falling = true;
+  balloon.cause = cause;
+  balloon.fallStarted = Date.now();
+  balloon.fallVelocity = -1.6;
+  balloon.spinX = (Math.random() - 0.5) * 1.4;
+  balloon.spinY = (Math.random() - 0.5) * 1.0;
+  balloon.spinZ = (Math.random() - 0.5) * 1.8;
+}
+
+function updateBotBalloons(now, dt) {
+  for (let i = botBalloons.length - 1; i >= 0; i--) {
+    const balloon = botBalloons[i];
+    if (balloon.falling) {
+      balloon.fallVelocity = (balloon.fallVelocity || -1.6) - 7.5 * dt;
+      balloon.y += balloon.fallVelocity * dt;
+      balloon.x += Math.sin(now * 0.003 + i) * dt * 0.9;
+      balloon.z += Math.cos(now * 0.0027 + i) * dt * 0.9;
+      balloon.rotation += (balloon.spinY || 0.5) * dt;
+      if (balloon.y <= 0.4) {
+        broadcast({ type: "botBalloonCrash", id: balloon.id, x: balloon.x, z: balloon.z, cause: balloon.cause || "crash" });
+        botBalloons.splice(i, 1);
+      }
+      continue;
+    }
+    const target = { x: balloon.targetX + (balloon.targetVx || 0) * 0.35, z: balloon.targetZ + (balloon.targetVz || 0) * 0.35 };
+    const dx = target.x - balloon.x;
+    const dz = target.z - balloon.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > 0.01) {
+      const dirX = dx / distance;
+      const dirZ = dz / distance;
+      balloon.vx += dirX * 20 * dt;
+      balloon.vz += dirZ * 20 * dt;
+      balloon.rotation = Math.atan2(dirX, dirZ);
+    }
+    balloon.vx *= Math.pow(0.9, dt * 6);
+    balloon.vz *= Math.pow(0.9, dt * 6);
+    balloon.x += balloon.vx * dt;
+    balloon.z += balloon.vz * dt;
+    balloon.y += (24 - balloon.y) * clamp(dt * 0.8, 0, 0.05);
+    if (balloon.bomb && (now >= balloon.dropAt || distance < 9)) dropBotBalloonBomb(balloon);
+    if (now >= balloon.expireAt || Math.abs(balloon.x) > visibleBounds || Math.abs(balloon.z) > visibleBounds) crashBotBalloon(balloon, "expired");
+  }
 }
 
 function explodeBalloonBomb(bomb) {
@@ -1546,10 +1679,29 @@ function botSnapshot(bot) {
   };
 }
 
+function botBalloonSnapshot(balloon) {
+  return {
+    id: balloon.id,
+    owner: balloon.owner,
+    x: balloon.x,
+    y: balloon.y,
+    z: balloon.z,
+    rotation: balloon.rotation,
+    hp: Math.max(0, Math.round(balloon.hp || 0)),
+    bomb: Boolean(balloon.bomb),
+    falling: Boolean(balloon.falling),
+    spinX: balloon.spinX || 0,
+    spinY: balloon.spinY || 0,
+    spinZ: balloon.spinZ || 0,
+    cause: balloon.cause || null,
+  };
+}
+
 function worldSnapshot() {
   return {
     type: "world",
     bots: bots.map(botSnapshot),
+    botBalloons: botBalloons.map(botBalloonSnapshot),
     whales: whales.map(whaleSnapshot),
     storms: storms.map(stormSnapshot),
     kraken: krakenSnapshot(),
@@ -1580,6 +1732,9 @@ function worldSnapshot() {
 function resetBot(bot) {
   delete bot.fire;
   delete bot.fireSourceId;
+  botBalloons.forEach((balloon) => {
+    if (balloon.owner === bot.id) crashBotBalloon(balloon, "owner-sunk");
+  });
   Object.assign(bot, makeBot(bot.id));
 }
 
@@ -1610,6 +1765,7 @@ function updateWorld() {
   const now = Date.now();
   for (const bot of bots) {
     if (updateBotFire(bot, dt)) continue;
+    bot.hp = clamp(bot.hp + (shipRegen[bot.shipType] || Math.max(1, Math.min(8, Math.round((bot.tier || 1) * 0.8)))) * dt, 0, bot.maxHp);
     if (bot.shipType === "whaler" && now >= (bot.netToggleAt || 0)) {
       bot.netsExtended = Math.random() < 0.48;
       bot.netToggleAt = now + 4500 + Math.random() * 8500;
@@ -1914,7 +2070,7 @@ function updateWorld() {
       const dz = shotTarget.z - bot.z;
       const shotDistance = Math.hypot(dx, dz);
       if (bot.shipType === "ballooner" && (bot.balloonBombCooldown || 0) <= now && shotDistance < 120 && shotTarget.kind !== "kraken") {
-        spawnBotBalloonBomb(bot, shotTarget);
+        spawnBotBalloon(bot, shotTarget) || spawnBotBalloonBomb(bot, shotTarget);
         bot.balloonBombCooldown = now + 7500 + Math.random() * 5500;
         bot.balloonControlUntil = now + 2200;
         bot.fireCooldown = Math.max(bot.fireCooldown, 1.2);
@@ -1968,6 +2124,7 @@ function updateWorld() {
   updateWhales(now, dt);
   updateStorms(now, dt);
   updateKraken(now, dt);
+  updateBotBalloons(now, dt);
   updateBalloonBombs(now);
   broadcast(worldSnapshot());
 }
@@ -2150,11 +2307,18 @@ function handleMessage(socket, text) {
     damageBot(bot, damage, socket, message.fire);
     broadcast(worldSnapshot());
   }
+  if (message.type === "hitBotBalloon") {
+    const balloon = botBalloons.find((item) => item.id === message.id);
+    if (!balloon || balloon.falling) return;
+    balloon.hp -= clamp(Number(message.damage) || 0, 0, 120);
+    if (balloon.hp <= 0) crashBotBalloon(balloon, "airburst");
+    broadcast(worldSnapshot());
+  }
   if (message.type === "hitWhale") {
     const whale = whales.find((item) => item.id === message.id);
     if (!whale) return;
     const damage = message.ammoType === "harpoon"
-      ? 100
+      ? (socket.player?.shipType === "whaler" ? 150 : 100)
       : clamp(Number(message.damage) || 0, 0, 260);
     damageWhale(whale, damage, socket);
     broadcast(worldSnapshot());
@@ -2170,6 +2334,7 @@ function handleMessage(socket, text) {
     const shipType = socket.player.shipType || message.shipType || "skiff";
     const tier = shipTierForDrop(shipType);
     spawnCrates(x, z, crateDropCount({ level, tier }), level, tier);
+    spawnBlubberBits(x, z, message.blubber);
     socket.lastPlayerCrateDropAt = now;
     broadcast(worldSnapshot());
   }
