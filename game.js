@@ -85,9 +85,18 @@ const ISLAND_SPACING_SCALE = 2.45;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
 const CHARACTER_SCALE = 0.187;
 const CHARACTER_EYE_HEIGHT = 0.7;
+const CHARACTER_MAX_HP = 1;
+const WILDLIFE_SPAWN_MULTIPLIER = 5;
+const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER;
+const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER;
 const MAST_SIZE_SCALE = 1.2;
 const MAST_SPACING_SCALE = 1.2;
 const SEA_SIZE = 4200;
+const DAY_LENGTH_SECONDS = 600;
+const NIGHT_LENGTH_SECONDS = 600;
+const DAY_CYCLE_SECONDS = DAY_LENGTH_SECONDS + NIGHT_LENGTH_SECONDS;
+const SUNRISE_SECONDS = 80;
+const SUNSET_SECONDS = 95;
 const WIND_MARKER_COUNT = 18;
 const BALLOON_BOMB_GRAVITY = 18;
 const BALLOON_BOMB_DAMAGE = 500;
@@ -304,6 +313,14 @@ const islandData = [
   { name: "Mistfall Cay", culture: "Uncharted", x: 6, z: -326, radius: 6, color: 0x75caa5, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Broken Tooth", culture: "Uncharted", x: -286, z: 268, radius: 9, color: 0x6f9b68, accent: 0x4f5963, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Greenneedle", culture: "Uncharted", x: 312, z: -72, radius: 7, color: 0x68b779, accent: 0x2f6b48, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Shellhook Isle", culture: "Uncharted", x: -418, z: -62, radius: 8, color: 0x71b875, accent: 0xf0d05a, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Far Lantern", culture: "Uncharted", x: 424, z: 228, radius: 7, color: 0x83c16d, accent: 0xfff1a6, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Saltglass Cay", culture: "Uncharted", x: -392, z: -328, radius: 6, color: 0x75caa5, accent: 0xbdefff, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Needle Shoal", culture: "Uncharted", x: 374, z: -354, radius: 8, color: 0x6f9b68, accent: 0x4f5963, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Moonjaw Rocks", culture: "Uncharted", x: -108, z: 386, radius: 7, color: 0x5f9467, accent: 0xa4c9e8, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Bluecap Isle", culture: "Uncharted", x: 184, z: 388, radius: 9, color: 0x62b983, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Driftwood Cay", culture: "Uncharted", x: 442, z: -48, radius: 7, color: 0x88c478, accent: 0xb77b42, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Copper Atoll", culture: "Uncharted", x: -448, z: 178, radius: 8, color: 0x90ba68, accent: 0xd99928, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
 ].map(spreadIslandData);
 
 const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
@@ -546,7 +563,8 @@ const state = {
   maxBalloons: 5,
   whalerNets: false,
   whalerNetProgress: 0,
-  swimHp: 1,
+  characterHp: CHARACTER_MAX_HP,
+  swimHp: CHARACTER_MAX_HP,
   showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
   fire: null,
   cooldown: 0,
@@ -819,6 +837,21 @@ let leviathanCooldown = 0;
 let krakenBoss = null;
 let treasureSpawnTimer = 10 + Math.random() * 18;
 let nextStormAt = 35 + Math.random() * 85;
+const seaDriftObjects = [];
+const cloudObjects = [];
+const waterfallObjects = [];
+const waterfallFoamObjects = [];
+const waterfallMistObjects = [];
+const environment = {
+  hemi: null,
+  sun: null,
+  warm: null,
+  moonLight: null,
+  sunDisc: null,
+  moonDisc: null,
+  phase: "day",
+  lastCycleBucket: -1,
+};
 const leviathanAttacks = [
   { id: "breach", label: "breaches over the waves and smashes your ship" },
 ];
@@ -1115,6 +1148,7 @@ function shipStructureBoxes(type = state.shipType) {
     boxes.push({ id, z, w, d, floorY: deckY, roofY });
   };
   const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
+  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "treasure", "windrunner"]);
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner"].includes(type);
   if (hasLargeArchitecture) {
     boxes.push({
@@ -1124,7 +1158,7 @@ function shipStructureBoxes(type = state.shipType) {
       d: length * 0.17,
       floorY: deckY + 0.02 * scale,
       roofY: 2.08 * scale,
-      interior: type === "firstrate",
+      interior: largeInteriorTypes.has(type),
     });
     boxes.push({
       id: "forecastle",
@@ -1141,10 +1175,6 @@ function shipStructureBoxes(type = state.shipType) {
   } else if (type === "ballooner") {
     boxes.push({ id: "ballooner-cabin", z: -1.55 * scale, w: 1.75 * scale, d: 0.92 * scale, floorY: deckY, roofY: 1.94 * scale });
     boxes.push({ id: "balloon-platform", z: -length * 0.36, w: 3.35 * scale, d: 2.55 * scale, floorY: 1.82 * scale, roofY: 1.82 * scale });
-  } else if (type === "grandfrigate") {
-    boxes.push({ id: "command-deck", z: -2.55 * scale, w: 2.1 * scale, d: 1.05 * scale, floorY: deckY, roofY: 2.06 * scale });
-  } else if (type === "windrunner") {
-    boxes.push({ id: "low-cabin", z: -2.45 * scale, w: 1.85 * scale, d: 0.86 * scale, floorY: deckY, roofY: 1.9 * scale });
   }
   if (type === "pinnace") addCabinBox("pinnace-cabin", 1.55, 1.35, 0.85, scale * 0.75);
   else if (type === "dart") addCabinBox("cutter-cabin", 1.75, 1.25, 0.78, scale * 0.72);
@@ -1170,14 +1200,16 @@ function localPointInShipBox(localPoint, box, pad = 0) {
     && Math.abs(localPoint.z - box.z) <= box.d * 0.5 + pad;
 }
 
-function firstRateInteriorAllowed(localPoint, box) {
-  const scale = shipVisualScale("firstrate");
+function shipInteriorAllowed(localPoint, box, type = state.shipType) {
+  const scale = shipVisualScale(type);
   const wall = 0.18 * scale;
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
   const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const door = Math.abs(localPoint.x - (box.x || 0)) < 0.42 * scale
-    && Math.abs(localPoint.z - centerFacingZ) < 0.38 * scale;
+  const doorHalfWidth = ["grandfrigate", "windrunner"].includes(type) ? 0.62 * scale : 0.48 * scale;
+  const doorDepth = ["grandfrigate", "windrunner"].includes(type) ? 0.58 * scale : 0.44 * scale;
+  const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
+    && Math.abs(localPoint.z - centerFacingZ) < doorDepth;
   return inner || door;
 }
 
@@ -1191,7 +1223,7 @@ function shipWalkSurfaceAt(localPoint, type = state.shipType, currentLocalY = sh
       surface = { y: box.roofY, kind: "roof" };
       continue;
     }
-    if (box.interior && firstRateInteriorAllowed(localPoint, box)) {
+    if (box.interior && shipInteriorAllowed(localPoint, box, type)) {
       return { y: box.floorY, kind: "interior" };
     }
     return null;
@@ -1237,12 +1269,61 @@ function pushSwimmerAwayFromShip(block, dt) {
   character.position.add(away.multiplyScalar(1.8 * dt));
 }
 
+function firstPersonCharacterActive() {
+  return !!character?.visible && (state.mode === "land" || state.viewMode === "deck" || state.viewMode === "swim");
+}
+
+function resetCharacterHealth() {
+  state.characterHp = CHARACTER_MAX_HP;
+  state.swimHp = CHARACTER_MAX_HP;
+}
+
+function respawnCharacterOnShip(message = "Your character was knocked out and respawned on deck.") {
+  if (!playerShip || !character) return;
+  closeShop();
+  state.mode = "ship";
+  state.viewMode = "deck";
+  state.dockedAt = null;
+  state.activeBalloonIndex = -1;
+  resetCharacterHealth();
+  character.position.copy(deckWorldPosition(0, 0));
+  character.rotation.y = state.rotation;
+  character.visible = true;
+  state.walkHeight = 0;
+  state.walkVelocityY = 0;
+  state.grounded = true;
+  state.velocity.set(0, 0, 0);
+  state.position.copy(playerShip.position);
+  toast(message);
+  updateHud();
+}
+
+function damageCharacter(amount, options = {}) {
+  if (!firstPersonCharacterActive()) return false;
+  state.characterHp = Math.max(0, state.characterHp - Math.max(1, amount || 1));
+  state.swimHp = state.characterHp;
+  if (state.characterHp <= 0) {
+    respawnCharacterOnShip(options.message || "Your character was knocked out and respawned on deck.");
+  }
+  return true;
+}
+
+function projectileHitsCharacter(shot) {
+  if (!firstPersonCharacterActive() || !shot?.mesh || shot.owner === playerId) return false;
+  const pos = character.position;
+  const radius = state.viewMode === "swim" ? 0.42 : 0.5;
+  if (dist2(shot.mesh.position, pos) > radius) return false;
+  const bottom = pos.y - 0.08;
+  const top = pos.y + (state.viewMode === "swim" ? 0.58 : 1.12);
+  return shot.mesh.position.y >= bottom && shot.mesh.position.y <= top;
+}
+
 
 function enterDeckMode() {
   if (state.mode !== "ship" || state.viewMode === "balloon") return;
   if (state.velocity.length() > 0.35) return toast("Stop your ship before walking around.");
   state.viewMode = "deck";
-  state.swimHp = 1;
+  resetCharacterHealth();
   character.position.copy(deckWorldPosition(0, 0));
   character.rotation.y = state.rotation;
   character.visible = true;
@@ -1256,7 +1337,7 @@ function enterDeckMode() {
 function returnCharacterToShipDeck() {
   if (!playerShip || state.mode !== "ship") return;
   state.viewMode = "deck";
-  state.swimHp = 1;
+  resetCharacterHealth();
   character.position.copy(deckWorldPosition(0, 0));
   character.rotation.y = state.rotation;
   character.visible = true;
@@ -1269,7 +1350,7 @@ function returnCharacterToShipDeck() {
 function exitDeckMode() {
   if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
   state.viewMode = "ship";
-  state.swimHp = 1;
+  resetCharacterHealth();
   character.visible = false;
   state.velocity.set(0, 0, 0);
   toast("Sailing controls restored.");
@@ -1586,6 +1667,76 @@ function addLights() {
   const warm = new THREE.DirectionalLight(0xffdba0, 0.85);
   warm.position.set(80, 36, -70);
   scene.add(warm);
+  const moonLight = new THREE.DirectionalLight(0xaec8ff, 0);
+  moonLight.position.set(80, 60, -70);
+  scene.add(moonLight);
+  const sunDisc = new THREE.Mesh(
+    new THREE.SphereGeometry(12, 24, 14),
+    new THREE.MeshBasicMaterial({ color: 0xfff1a6, fog: false })
+  );
+  sunDisc.position.set(-240, 130, 120);
+  scene.add(sunDisc);
+  const moonDisc = new THREE.Mesh(
+    new THREE.SphereGeometry(8.5, 24, 14),
+    new THREE.MeshBasicMaterial({ color: 0xdfe9ff, fog: false })
+  );
+  const moonShadow = new THREE.Mesh(
+    new THREE.SphereGeometry(8.65, 24, 14),
+    new THREE.MeshBasicMaterial({ color: 0x18243a, fog: false })
+  );
+  moonShadow.position.set(3.1, 1.1, 1.1);
+  moonDisc.add(moonShadow);
+  moonDisc.position.set(220, 70, -160);
+  scene.add(moonDisc);
+  Object.assign(environment, { hemi, sun, warm, moonLight, sunDisc, moonDisc });
+}
+
+function smoothStep(value) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function updateDayNightCycle() {
+  if (!environment.sun || !environment.hemi) return;
+  const cycleBucket = Math.floor(clock.elapsedTime * 2);
+  if (environment.lastCycleBucket === cycleBucket) return;
+  environment.lastCycleBucket = cycleBucket;
+  const cycleTime = clock.elapsedTime % DAY_CYCLE_SECONDS;
+  const isNight = cycleTime >= DAY_LENGTH_SECONDS;
+  const dayProgress = clamp(cycleTime / DAY_LENGTH_SECONDS, 0, 1);
+  const nightProgress = isNight ? clamp((cycleTime - DAY_LENGTH_SECONDS) / NIGHT_LENGTH_SECONDS, 0, 1) : 0;
+  const sunrise = !isNight ? 1 - smoothStep(cycleTime / SUNRISE_SECONDS) : 0;
+  const sunset = !isNight ? smoothStep((cycleTime - (DAY_LENGTH_SECONDS - SUNSET_SECONDS)) / SUNSET_SECONDS) : 0;
+  const nightFactor = isNight ? 1 : Math.max(sunrise, sunset);
+  const dayAmount = 1 - nightFactor;
+  const twilight = !isNight ? Math.max(1 - sunrise, sunset) * Math.max(sunrise, sunset) * 4 : 0;
+
+  const sunArc = Math.PI * dayProgress;
+  const sunPos = new THREE.Vector3(Math.cos(sunArc) * 260, 12 + Math.sin(sunArc) * 170, 120 - dayProgress * 240);
+  environment.sun.position.copy(sunPos);
+  environment.sunDisc.position.copy(sunPos.clone().multiplyScalar(1.6));
+  environment.sunDisc.visible = !isNight || sunset < 1;
+
+  const moonArc = Math.PI * nightProgress;
+  const moonPos = new THREE.Vector3(-Math.cos(moonArc) * 250, 28 + Math.sin(moonArc) * 145, -150 + nightProgress * 260);
+  environment.moonLight.position.copy(moonPos);
+  environment.moonDisc.position.copy(moonPos.clone().multiplyScalar(1.6));
+  environment.moonDisc.visible = isNight || sunrise > 0.15;
+
+  environment.sun.intensity = 0.22 + dayAmount * 2.25 + twilight * 0.42;
+  environment.hemi.intensity = 0.18 + dayAmount * 1.18;
+  environment.warm.intensity = 0.08 + twilight * 1.25;
+  environment.moonLight.intensity = nightFactor * 0.78;
+  renderer.toneMappingExposure = 0.48 + dayAmount * 0.7 + twilight * 0.16;
+
+  const sky = new THREE.Color(0x8edff0).lerp(new THREE.Color(0xf09a66), twilight * 0.75).lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
+  scene.background.copy(sky);
+  scene.fog.color.copy(sky);
+  scene.fog.near = 185 + dayAmount * 55;
+  scene.fog.far = 520 + dayAmount * 460;
+  mats.water.color.copy(new THREE.Color(0x35b7d4).lerp(new THREE.Color(0x0b2433), nightFactor * 0.84));
+  mats.shallows.color.copy(new THREE.Color(0x6ed7cf).lerp(new THREE.Color(0x123444), nightFactor * 0.72));
+  environment.phase = isNight ? "night" : twilight > 0.1 ? (sunrise > sunset ? "sunrise" : "sunset") : "day";
 }
 
 function addSea() {
@@ -1599,12 +1750,13 @@ function addSea() {
   grid.material.transparent = true;
   grid.material.opacity = 0.08;
   scene.add(grid);
-  for (let i = 0; i < 230; i++) {
+  for (let i = 0; i < 160; i++) {
     const foam = new THREE.Mesh(new THREE.BoxGeometry(3 + Math.random() * 8, 0.04, 0.14), mat(0xd9fbff));
     foam.position.set((Math.random() - 0.5) * SEA_SIZE, 0.035, (Math.random() - 0.5) * SEA_SIZE);
     foam.rotation.y = Math.random() * Math.PI;
     foam.userData.drift = Math.random() * 100;
     scene.add(foam);
+    seaDriftObjects.push(foam);
   }
   addWorldWaterfall();
 }
@@ -1617,11 +1769,13 @@ function addWorldWaterfall() {
     wall.rotation.y = rot;
     wall.userData.waterfall = true;
     scene.add(wall);
+    waterfallObjects.push(wall);
     const foam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, 7), new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.72, depthWrite: false }));
     foam.position.set(x, 0.09, z);
     foam.rotation.y = rot;
     foam.userData.waterfallFoam = true;
     scene.add(foam);
+    waterfallFoamObjects.push(foam);
     for (let i = 0; i < 10; i++) {
       const mist = new THREE.Mesh(new THREE.PlaneGeometry(width * (0.16 + Math.random() * 0.16), 18 + Math.random() * 14), new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
       mist.position.set(x, -6 - Math.random() * 20, z);
@@ -1630,6 +1784,7 @@ function addWorldWaterfall() {
       mist.position.z += rot === Math.PI / 2 || rot === -Math.PI / 2 ? (Math.random() - 0.5) * width : 0;
       mist.userData.waterfallMist = Math.random() * 100;
       scene.add(mist);
+      waterfallMistObjects.push(mist);
     }
   };
   makeWall(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0);
@@ -1650,6 +1805,7 @@ function makeCloud() {
   cloud.position.set((Math.random() - 0.5) * SEA_SIZE * 0.72, 42 + Math.random() * 18, (Math.random() - 0.5) * SEA_SIZE * 0.72);
   cloud.userData.cloud = 0.7 + Math.random() * 0.9;
   scene.add(cloud);
+  cloudObjects.push(cloud);
 }
 
 function makePalm() {
@@ -1718,6 +1874,7 @@ function makeIsland(data) {
     const obstacles = [];
     const collisionBoxes = [];
     const terrainFeatures = [];
+    const walkPlatforms = [];
     const lobeSpecs = data.lobes || [
       { x: -radius * 0.18, z: -radius * 0.08, rx: radius * 0.58, rz: radius * 0.42, rot: 0.25 },
       { x: radius * 0.22, z: radius * 0.1, rx: radius * 0.42, rz: radius * 0.56, rot: -0.42 },
@@ -1745,17 +1902,21 @@ function makeIsland(data) {
       grass.receiveShadow = true;
       group.add(grass);
     });
-    const hill = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.22, radius * 0.28, 7), mats.rock);
-    hill.position.set(-radius * 0.12, 2.25 + radius * 0.14, -radius * 0.08);
+    const hillX = -radius * 0.12;
+    const hillZ = -radius * 0.08;
+    const hillR = radius * 0.22;
+    const hill = new THREE.Mesh(new THREE.ConeGeometry(hillR, radius * 0.28, 7), mats.rock);
+    hill.position.set(hillX, 2.25 + radius * 0.14, hillZ);
     hill.scale.z = 0.72;
     hill.rotation.y = 0.4;
     hill.castShadow = true;
     group.add(hill);
-    terrainFeatures.push({ x: data.x - radius * 0.12, z: data.z - radius * 0.08, r: radius * 0.22, h: radius * 0.26 });
-    for (let i = 0; i < 4; i++) {
+    terrainFeatures.push({ x: data.x + hillX, z: data.z + hillZ, r: hillR, h: radius * 0.26 });
+    for (let i = 0; i < 10; i++) {
       const angle = i * 1.65 + Math.random() * 0.25;
       const tree = makeIslandTree(i % 2 ? "rocky" : "atoll");
       tree.position.set(Math.cos(angle) * radius * (0.24 + Math.random() * 0.18), 1.85, Math.sin(angle) * radius * (0.2 + Math.random() * 0.16));
+      if (Math.hypot(tree.position.x - hillX, tree.position.z - hillZ) < hillR + 3.2) continue;
       tree.scale.setScalar(0.55 + Math.random() * 0.32);
       group.add(tree);
       obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.1 * tree.scale.x });
@@ -1789,6 +1950,7 @@ function makeIsland(data) {
       obstacles,
       collisionBoxes,
       terrainFeatures,
+      walkPlatforms,
       label,
       dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.82),
       shop: new THREE.Vector3(data.x, 0, data.z),
@@ -1812,6 +1974,16 @@ function makeIsland(data) {
   const dockLength = 16 + (dockThemeSeed % 4) * 1.35 + (["naval", "trade"].includes(data.theme) ? 2.4 : 0);
   const dockWidth = 4.8 + (dockThemeSeed % 3) * 0.38 + (data.theme === "naval" ? 0.8 : 0);
   const dockCenterZ = radius - 4;
+  const mountainLocal = {
+    x: -radius * 0.18,
+    z: -radius * 0.2,
+    r: radius * (data.theme === "rocky" ? 0.37 : 0.3),
+  };
+  const noTreeZones = [
+    { x: -radius * 0.24, z: -radius * 0.05, r: 7.5 },
+    { x: mountainLocal.x, z: mountainLocal.z, r: mountainLocal.r + 5.5 },
+  ];
+  const clearOfNoTreeZones = (x, z, buffer = 0) => noTreeZones.every((zone) => Math.hypot(x - zone.x, z - zone.z) > zone.r + buffer);
   const dock = new THREE.Mesh(new THREE.BoxGeometry(dockWidth, 0.45, dockLength), mats.wood);
   dock.position.set(0, 1.45, dockCenterZ);
   dock.castShadow = true;
@@ -1824,8 +1996,12 @@ function makeIsland(data) {
     { x: data.x - radius * 0.24, z: data.z - radius * 0.05, w: 5.8, d: 5.0 },
   ];
   const terrainFeatures = [];
+  const walkPlatforms = [];
   const addCollisionBox = (x, z, w, d, pad = 0.45, rot = 0) => {
     collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot });
+  };
+  const addWalkPlatform = (x, z, w, d, y, rot = 0, options = {}) => {
+    walkPlatforms.push({ x: data.x + x, z: data.z + z, w, d, y, rot, ...options });
   };
   const banner = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.2, 2.2), mat(accent));
   banner.position.set(2.7, 3.45, radius - 6.2);
@@ -1883,6 +2059,7 @@ function makeIsland(data) {
     obstacles.push({ x: data.x + x, z: data.z + z, r: 1.6 });
   };
   const addInteriorHouse = (x, z, w, d, color, roofColor = accent) => {
+    noTreeZones.push({ x, z, r: Math.max(w, d) * 0.78 + 2.4 });
     const house = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), mats.plank);
     floor.position.y = 3.08;
@@ -1940,7 +2117,11 @@ function makeIsland(data) {
       atoll: { x: radius * 0.18, z: radius * 0.04, w: 3.6, d: 3.0, color: 0xefc27c, roof: 0xef6f4f, chimney: false },
       rocky: { x: radius * 0.17, z: radius * 0.02, w: 4.2, d: 3.4, color: 0x9b8b78, roof: 0x5b6268, chimney: true },
     };
-    const profile = profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false };
+    const profile = { ...(profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false }) };
+    if (!clearOfNoTreeZones(profile.x, profile.z, Math.max(profile.w, profile.d) * 1.25)) {
+      profile.x = radius * 0.3;
+      profile.z = radius * 0.12;
+    }
     const house = addInteriorHouse(profile.x, profile.z, profile.w, profile.d, profile.color, profile.roof);
     if (profile.chimney) {
       const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.2, 0.42), mat(0x5a3b25));
@@ -1964,7 +2145,7 @@ function makeIsland(data) {
     }
     return house;
   };
-  const addMountain = (x, z, r, h, color = 0x66706e, cave = false) => {
+  const addMountain = (x, z, r, h, color = 0x66706e) => {
     const mountain = new THREE.Group();
     const peakProfiles = [];
     const makePeak = (px, pz, pr, ph, tint, yaw = 0, snow = false) => {
@@ -2004,15 +2185,6 @@ function makeIsland(data) {
     foothill.rotation.y = Math.random() * Math.PI;
     foothill.receiveShadow = true;
     mountain.add(foothill);
-    if (cave) {
-      const mouth = new THREE.Mesh(new THREE.TorusGeometry(r * 0.28, 0.18, 8, 20, Math.PI), mat(0x28313a));
-      mouth.position.set(0, 3.55, r * 0.73);
-      mouth.rotation.x = Math.PI / 2;
-      mountain.add(mouth);
-      const tunnel = new THREE.Mesh(new THREE.BoxGeometry(r * 0.48, 1.25, r * 0.86), new THREE.MeshBasicMaterial({ color: 0x111820 }));
-      tunnel.position.set(0, 3.25, r * 0.5);
-      mountain.add(tunnel);
-    }
     mountain.position.set(x, 0, z);
     group.add(mountain);
     terrainFeatures.push({
@@ -2020,7 +2192,6 @@ function makeIsland(data) {
       z: data.z + z,
       r: r * 1.32,
       h: h * 1.05,
-      cave,
       peaks: peakProfiles.map((peak) => ({
         x: data.x + x + peak.x,
         z: data.z + z + peak.z,
@@ -2078,9 +2249,200 @@ function makeIsland(data) {
     obstacles.push({ x: worldX + Math.sin(yaw) * 2.1, z: worldZ + Math.cos(yaw) * 2.1, r: 1.0 });
     addCollisionBox(x, z, wreckWidth * 0.9, wreckLength * 0.42, 0.16, yaw);
   };
+  const addLake = (x, z, rx, rz, rot = 0) => {
+    const lakeMat = new THREE.MeshStandardMaterial({
+      color: 0x55b9d2,
+      roughness: 0.35,
+      metalness: 0.03,
+      transparent: true,
+      opacity: 0.78,
+    });
+    const lake = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 24), lakeMat);
+    lake.scale.set(rx, 1, rz);
+    lake.position.set(x, 3.02, z);
+    lake.rotation.y = rot;
+    lake.receiveShadow = true;
+    group.add(lake);
+    const shore = new THREE.Mesh(new THREE.TorusGeometry(1, 0.045, 8, 30), mat(0xd8c17b));
+    shore.scale.set(rx * 1.03, rz * 1.03, 0.12);
+    shore.position.set(x, 3.08, z);
+    shore.rotation.x = Math.PI / 2;
+    shore.rotation.z = rot;
+    group.add(shore);
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + rot;
+      const reed = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 0.06), mat(0x4f8b4d));
+      reed.position.set(x + Math.cos(angle) * rx * 0.9, 3.45, z + Math.sin(angle) * rz * 0.9);
+      reed.rotation.z = Math.sin(angle) * 0.2;
+      group.add(reed);
+    }
+    obstacles.push({ x: data.x + x, z: data.z + z, r: Math.max(rx, rz) * 0.88 });
+  };
+  const addForestPatch = (x, z, count, spread, theme = data.theme) => {
+    let placed = 0;
+    let tries = 0;
+    while (placed < count && tries < count * 5) {
+      tries++;
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.sqrt(Math.random()) * spread;
+      const tree = makeIslandTree(theme);
+      tree.position.set(x + Math.cos(angle) * distance, 2.3, z + Math.sin(angle) * distance);
+      const treeRadius = 1.65;
+      if (!clearOfNoTreeZones(tree.position.x, tree.position.z, treeRadius + 3.4)) continue;
+      tree.scale.setScalar(0.82 + Math.random() * 0.65);
+      group.add(tree);
+      obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.35 * tree.scale.x });
+      placed++;
+    }
+  };
+  const addDecoratedHouse = (slot, index) => {
+    const palettes = [
+      { wall: 0xf1dcc0, roof: 0xb84f44 },
+      { wall: 0xb77b42, roof: 0x5a3b25 },
+      { wall: 0xd8d2bd, roof: 0x4051a8 },
+      { wall: 0xe2d0a5, roof: 0xd7b44a },
+      { wall: 0x9b8b78, roof: 0x4f5963 },
+    ];
+    const palette = palettes[(dockThemeSeed + index) % palettes.length];
+    addInteriorHouse(slot.x, slot.z, slot.w, slot.d, slot.color || palette.wall, slot.roof || palette.roof);
+    if (index % 2 === 0) {
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(slot.w * 0.62, 0.12, 1.0), mat(accent));
+      awning.position.set(slot.x, 4.35, slot.z + slot.d * 0.62);
+      awning.rotation.x = -0.18;
+      awning.castShadow = true;
+      group.add(awning);
+    } else {
+      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.1, 0.42), mat(0x5a3b25));
+      chimney.position.set(slot.x + slot.w * 0.28, 5.65, slot.z - slot.d * 0.25);
+      chimney.castShadow = true;
+      group.add(chimney);
+    }
+  };
+  const addExtraHouseCluster = () => {
+    if (data.name === "Port Azure") return;
+    const denseTown = ["trade", "market", "naval", "fort", "iberian"].includes(data.theme);
+    const slots = [
+      { x: -radius * 0.08, z: radius * 0.28, w: 4.2, d: 3.2 },
+      { x: radius * 0.32, z: radius * 0.02, w: 3.7, d: 3.0 },
+      { x: -radius * 0.35, z: radius * 0.23, w: 4.7, d: 3.4 },
+      { x: radius * 0.16, z: -radius * 0.02, w: 3.8, d: 3.1 },
+      { x: radius * 0.04, z: radius * 0.39, w: 3.5, d: 2.9 },
+    ];
+    slots
+      .filter((slot) => clearOfNoTreeZones(slot.x, slot.z, Math.max(slot.w, slot.d) * 1.25))
+      .slice(0, denseTown ? 4 : 3)
+      .forEach(addDecoratedHouse);
+  };
+  const addPortAzureCastle = () => {
+    const castleX = radius * 0.22;
+    const castleZ = -radius * 0.3;
+    const castleW = 18;
+    const castleD = 15;
+    noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(castleW, castleD) * 0.72 + 5.5 });
+    const baseY = 3.02;
+    const wallH = 4.4;
+    const wallTopY = baseY + wallH;
+    const topY = wallTopY + 0.18;
+    const stone = mat(0x7e8991);
+    const darkStone = mat(0x4f5963);
+    const floorStone = mat(0x6f7880);
+    const castle = new THREE.Group();
+    const addCastlePiece = (mesh, x, y, z) => {
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      castle.add(mesh);
+      return mesh;
+    };
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, 0.18, castleD), mats.plank), 0, baseY + 0.02, 0);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, wallH, 0.65), stone), 0, baseY + wallH * 0.5, -castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallH, castleD), stone), -castleW * 0.5, baseY + wallH * 0.5, 0);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallH, castleD), stone), castleW * 0.5, baseY + wallH * 0.5, 0);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.65), stone), -castleW * 0.32, baseY + wallH * 0.5, castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.65), stone), castleW * 0.32, baseY + wallH * 0.5, castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.22, 1.3), mats.wood), 0, baseY + 0.22, castleD * 0.5 + 0.14);
+    const ledgeWidth = 3.45;
+    [
+      { x: 0, z: -castleD * 0.5, w: castleW + 1.4, d: ledgeWidth },
+      { x: 0, z: castleD * 0.5, w: castleW + 1.4, d: ledgeWidth },
+      { x: -castleW * 0.5, z: 0, w: ledgeWidth, d: castleD + 1.4 },
+      { x: castleW * 0.5, z: 0, w: ledgeWidth, d: castleD + 1.4 },
+    ].forEach((slab) => {
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(slab.w, 0.28, slab.d), floorStone);
+      addCastlePiece(floor, slab.x, topY - 0.14, slab.z);
+    });
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.65, wallH + 1.1, 10), darkStone);
+        addCastlePiece(tower, sx * castleW * 0.5, baseY + (wallH + 1.1) * 0.5, sz * castleD * 0.5);
+        const towerFloor = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 0.28, 10), floorStone);
+        addCastlePiece(towerFloor, sx * castleW * 0.5, topY - 0.06, sz * castleD * 0.5);
+        obstacles.push({ x: data.x + castleX + sx * castleW * 0.5, z: data.z + castleZ + sz * castleD * 0.5, r: 1.65 });
+      }
+    }
+    for (let i = 0; i < 7; i++) {
+      const x = -castleW * 0.42 + i * castleW * 0.14;
+      const rearBlock = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 0.72), darkStone);
+      addCastlePiece(rearBlock, x, topY + 0.325, -castleD * 0.5);
+      const frontBlock = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 0.72), darkStone);
+      addCastlePiece(frontBlock, x, topY + 0.325, castleD * 0.5);
+    }
+    for (let i = 0; i < 6; i++) {
+      const z = -castleD * 0.38 + i * castleD * 0.15;
+      const leftBlock = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.65, 1.05), darkStone);
+      addCastlePiece(leftBlock, -castleW * 0.5, topY + 0.325, z);
+      const rightBlock = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.65, 1.05), darkStone);
+      addCastlePiece(rightBlock, castleW * 0.5, topY + 0.325, z);
+    }
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8;
+      const stepY = baseY + 0.12 + t * (topY - baseY - 0.12);
+      const stepZ = castleD * 0.24 - t * castleD * 0.58;
+      const stepHeight = Math.max(0.28, stepY - baseY + 0.18);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(2.4, stepHeight, 1.25), mats.wood);
+      addCastlePiece(step, castleW * 0.27, stepY - stepHeight * 0.5, stepZ);
+      addWalkPlatform(castleX + castleW * 0.27, castleZ + stepZ, 2.55, 1.35, stepY, 0, { maxRise: 1.15 });
+    }
+    [
+      { x: 0, z: -castleD * 0.5, w: castleW + 0.65, d: ledgeWidth - 0.35 },
+      { x: 0, z: castleD * 0.5, w: castleW + 0.65, d: ledgeWidth - 0.35 },
+      { x: -castleW * 0.5, z: 0, w: ledgeWidth - 0.35, d: castleD + 0.65 },
+      { x: castleW * 0.5, z: 0, w: ledgeWidth - 0.35, d: castleD + 0.65 },
+    ].forEach((platform) => addWalkPlatform(castleX + platform.x, castleZ + platform.z, platform.w, platform.d, topY));
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) addWalkPlatform(castleX + sx * castleW * 0.5, castleZ + sz * castleD * 0.5, 3.3, 3.3, topY + 0.08);
+    }
+    const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 1.3), mats.wood);
+    addCastlePiece(table, -castleW * 0.18, baseY + 0.45, -castleD * 0.1);
+    const bannerA = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.8, 1.0), mat(accent));
+    addCastlePiece(bannerA, -castleW * 0.5 - 0.04, baseY + 2.7, castleD * 0.2);
+    const bannerB = bannerA.clone();
+    addCastlePiece(bannerB, castleW * 0.5 + 0.04, baseY + 2.7, castleD * 0.2);
+    castle.position.set(castleX, 0, castleZ);
+    group.add(castle);
+    addCollisionBox(castleX, castleZ - castleD * 0.5, castleW, 0.85, 0.12);
+    addCollisionBox(castleX - castleW * 0.5, castleZ, 0.85, castleD, 0.12);
+    addCollisionBox(castleX + castleW * 0.5, castleZ, 0.85, castleD, 0.12);
+    addCollisionBox(castleX - castleW * 0.32, castleZ + castleD * 0.5, castleW * 0.36, 0.85, 0.12);
+    addCollisionBox(castleX + castleW * 0.32, castleZ + castleD * 0.5, castleW * 0.36, 0.85, 0.12);
+    collisionBoxes.slice(-5).forEach((box) => {
+      box.walkableTopY = topY - 0.25;
+    });
+  };
   addThemeHouse();
+  addExtraHouseCluster();
+  if (data.theme === "starter") addPortAzureCastle();
+  if (["lagoon", "atoll", "trade", "market", "dhow", "schooner"].includes(data.theme)) {
+    addLake(-radius * 0.18, radius * 0.16, radius * 0.075, radius * 0.048, 0.25);
+  }
+  if (["norse", "rocky", "naval", "fort", "starter", "schooner"].includes(data.theme)) {
+    addForestPatch(-radius * 0.32, -radius * 0.04, data.theme === "starter" ? 30 : 24, radius * 0.18, data.theme);
+  }
+  if (["trade", "market", "iberian"].includes(data.theme)) {
+    addForestPatch(radius * 0.32, radius * 0.16, 14, radius * 0.12, data.theme);
+  }
   if (!["atoll", "lagoon"].includes(data.theme)) {
-    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e, ["rocky", "norse", "fort", "naval"].includes(data.theme));
+    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e);
   }
   if (["rocky", "schooner", "naval", "trade"].includes(data.theme)) {
     const wreckAngle = data.theme === "naval" ? -1.0 : data.theme === "trade" ? 1.05 : data.theme === "rocky" ? -2.2 : 2.35;
@@ -2179,18 +2541,11 @@ function makeIsland(data) {
     group.add(shell);
     obstacles.push({ x: data.x - 5.2, z: data.z - 4.2, r: 1.2 });
   }
-  if (data.theme === "rocky") {
-    const cave = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.45, 8, 18, Math.PI), mat(0x3f4650));
-    cave.position.set(5.2, 3.3, -4.5);
-    cave.rotation.x = Math.PI / 2;
-    group.add(cave);
-    obstacles.push({ x: data.x + 3.65, z: data.z - 4.5, r: 0.85 });
-    obstacles.push({ x: data.x + 6.75, z: data.z - 4.5, r: 0.85 });
-  }
-  const treeCount = data.theme === "atoll" ? 9 : ["norse", "rocky", "naval"].includes(data.theme) ? 7 : 6;
+  const treeCount = data.theme === "atoll" ? 10 : ["norse", "rocky", "naval", "fort", "starter"].includes(data.theme) ? 16 : 11;
   for (let i = 0; i < treeCount; i++) {
     const tree = makeIslandTree(data.theme);
     tree.position.set(Math.cos(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.22), 2.3, Math.sin(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.2));
+    if (!clearOfNoTreeZones(tree.position.x, tree.position.z, 3.6)) continue;
     tree.scale.setScalar(0.75 + Math.random() * 0.48);
     group.add(tree);
     obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.35 * tree.scale.x });
@@ -2217,6 +2572,7 @@ function makeIsland(data) {
     obstacles,
     collisionBoxes,
     terrainFeatures,
+    walkPlatforms,
     label,
     dockBox: { x: data.x, z: data.z + dockCenterZ, w: dockWidth + 0.25, d: dockLength + 0.4 },
     dock: new THREE.Vector3(data.x, 0, data.z + radius),
@@ -2275,14 +2631,23 @@ function islandGroundY(island, point) {
   if (distance > island.radius - 0.6) return null;
   const edgeSlope = clamp((distance - island.radius * 0.62) / (island.radius * 0.34), 0, 1);
   let y = island.landY - edgeSlope * 0.82;
+  (island.walkPlatforms || []).forEach((platform) => {
+    const dx = point.x - platform.x;
+    const dz = point.z - platform.z;
+    const rot = platform.rot || 0;
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    if (Math.abs(localX) <= platform.w * 0.5 && Math.abs(localZ) <= platform.d * 0.5) {
+      const currentY = Number.isFinite(point.y) ? point.y : y;
+      if (platform.y - currentY > (platform.maxRise ?? 1.35)) return;
+      y = Math.max(y, platform.y);
+    }
+  });
   (island.terrainFeatures || []).forEach((feature) => {
     const d = dist2(point, feature);
     if (d > feature.r * 1.08 && !(feature.peaks || []).some((peak) => dist2(point, peak) < peak.r * 1.08)) return;
-    const caveMouth = feature.cave && Math.abs(point.x - feature.x) < feature.r * 0.28 && point.z > feature.z + feature.r * 0.28 && point.z < feature.z + feature.r * 1.02;
-    if (caveMouth) {
-      y = Math.max(y, island.landY + 0.08);
-      return;
-    }
     if (d < feature.r * 1.08) {
       const climb = Math.pow(1 - d / (feature.r * 1.08), 1.45);
       y = Math.max(y, island.landY + climb * feature.h * 0.38);
@@ -2300,6 +2665,7 @@ function islandGroundY(island, point) {
 function pointBlockedOnIsland(island, point) {
   if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
   return island.collisionBoxes?.some((box) => {
+    if (box.walkableTopY !== undefined && point.y >= box.walkableTopY) return false;
     const pad = box.pad ?? 0.45;
     const dx = point.x - box.x;
     const dz = point.z - box.z;
@@ -3263,8 +3629,10 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const sternZ = actualLength * 0.34;
   const bowZ = -actualLength * 0.34;
   const castleColor = ["galleon", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
+  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "treasure", "windrunner"]);
+  const hasInterior = interiorTypes.has(type);
   const sternWallMat = mat(castleColor);
-  if (type === "firstrate") {
+  if (hasInterior) {
     sternWallMat.side = THREE.DoubleSide;
     sternWallMat.needsUpdate = true;
   }
@@ -3272,8 +3640,8 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   sternDeck.position.set(0, 1.57 * scale, sternZ);
   sternDeck.castShadow = true;
   group.add(sternDeck);
-  const sternRoofMat = type === "firstrate" ? mats.hullDark.clone() : mats.hullDark;
-  if (type === "firstrate") {
+  const sternRoofMat = hasInterior ? mats.hullDark.clone() : mats.hullDark;
+  if (hasInterior) {
     sternRoofMat.side = THREE.DoubleSide;
     sternRoofMat.needsUpdate = true;
   }
@@ -3281,10 +3649,11 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   sternRoof.position.set(0, 2.01 * scale, sternZ);
   sternRoof.castShadow = true;
   group.add(sternRoof);
-  addWindowRow(group, width, sternZ + actualLength * 0.09, 1.68 * scale, scale, 0xd99928, type === "firstrate" ? 7 : 5);
-  if (type === "firstrate") {
+  addWindowRow(group, width, sternZ + actualLength * 0.09, 1.68 * scale, scale, 0xd99928, tier >= 5 ? 7 : 5);
+  if (hasInterior) {
     const doorZ = sternZ - actualLength * 0.087;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.72 * scale, 0.62 * scale, 0.055 * scale), mats.dark);
+    const doorWidth = ["grandfrigate", "windrunner"].includes(type) ? 0.96 : 0.76;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, 0.68 * scale, 0.055 * scale), mats.dark);
     door.position.set(0, 1.48 * scale, doorZ - 0.012 * scale);
     door.castShadow = false;
     group.add(door);
@@ -3304,6 +3673,10 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
     bench.position.set(0, 1.34 * scale, sternZ + actualLength * 0.05);
     bench.castShadow = true;
     group.add(bench);
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.3 * scale, 0.32 * scale), mats.crate);
+    crate.position.set(-actualWidth * 0.18, 1.4 * scale, sternZ - actualLength * 0.026);
+    crate.castShadow = true;
+    group.add(crate);
     const innerMat = mat(0x5a4638);
     innerMat.side = THREE.DoubleSide;
     innerMat.needsUpdate = true;
@@ -3519,19 +3892,10 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.85, -2.05, 0.96, 0xf2ead5, 2);
     addSquareSail(group, 0, -0.35, 1.08, 0xf8efd8, 3);
     addSquareSail(group, 0.82, 1.08, 0.78, 0xf2ead5, 2);
-    const commandDeck = new THREE.Mesh(new THREE.BoxGeometry(2.1 * scale, 0.46 * scale, 1.05 * scale), mat(0x4a3a33));
-    commandDeck.position.set(0, 1.82 * scale, 2.55 * scale);
-    commandDeck.castShadow = true;
-    group.add(commandDeck);
-    addWindowRow(group, hullSize[1] * 0.78, 2.55 * scale + 0.54 * scale, 1.84 * scale, scale, 0xffd56a, 4);
   } else if (type === "windrunner") {
     addSquareSail(group, -0.65, -2.25, 0.78, 0xfff3ce, 2);
     addSquareSail(group, 0.1, -0.55, 0.92, 0xffdf9b, 2);
     addSail(group, 0.58, 0.88, 0.7, 0xfff3ce);
-    const lowCabin = new THREE.Mesh(new THREE.BoxGeometry(1.85 * scale, 0.38 * scale, 0.86 * scale), mat(0x5b432f));
-    lowCabin.position.set(0, 1.68 * scale, 2.45 * scale);
-    lowCabin.castShadow = true;
-    group.add(lowCabin);
   } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -3930,12 +4294,10 @@ function updateWaveHazards(dt) {
       if (hazard.damageShips) damageTarget(target, hazard.dps * dt);
       if (velocity) velocity.add(away.multiplyScalar(hazard.force * dt));
     };
-    if (state.viewMode === "swim") {
+    if (firstPersonCharacterActive() && state.mode !== "land") {
       const d = dist2(character.position, hazard.position);
       if (Math.abs(d - radius) <= hazard.thickness + 0.5 && hazard.damageShips) {
-        state.swimHp = 0;
-        returnCharacterToShipDeck();
-        toast("You were knocked out in the water and respawned on deck.");
+        damageCharacter(CHARACTER_MAX_HP, { message: "You were knocked out and respawned on deck." });
       }
     } else if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
     bots.forEach((bot) => applyTo(bot, bot.group.position, bot.velocity, bot.shipType));
@@ -6017,6 +6379,7 @@ function damageTarget(target, amount, options = {}) {
       state.fallingTimer = 0;
       state.viewMode = "ship";
       state.activeBalloonIndex = -1;
+      resetCharacterHealth();
       target.mode = "ship";
       target.dockedAt = null;
       closeShop();
@@ -6040,8 +6403,8 @@ function initWorld() {
   playerShip.position.y = SHIP_WATERLINE_Y;
   scene.add(playerShip);
   character = makeCharacter();
-  for (let i = 0; i < 36; i++) makeFish();
-  for (let i = 0; i < 18; i++) makeSquid();
+  for (let i = 0; i < STARTING_FISH_COUNT; i++) makeFish();
+  for (let i = 0; i < STARTING_SQUID_COUNT; i++) makeSquid();
   for (let i = 0; i < 7; i++) makeWhale();
   for (let i = 0; i < 15; i++) {
     const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
@@ -6374,6 +6737,7 @@ function dockAtIsland(island) {
   state.mode = "land";
   state.viewMode = "ship";
   state.dockedAt = island.name;
+  resetCharacterHealth();
   const landing = landingPointForShip(island, playerShip.position);
   state.walkingPos.copy(landing.point);
   character.position.copy(state.walkingPos);
@@ -6410,6 +6774,7 @@ function setSail() {
   state.mode = "ship";
   state.viewMode = "ship";
   state.dockedAt = null;
+  resetCharacterHealth();
   character.visible = false;
   playerShip.visible = true;
   state.walkHeight = 0;
@@ -7438,7 +7803,7 @@ function updateSeaWalker(dt) {
       character.position.z = next.z;
     } else if (!localPointOnShipDeck(local, state.shipType)) {
       state.viewMode = "swim";
-      state.swimHp = 1;
+      resetCharacterHealth();
       character.position.y = 0.1;
       toast("You jumped into the water. Press F to return to your ship.");
       return;
@@ -7467,7 +7832,7 @@ function updateSeaWalker(dt) {
     }
     if (character.position.y <= 0.18) {
       state.viewMode = "swim";
-      state.swimHp = 1;
+      resetCharacterHealth();
       character.position.y = 0.1;
       toast("You are swimming. Press F to return to your ship.");
     }
@@ -7797,16 +8162,24 @@ function updateProjectiles(dt) {
           hit = true;
         }
       }
-    } else if (shot.targetKind !== "bot" && state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
-      damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-      hit = true;
-    } else if (!multiplayer.serverWorld && shot.targetKind !== "player") {
-      bots.forEach((bot) => {
-        if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-          damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+    } else {
+      if (shot.targetKind !== "bot") {
+        if (projectileHitsCharacter(shot)) {
+          damageCharacter(CHARACTER_MAX_HP, { hitPosition: shot.mesh.position.clone() });
+          hit = true;
+        } else if (state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
+          damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
           hit = true;
         }
-      });
+      }
+      if (!hit && !multiplayer.serverWorld && shot.targetKind !== "player") {
+        bots.forEach((bot) => {
+          if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
+            damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+            hit = true;
+          }
+        });
+      }
     }
     if (progress >= 1 || hit) {
       removeProjectile(shot, hit ? "hit" : "splash");
@@ -9194,27 +9567,26 @@ function publishMultiplayer() {
 }
 
 function animateSea() {
-  scene.traverse((obj) => {
-    if (obj.userData.drift !== undefined) {
-      obj.position.x += Math.sin(clock.elapsedTime + obj.userData.drift) * 0.004;
-      obj.position.z += 0.014;
-      if (obj.position.z > SEA_SIZE * 0.5) obj.position.z = -SEA_SIZE * 0.5;
-    }
-    if (obj.userData.cloud !== undefined) {
-      obj.position.x += obj.userData.cloud * 0.006;
-      if (obj.position.x > SEA_SIZE * 0.38) obj.position.x = -SEA_SIZE * 0.38;
-    }
-    if (obj.userData.waterfall) {
-      obj.material.opacity = 0.34 + Math.sin(clock.elapsedTime * 2.6 + obj.position.x * 0.01 + obj.position.z * 0.01) * 0.08;
-    }
-    if (obj.userData.waterfallFoam) {
-      obj.scale.z = 1 + Math.sin(clock.elapsedTime * 3.2 + obj.position.x * 0.01) * 0.08;
-    }
-    if (obj.userData.waterfallMist !== undefined) {
-      obj.position.y -= 0.025;
-      obj.material.opacity = 0.1 + Math.sin(clock.elapsedTime + obj.userData.waterfallMist) * 0.05;
-      if (obj.position.y < -44) obj.position.y = -6;
-    }
+  const t = clock.elapsedTime;
+  seaDriftObjects.forEach((obj) => {
+    obj.position.x += Math.sin(t + obj.userData.drift) * 0.004;
+    obj.position.z += 0.014;
+    if (obj.position.z > SEA_SIZE * 0.5) obj.position.z = -SEA_SIZE * 0.5;
+  });
+  cloudObjects.forEach((obj) => {
+    obj.position.x += obj.userData.cloud * 0.006;
+    if (obj.position.x > SEA_SIZE * 0.38) obj.position.x = -SEA_SIZE * 0.38;
+  });
+  waterfallObjects.forEach((obj) => {
+    obj.material.opacity = 0.34 + Math.sin(t * 2.6 + obj.position.x * 0.01 + obj.position.z * 0.01) * 0.08;
+  });
+  waterfallFoamObjects.forEach((obj) => {
+    obj.scale.z = 1 + Math.sin(t * 3.2 + obj.position.x * 0.01) * 0.08;
+  });
+  waterfallMistObjects.forEach((obj) => {
+    obj.position.y -= 0.025;
+    obj.material.opacity = 0.1 + Math.sin(t + obj.userData.waterfallMist) * 0.05;
+    if (obj.position.y < -44) obj.position.y = -6;
   });
 }
 
@@ -9238,6 +9610,7 @@ function frame() {
     updateKraken(dt);
   }
   updateCamera(dt);
+  updateDayNightCycle();
   animateSea();
   publishMultiplayer();
   updateHud();
