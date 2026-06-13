@@ -51,6 +51,12 @@ const ui = {
   nameInput: document.querySelector("#captainNameInput"),
   developerTokenInput: document.querySelector("#developerTokenInput"),
   nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
+  beginnerGuide: document.querySelector("#beginnerGuide"),
+  guideQuestion: document.querySelector("#guideQuestion"),
+  guideContent: document.querySelector("#guideContent"),
+  guideYes: document.querySelector("#guideYes"),
+  guideNo: document.querySelector("#guideNo"),
+  guideClose: document.querySelector("#guideClose"),
   tabs: [...document.querySelectorAll(".tab")],
   toolButtons: {
     cannon: document.querySelector("#toolCannon"),
@@ -313,6 +319,7 @@ const state = {
   infiniteGold: false,
   infiniteLevels: false,
   joined: false,
+  guideAsked: false,
   level: 1,
   xp: 0,
   gold: 240,
@@ -454,7 +461,27 @@ function captainName() {
 }
 
 function nameGateOpen() {
-  return ui.nameGate && !ui.nameGate.classList.contains("hidden");
+  return (ui.nameGate && !ui.nameGate.classList.contains("hidden"))
+    || (ui.beginnerGuide && !ui.beginnerGuide.classList.contains("hidden"));
+}
+
+function closeBeginnerGuide() {
+  ui.beginnerGuide?.classList.add("hidden");
+  ui.guideQuestion?.classList.remove("hidden");
+  ui.guideContent?.classList.add("hidden");
+}
+
+function showBeginnerQuestion() {
+  if (!ui.beginnerGuide || state.guideAsked) return;
+  state.guideAsked = true;
+  ui.guideQuestion?.classList.remove("hidden");
+  ui.guideContent?.classList.add("hidden");
+  ui.beginnerGuide.classList.remove("hidden");
+}
+
+function showBeginnerGuide() {
+  ui.guideQuestion?.classList.add("hidden");
+  ui.guideContent?.classList.remove("hidden");
 }
 
 function xpForLevel(level) {
@@ -5639,6 +5666,9 @@ function setTool(tool) {
 ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
 ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
 ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
+ui.guideYes?.addEventListener("click", () => showBeginnerGuide());
+ui.guideNo?.addEventListener("click", () => closeBeginnerGuide());
+ui.guideClose?.addEventListener("click", () => closeBeginnerGuide());
 ui.ammoHotbar?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-ammo-slot]");
   if (!button) return;
@@ -5723,6 +5753,7 @@ function setupNameGate() {
     ui.nameGate.classList.add("hidden");
     sendMultiplayer({ type: "hello", player: multiplayerPayload() });
     updateHud();
+    showBeginnerQuestion();
   };
   window.islandwakeJoin = (name = "", token = "") => joinGame(null, String(name || ""), String(token || ""));
   ui.nameInput.value = state.name;

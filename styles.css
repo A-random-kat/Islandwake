@@ -87,6 +87,89 @@ body::after {
   box-shadow: 0 0 0 3px rgba(47, 138, 165, 0.16);
 }
 
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(12, 38, 48, 0.36);
+  backdrop-filter: blur(4px);
+}
+
+.guide-card {
+  width: min(620px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 18px 44px rgba(16, 32, 42, 0.3);
+}
+
+.guide-card span {
+  color: #41606d;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.guide-card h2 {
+  margin: 5px 0 8px;
+  font-size: 23px;
+  line-height: 1.1;
+}
+
+.guide-card p {
+  margin: 0;
+  color: #244956;
+  line-height: 1.45;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.guide-grid section {
+  padding: 10px;
+  border: 1px solid rgba(16, 32, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.guide-grid h3 {
+  margin: 0 0 5px;
+  font-size: 14px;
+}
+
+.guide-grid p {
+  font-size: 13px;
+}
+
+.guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.guide-actions button {
+  min-width: 112px;
+}
+
+@media (max-width: 620px) {
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 #hud {
   position: fixed;
   top: 16px;
