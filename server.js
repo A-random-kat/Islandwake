@@ -43,6 +43,10 @@ const airburstRadius = balloonBombBlastRadius * (2 / 3);
 const balloonBombLifetimeMs = 9000;
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
+const dayLengthSeconds = 600;
+const nightLengthSeconds = 600;
+const dayCycleSeconds = dayLengthSeconds + nightLengthSeconds;
+const worldStartedAt = Date.now();
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
@@ -105,10 +109,15 @@ const shipStats = [
   { id: "brigantine", hp: 1080, speed: 22, tier: 3 },
   { id: "caravel", hp: 1170, speed: 16, tier: 3 },
   { id: "snow", hp: 1290, speed: 19, tier: 3 },
+  { id: "chassemaree", hp: 1030, speed: 28, tier: 3 },
+  { id: "polacre", hp: 1320, speed: 24, tier: 3 },
+  { id: "brig", hp: 1400, speed: 23, tier: 3 },
   { id: "fluyt", hp: 1500, speed: 13, tier: 3 },
   { id: "barque", hp: 1410, speed: 21, tier: 3 },
   { id: "corvette", hp: 1530, speed: 25, tier: 4 },
+  { id: "sixthrate", hp: 1600, speed: 24, tier: 4 },
   { id: "frigate", hp: 1740, speed: 24, tier: 4 },
+  { id: "postship", hp: 1880, speed: 22, tier: 4 },
   { id: "galleon", hp: 2700, speed: 12, tier: 5 },
   { id: "carrack", hp: 2340, speed: 10, tier: 4 },
   { id: "eastindiaman", hp: 2460, speed: 12, tier: 5 },
@@ -125,8 +134,9 @@ const shipRegen = {
   skiff: 1, shallop: 1, pinnace: 1, hoy: 2, yawl: 1, balinger: 2, felucca: 1, bilander: 2,
   cog: 2, longship: 1, dogger: 2, dhow: 2, sloop: 1, knarr: 2, lugger: 2, tartane: 2,
   pink: 2, cat: 1, dart: 1, junk: 3, ketch: 2, schooner: 2, galley: 2, xebec: 2,
-  brigantine: 2, caravel: 3, snow: 3, packet: 2, barquentine: 2, clipper: 2, fluyt: 3,
-  storm: 2, bombketch: 3, barque: 3, corvette: 3, frigate: 3, merchantman: 4, carrack: 4,
+  brigantine: 2, caravel: 3, snow: 3, packet: 2, chassemaree: 2, barquentine: 2, clipper: 2,
+  fluyt: 3, polacre: 2, brig: 3, storm: 2, bombketch: 3, barque: 3, corvette: 3,
+  sixthrate: 3, frigate: 3, postship: 3, merchantman: 4, carrack: 4,
   galleon: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
   fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
 };
@@ -147,10 +157,15 @@ const playerShipTiers = {
   ketch: 2,
   galley: 2,
   packet: 3,
+  chassemaree: 3,
   barquentine: 3,
   clipper: 3,
+  polacre: 3,
+  brig: 3,
   bombketch: 3,
   storm: 3,
+  sixthrate: 4,
+  postship: 4,
   merchantman: 4,
   treasure: 5,
   fourthrate: 5,
@@ -189,14 +204,19 @@ const shipPhysics = {
   caravel: { radius: 3.5, weight: 114 },
   snow: { radius: 3.7, weight: 126 },
   packet: { radius: 3.5, weight: 110 },
+  chassemaree: { radius: 3.5, weight: 108 },
   barquentine: { radius: 3.7, weight: 128 },
   clipper: { radius: 3.6, weight: 118 },
   fluyt: { radius: 4, weight: 154 },
+  polacre: { radius: 3.7, weight: 126 },
+  brig: { radius: 3.8, weight: 132 },
   storm: { radius: 3.4, weight: 102 },
   bombketch: { radius: 3.9, weight: 138 },
   barque: { radius: 3.9, weight: 144 },
   corvette: { radius: 3.9, weight: 138 },
+  sixthrate: { radius: 4, weight: 145 },
   frigate: { radius: 4.1, weight: 153 },
+  postship: { radius: 4.2, weight: 162 },
   merchantman: { radius: 4.4, weight: 191 },
   carrack: { radius: 4.4, weight: 185 },
   galleon: { radius: 4.6, weight: 206 },
@@ -1825,8 +1845,11 @@ function botBalloonSnapshot(balloon) {
 }
 
 function worldSnapshot() {
+  const now = Date.now();
   return {
     type: "world",
+    serverTime: now,
+    dayCycleTime: ((now - worldStartedAt) / 1000) % dayCycleSeconds,
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
     whales: whales.map(whaleSnapshot),
@@ -1835,7 +1858,7 @@ function worldSnapshot() {
     crates: crates.map((crate) => ({
       id: crate.id,
       kind: crate.kind || "crate",
-      born: crate.born || Date.now(),
+      born: crate.born || now,
       x: crate.x,
       z: crate.z,
       heal: Math.round(Number(crate.heal) || 0),
