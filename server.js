@@ -47,11 +47,19 @@ const dayLengthSeconds = 600;
 const nightLengthSeconds = 600;
 const dayCycleSeconds = dayLengthSeconds + nightLengthSeconds;
 const worldStartedAt = Date.now();
+const waterfallBounds = visibleBounds + 170;
+const leviathanLeapMs = 3150;
+const leviathanTrackMs = 2750;
+const leviathanDamageDelayMs = 480;
+const leviathanLifetimeMs = 6600;
+const leviathanCooldownMs = 10200;
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
 let nextBotBalloonId = 1;
 let kraken = null;
+let leviathan = null;
+const leviathanCooldowns = new Map();
 
 function spreadIslandCenter(island) {
   return {
@@ -391,6 +399,147 @@ function shipWeight(type) {
   }
   const spec = shipSpec(type);
   return Math.max(35, Math.round(42 + spec.tier * 26 + spec.hp / 180 - spec.speed * 0.08));
+}
+
+function leviathanTargetZone(player) {
+  const x = Math.abs(Number(player?.x) || 0);
+  const z = Math.abs(Number(player?.z) || 0);
+  return (x > visibleBounds || z > visibleBounds) && x <= waterfallBounds && z <= waterfallBounds;
+}
+
+function setLeviathanVectors(attack) {
+  attack.smashX = attack.impactX + attack.sideX * 8.6;
+  attack.smashY = 0.55;
+  attack.smashZ = attack.impactZ + attack.sideZ * 8.6;
+  attack.diveX = attack.impactX - attack.sideX * 30;
+  attack.diveY = -24;
+  attack.diveZ = attack.impactZ - attack.sideZ * 30;
+}
+
+function leviathanSnapshot(attack = leviathan) {
+  if (!attack) return null;
+  return {
+    id: attack.id,
+    targetId: attack.targetId,
+    born: attack.born,
+    crushed: Boolean(attack.crushed),
+    hit: Boolean(attack.hit),
+    missed: Boolean(attack.missed),
+    damaged: Boolean(attack.damaged),
+    slamAt: attack.slamAt || 0,
+    sideX: attack.sideX,
+    sideZ: attack.sideZ,
+    startX: attack.startX,
+    startY: attack.startY,
+    startZ: attack.startZ,
+    impactX: attack.impactX,
+    impactY: 0,
+    impactZ: attack.impactZ,
+    smashX: attack.smashX,
+    smashY: attack.smashY,
+    smashZ: attack.smashZ,
+    diveX: attack.diveX,
+    diveY: attack.diveY,
+    diveZ: attack.diveZ,
+  };
+}
+
+function leviathanAttackHitsPlayer(player, attack) {
+  if (!player || player.mode === "land") return false;
+  const ox = (Number(player.x) || 0) - attack.impactX;
+  const oz = (Number(player.z) || 0) - attack.impactZ;
+  const acrossX = attack.sideZ;
+  const acrossZ = -attack.sideX;
+  const along = Math.abs(ox * attack.sideX + oz * attack.sideZ);
+  const across = Math.abs(ox * acrossX + oz * acrossZ);
+  const radius = shipRadius(player.shipType || "skiff");
+  return along <= 11 + radius * 0.35 && across <= 8 + radius * 0.45;
+}
+
+function startLeviathanAttack(socket, now) {
+  if (!socket?.player || leviathan) return;
+  const cooldownUntil = leviathanCooldowns.get(socket.id) || 0;
+  if (now < cooldownUntil || !leviathanTargetZone(socket.player) || socket.player.mode === "land") return;
+  const rotation = Number(socket.player.rotation) || 0;
+  let forwardX = Math.sin(rotation);
+  let forwardZ = Math.cos(rotation);
+  if (Math.hypot(forwardX, forwardZ) < 0.01) {
+    forwardX = Number(socket.player.vx) || 0;
+    forwardZ = Number(socket.player.vz) || 1;
+  }
+  const forwardLength = Math.hypot(forwardX, forwardZ) || 1;
+  forwardX /= forwardLength;
+  forwardZ /= forwardLength;
+  let outwardX = Number(socket.player.x) || forwardX;
+  let outwardZ = Number(socket.player.z) || forwardZ;
+  const outwardLength = Math.hypot(outwardX, outwardZ) || 1;
+  outwardX /= outwardLength;
+  outwardZ /= outwardLength;
+  let sideX = forwardZ;
+  let sideZ = -forwardX;
+  if (sideX * outwardX + sideZ * outwardZ < 0) {
+    sideX *= -1;
+    sideZ *= -1;
+  }
+  const impactX = Number(socket.player.x) || 0;
+  const impactZ = Number(socket.player.z) || 0;
+  leviathan = {
+    id: crypto.randomUUID(),
+    targetId: socket.id,
+    born: now,
+    impactX,
+    impactZ,
+    sideX,
+    sideZ,
+    startX: impactX + sideX * 64,
+    startY: -24,
+    startZ: impactZ + sideZ * 64,
+    crushed: false,
+    hit: false,
+    missed: false,
+    damaged: false,
+    strikeSent: false,
+  };
+  setLeviathanVectors(leviathan);
+  leviathanCooldowns.set(socket.id, now + leviathanCooldownMs);
+  broadcast(worldSnapshot());
+}
+
+function updateLeviathanServer(now, dt) {
+  if (leviathan) {
+    const age = now - leviathan.born;
+    const target = clients.get(leviathan.targetId);
+    if (!leviathan.crushed && target?.player && age < leviathanTrackMs) {
+      const blend = clamp(dt * 5.6, 0, 0.7);
+      leviathan.impactX += ((Number(target.player.x) || leviathan.impactX) - leviathan.impactX) * blend;
+      leviathan.impactZ += ((Number(target.player.z) || leviathan.impactZ) - leviathan.impactZ) * blend;
+      setLeviathanVectors(leviathan);
+    }
+    if (!leviathan.strikeSent && age >= leviathanLeapMs) {
+      leviathan.strikeSent = true;
+      leviathan.crushed = true;
+      leviathan.slamAt = now;
+      leviathan.hit = Boolean(target?.player && leviathanAttackHitsPlayer(target.player, leviathan));
+      leviathan.missed = !leviathan.hit;
+      broadcast({ type: "leviathanStrike", attack: leviathanSnapshot(), hit: leviathan.hit });
+    }
+    if (leviathan.hit && !leviathan.damaged && leviathan.slamAt && now - leviathan.slamAt >= leviathanDamageDelayMs) {
+      leviathan.damaged = true;
+      const targetNow = clients.get(leviathan.targetId);
+      if (targetNow) send(targetNow, { type: "leviathanDamage", id: leviathan.id, targetId: leviathan.targetId });
+    }
+    if (age > leviathanLifetimeMs) {
+      leviathan = null;
+    }
+    return;
+  }
+  for (const socket of clients.values()) {
+    if (!socket.player || socket.player.mode === "land") continue;
+    if (leviathanTargetZone(socket.player)) {
+      startLeviathanAttack(socket, now);
+      break;
+    }
+  }
 }
 
 function botPowerScore(bot) {
@@ -1850,6 +1999,10 @@ function worldSnapshot() {
     type: "world",
     serverTime: now,
     dayCycleTime: ((now - worldStartedAt) / 1000) % dayCycleSeconds,
+    dayLengthSeconds,
+    nightLengthSeconds,
+    dayCycleSeconds,
+    leviathan: leviathanSnapshot(),
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
     whales: whales.map(whaleSnapshot),
@@ -2274,6 +2427,7 @@ function updateWorld() {
   updateWhales(now, dt);
   updateStorms(now, dt);
   updateKraken(now, dt);
+  updateLeviathanServer(now, dt);
   updateBotBalloons(now, dt);
   updateBalloonBombs(now);
   broadcast(worldSnapshot());

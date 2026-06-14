@@ -91,7 +91,7 @@ const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER;
 const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER;
 const MAST_SIZE_SCALE = 1.2;
 const MAST_SPACING_SCALE = 1.2;
-const SEA_SIZE = 4200;
+const SEA_SIZE = WATERFALL_LIMIT * 2;
 const DAY_LENGTH_SECONDS = 600;
 const NIGHT_LENGTH_SECONDS = 600;
 const DAY_CYCLE_SECONDS = DAY_LENGTH_SECONDS + NIGHT_LENGTH_SECONDS;
@@ -864,9 +864,11 @@ const environment = {
   lastCycleBucket: -1,
   serverCycleTime: null,
   serverCycleUpdatedAt: 0,
+  serverDayLength: DAY_LENGTH_SECONDS,
+  serverNightLength: NIGHT_LENGTH_SECONDS,
 };
 const leviathanAttacks = [
-  { id: "breach", label: "breaches over the waves and smashes your ship" },
+  { id: "breach" },
 ];
 
 function setCylinderBetween(mesh, start, end) {
@@ -1618,7 +1620,7 @@ function replacePlayerShip(type, spawnPosition = null) {
   const ship = getShipStats(type);
   const old = playerShip;
   const position = spawnPosition || old?.position || state.position;
-  const rotation = old?.rotation?.clone();
+  const rotationY = Number.isFinite(old?.rotation?.y) ? old.rotation.y : state.rotation;
   state.shipType = ship.id;
   state.hp = ship.hp;
   if (ship.id !== "whaler") {
@@ -1629,7 +1631,7 @@ function replacePlayerShip(type, spawnPosition = null) {
   updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
   playerShip.position.copy(position);
   playerShip.position.y = SHIP_WATERLINE_Y;
-  if (rotation) playerShip.rotation.copy(rotation);
+  playerShip.rotation.set(0, rotationY, 0);
   if (old) scene.remove(old);
   scene.add(playerShip);
   state.position.copy(playerShip.position);
@@ -1720,7 +1722,7 @@ function updateShipNightLights(amount) {
       continue;
     }
     rig.material.opacity = amount;
-    if (rig.haloMaterial) rig.haloMaterial.opacity = amount * rig.haloOpacity;
+    if (rig.haloMaterial) rig.haloMaterial.opacity = 0;
     rig.lights.forEach((light) => {
       light.intensity = amount * rig.baseIntensity;
     });
@@ -1729,41 +1731,57 @@ function updateShipNightLights(amount) {
 
 function updateDayNightCycle() {
   if (!environment.sun || !environment.hemi) return;
+  const dayLength = Math.max(60, Number(environment.serverDayLength) || DAY_LENGTH_SECONDS);
+  const nightLength = Math.max(60, Number(environment.serverNightLength) || NIGHT_LENGTH_SECONDS);
+  const cycleLength = dayLength + nightLength;
   const serverSynced = Number.isFinite(environment.serverCycleTime);
   const cycleTime = serverSynced
-    ? (environment.serverCycleTime + Math.max(0, clock.elapsedTime - environment.serverCycleUpdatedAt)) % DAY_CYCLE_SECONDS
-    : clock.elapsedTime % DAY_CYCLE_SECONDS;
-  const cycleBucket = Math.floor(cycleTime * 2);
-  if (environment.lastCycleBucket === cycleBucket) return;
-  environment.lastCycleBucket = cycleBucket;
-  const isNight = cycleTime >= DAY_LENGTH_SECONDS;
-  const dayProgress = clamp(cycleTime / DAY_LENGTH_SECONDS, 0, 1);
-  const nightProgress = isNight ? clamp((cycleTime - DAY_LENGTH_SECONDS) / NIGHT_LENGTH_SECONDS, 0, 1) : 0;
-  const sunrise = !isNight ? 1 - smoothStep(cycleTime / SUNRISE_SECONDS) : 0;
-  const sunset = !isNight ? smoothStep((cycleTime - (DAY_LENGTH_SECONDS - SUNSET_SECONDS)) / SUNSET_SECONDS) : 0;
-  const nightFactor = isNight ? 1 : Math.max(sunrise, sunset);
+    ? (environment.serverCycleTime + Math.max(0, clock.elapsedTime - environment.serverCycleUpdatedAt)) % cycleLength
+    : clock.elapsedTime % cycleLength;
+  const isNight = cycleTime >= dayLength;
+  const dayProgress = clamp(cycleTime / dayLength, 0, 1);
+  const nightProgress = isNight ? clamp((cycleTime - dayLength) / nightLength, 0, 1) : 0;
+  const sunriseProgress = !isNight ? clamp(cycleTime / SUNRISE_SECONDS, 0, 1) : 0;
+  const sunsetProgress = !isNight ? clamp((cycleTime - (dayLength - SUNSET_SECONDS)) / SUNSET_SECONDS, 0, 1) : 0;
+  const sunriseTransition = !isNight && cycleTime < SUNRISE_SECONDS ? 1 - smoothStep(sunriseProgress) : 0;
+  const sunsetTransition = !isNight && cycleTime > dayLength - SUNSET_SECONDS ? smoothStep(sunsetProgress) : 0;
+  const sunriseWarmth = !isNight && cycleTime < SUNRISE_SECONDS
+    ? Math.sin(sunriseProgress * Math.PI)
+    : 0;
+  const sunsetWarmth = !isNight && cycleTime > dayLength - SUNSET_SECONDS
+    ? Math.sin(sunsetProgress * Math.PI)
+    : 0;
+  const nightFactor = isNight ? 1 : clamp(Math.max(sunriseTransition, sunsetTransition), 0, 1);
   const dayAmount = 1 - nightFactor;
-  const twilight = !isNight ? Math.max(1 - sunrise, sunset) * Math.max(sunrise, sunset) * 4 : 0;
+  const twilight = clamp(Math.max(sunriseWarmth, sunsetWarmth), 0, 1);
 
-  const sunArc = Math.PI * dayProgress;
-  const sunPos = new THREE.Vector3(Math.cos(sunArc) * 260, 12 + Math.sin(sunArc) * 170, 120 - dayProgress * 240);
+  const celestialPath = (progress, baseY, arcY) => {
+    const arc = Math.PI * progress;
+    return new THREE.Vector3(-Math.cos(arc) * 250, baseY + Math.sin(arc) * arcY, -150 + progress * 260);
+  };
+  const sunPos = celestialPath(dayProgress, 12, 170);
   environment.sun.position.copy(sunPos);
+  environment.warm.position.copy(sunPos);
   environment.sunDisc.position.copy(sunPos.clone().multiplyScalar(1.6));
-  environment.sunDisc.visible = !isNight || sunset < 1;
+  environment.sunDisc.visible = !isNight;
 
-  const moonArc = Math.PI * nightProgress;
-  const moonPos = new THREE.Vector3(-Math.cos(moonArc) * 250, 28 + Math.sin(moonArc) * 145, -150 + nightProgress * 260);
+  const moonPos = celestialPath(nightProgress, 28, 145);
   environment.moonLight.position.copy(moonPos);
   environment.moonDisc.position.copy(moonPos.clone().multiplyScalar(1.6));
-  environment.moonDisc.visible = isNight || sunrise > 0.15;
+  environment.moonDisc.visible = isNight || sunriseTransition > 0.15;
 
-  environment.sun.intensity = 0.22 + dayAmount * 2.25 + twilight * 0.42;
+  environment.sun.intensity = 0.18 + dayAmount * 2.25 + twilight * 0.35;
   environment.hemi.intensity = 0.18 + dayAmount * 1.18;
-  environment.warm.intensity = 0.08 + twilight * 1.25;
+  environment.warm.intensity = 0.04 + twilight * 1.35;
   environment.moonLight.intensity = nightFactor * 0.78;
   renderer.toneMappingExposure = 0.48 + dayAmount * 0.7 + twilight * 0.16;
 
-  const sky = new THREE.Color(0x8edff0).lerp(new THREE.Color(0xf09a66), twilight * 0.75).lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
+  environment.sun.color.setHex(twilight > 0.05 ? 0xffe0a3 : 0xffffff);
+  environment.warm.color.setHex(0xffca70);
+  environment.moonLight.color.setHex(0xb8ccff);
+  environment.sunDisc.material.color.setHex(twilight > 0.05 ? 0xffde8a : 0xfff1a6);
+  environment.moonDisc.material.color.setHex(0xdfe9ff);
+  const sky = new THREE.Color(0x8edff0).lerp(new THREE.Color(0xffd27a), twilight * 0.66).lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
   scene.background.copy(sky);
   scene.fog.color.copy(sky);
   scene.fog.near = 185 + dayAmount * 55;
@@ -1771,7 +1789,7 @@ function updateDayNightCycle() {
   mats.water.color.copy(new THREE.Color(0x35b7d4).lerp(new THREE.Color(0x0b2433), nightFactor * 0.84));
   mats.shallows.color.copy(new THREE.Color(0x6ed7cf).lerp(new THREE.Color(0x123444), nightFactor * 0.72));
   updateShipNightLights(clamp((0.72 - dayAmount) / 0.52, 0, 1));
-  environment.phase = isNight ? "night" : twilight > 0.1 ? (sunrise > sunset ? "sunrise" : "sunset") : "day";
+  environment.phase = isNight ? "night" : twilight > 0.1 ? (sunriseWarmth >= sunsetWarmth ? "sunrise" : "sunset") : "day";
 }
 
 function addSea() {
@@ -1797,35 +1815,29 @@ function addSea() {
 }
 
 function addWorldWaterfall() {
-  const matWaterfall = new THREE.MeshBasicMaterial({ color: 0xbdefff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false });
-  const makeWall = (x, z, width, rot) => {
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, 90, 16, 4), matWaterfall.clone());
-    wall.position.set(x, -22, z);
-    wall.rotation.y = rot;
-    wall.userData.waterfall = true;
-    scene.add(wall);
-    waterfallObjects.push(wall);
-    const foam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, 7), new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.72, depthWrite: false }));
-    foam.position.set(x, 0.09, z);
+  const foamMat = new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.72, depthWrite: false });
+  const mistMat = new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+  const makeEdge = (x, z, width, rot, sideX, sideZ) => {
+    const foam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, 6.6), foamMat.clone());
+    foam.position.set(x - sideX * 1.8, 0.09, z - sideZ * 1.8);
     foam.rotation.y = rot;
     foam.userData.waterfallFoam = true;
     scene.add(foam);
     waterfallFoamObjects.push(foam);
-    for (let i = 0; i < 10; i++) {
-      const mist = new THREE.Mesh(new THREE.PlaneGeometry(width * (0.16 + Math.random() * 0.16), 18 + Math.random() * 14), new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
-      mist.position.set(x, -6 - Math.random() * 20, z);
+    for (let i = 0; i < 18; i++) {
+      const mist = new THREE.Mesh(new THREE.PlaneGeometry(16 + Math.random() * 30, 12 + Math.random() * 20), mistMat.clone());
+      const along = (Math.random() - 0.5) * width;
+      mist.position.set(x + (sideZ ? along : sideX * 5.8), -8 - Math.random() * 26, z + (sideX ? along : sideZ * 5.8));
       mist.rotation.y = rot;
-      mist.position.x += rot === 0 || rot === Math.PI ? (Math.random() - 0.5) * width : 0;
-      mist.position.z += rot === Math.PI / 2 || rot === -Math.PI / 2 ? (Math.random() - 0.5) * width : 0;
       mist.userData.waterfallMist = Math.random() * 100;
       scene.add(mist);
       waterfallMistObjects.push(mist);
     }
   };
-  makeWall(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0);
-  makeWall(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI);
-  makeWall(WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, Math.PI / 2);
-  makeWall(-WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, -Math.PI / 2);
+  makeEdge(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0, 0, 1);
+  makeEdge(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI, 0, -1);
+  makeEdge(WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, Math.PI / 2, 1, 0);
+  makeEdge(-WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, -Math.PI / 2, -1, 0);
 }
 
 function makeCloud() {
@@ -2735,14 +2747,204 @@ function makeIsland(data) {
     group.add(hallRoof);
     collisionBoxes.push({ x: data.x + 4.4, z: data.z - 3.4, w: 7.2, d: 3.8 });
   } else if (data.theme === "pagoda") {
-    for (let i = 0; i < 3; i++) {
-      const tier = new THREE.Mesh(new THREE.ConeGeometry(2.7 - i * 0.4, 0.75, 4), mat(i % 2 ? 0xd99928 : accent));
-      tier.position.set(4, 3.5 + i * 0.82, -3.6);
-      tier.rotation.y = Math.PI / 4;
-      tier.castShadow = true;
-      group.add(tier);
-    }
-    collisionBoxes.push({ x: data.x + 4, z: data.z - 3.6, w: 4.2, d: 4.2 });
+    const px = 7.0;
+    const pz = -5.8;
+    const pagodaW = 8.4;
+    const pagodaD = 7.4;
+    const levelYs = [3.18, 5.96, 8.74];
+    const pagoda = new THREE.Group();
+    const wallMat = mat(0xe4b46a);
+    const beamMat = mat(0x7a2e25);
+    const roofMat = mat(accent);
+    const trimMat = mat(0xf0cf73);
+    const stoneMat = mat(0x8d8a78);
+    const paperMat = mat(0xf4e7bd);
+    const pagodaGlow = new THREE.MeshBasicMaterial({
+      color: 0xffc263,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    });
+    const pagodaLights = [];
+    noTreeZones.push({ x: px, z: pz, r: 8.5 });
+    const addPagodaPiece = (mesh, x, y, z) => {
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      pagoda.add(mesh);
+      return mesh;
+    };
+    const addLantern = (x, y, z) => {
+      const hook = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.54, 6), mats.dark);
+      hook.rotation.x = Math.PI / 2;
+      addPagodaPiece(hook, x, y + 0.14, z);
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), pagodaGlow);
+      lantern.scale.set(0.9, 1.18, 0.9);
+      addPagodaPiece(lantern, x, y - 0.12, z);
+    };
+    const addDeckPanel = (floorY, cx, cz, w, d) => {
+      if (w <= 0.18 || d <= 0.18) return;
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, d), mats.plank);
+      addPagodaPiece(floor, cx, floorY - 0.09, cz);
+      addWalkPlatform(px + cx, pz + cz, Math.max(0.4, w - 0.08), Math.max(0.4, d - 0.08), floorY, 0, { maxRise: 1.1 });
+    };
+    const addSplitDeck = (floorY, w, d, hole = null) => {
+      if (!hole) {
+        addDeckPanel(floorY, 0, 0, w, d);
+        return;
+      }
+      const leftW = hole.x - hole.w * 0.5 + w * 0.5;
+      const rightW = w * 0.5 - (hole.x + hole.w * 0.5);
+      const backD = hole.z - hole.d * 0.5 + d * 0.5;
+      const frontD = d * 0.5 - (hole.z + hole.d * 0.5);
+      addDeckPanel(floorY, -w * 0.5 + leftW * 0.5, 0, leftW, d);
+      addDeckPanel(floorY, hole.x + hole.w * 0.5 + rightW * 0.5, 0, rightW, d);
+      addDeckPanel(floorY, hole.x, -d * 0.5 + backD * 0.5, hole.w, backD);
+      addDeckPanel(floorY, hole.x, hole.z + hole.d * 0.5 + frontD * 0.5, hole.w, frontD);
+      const trimPieces = [
+        { x: hole.x, z: hole.z - hole.d * 0.5, w: hole.w + 0.24, d: 0.12 },
+        { x: hole.x, z: hole.z + hole.d * 0.5, w: hole.w + 0.24, d: 0.12 },
+        { x: hole.x - hole.w * 0.5, z: hole.z, w: 0.12, d: hole.d + 0.24 },
+        { x: hole.x + hole.w * 0.5, z: hole.z, w: 0.12, d: hole.d + 0.24 },
+      ];
+      trimPieces.forEach((piece) => addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(piece.w, 0.12, piece.d), beamMat), piece.x, floorY + 0.02, piece.z));
+    };
+    const addRail = (floorY, w, d) => {
+      const y = floorY + 0.68;
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w - 1.0, 0.14, 0.12), beamMat), 0, y, -d * 0.5 + 0.32);
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, 0.14, 0.12), beamMat), -w * 0.33, y, d * 0.5 - 0.32);
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, 0.14, 0.12), beamMat), w * 0.33, y, d * 0.5 - 0.32);
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, d - 0.86), beamMat), -w * 0.5 + 0.32, y, 0);
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, d - 0.86), beamMat), w * 0.5 - 0.32, y, 0);
+      for (let i = 0; i < 6; i++) {
+        const t = i / 5;
+        const x = -w * 0.36 + t * w * 0.72;
+        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.07), trimMat), x, floorY + 0.38, -d * 0.5 + 0.32);
+      }
+      for (let i = 0; i < 4; i++) {
+        const z = -d * 0.25 + i * d * 0.17;
+        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), trimMat), -w * 0.5 + 0.32, floorY + 0.36, z);
+        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), trimMat), w * 0.5 - 0.32, floorY + 0.36, z);
+      }
+    };
+    const addLattice = (floorY, w, d, level) => {
+      const y = floorY + 1.18;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(w * 0.58, 0.86, 0.08), paperMat);
+      addPagodaPiece(back, 0, y, -d * 0.5 + 0.08);
+      for (let i = -2; i <= 2; i++) {
+        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.96, 0.1), beamMat), i * w * 0.1, y, -d * 0.5 + 0.14);
+      }
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 0.07, 0.11), beamMat), 0, y + 0.32, -d * 0.5 + 0.15);
+      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 0.07, 0.11), beamMat), 0, y - 0.32, -d * 0.5 + 0.15);
+      for (const sx of [-1, 1]) {
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, d * 0.34), paperMat);
+        addPagodaPiece(panel, sx * (w * 0.5 - 0.08), y, -d * 0.12);
+        for (let i = -1; i <= 1; i++) {
+          addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.05), beamMat), sx * (w * 0.5 - 0.14), y, -d * 0.12 + i * d * 0.11);
+        }
+      }
+      if (level === 0) {
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 0.08), trimMat);
+        addPagodaPiece(sign, 0, floorY + 1.55, d * 0.5 + 0.16);
+        const ink = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, 0.09), mats.dark);
+        addPagodaPiece(ink, 0, floorY + 1.55, d * 0.5 + 0.22);
+      }
+    };
+    const addRoof = (roofY, w, d, level) => {
+      const eave = new THREE.Mesh(new THREE.BoxGeometry(w + 1.85, 0.16, d + 1.85), trimMat);
+      addPagodaPiece(eave, 0, roofY, 0);
+      const lowerRoof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.74, 0.78, 4), roofMat);
+      lowerRoof.rotation.y = Math.PI / 4;
+      lowerRoof.scale.z = d / w;
+      addPagodaPiece(lowerRoof, 0, roofY + 0.36, 0);
+      const upperRoof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.5, 0.46, 4), mat(0xa92d2d));
+      upperRoof.rotation.y = Math.PI / 4;
+      upperRoof.scale.z = d / w;
+      addPagodaPiece(upperRoof, 0, roofY + 0.72, 0);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const corner = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.62, 4), trimMat);
+          corner.rotation.y = Math.PI / 4;
+          addPagodaPiece(corner, sx * (w * 0.5 + 0.72), roofY + 0.36, sz * (d * 0.5 + 0.72));
+        }
+      }
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.65, 0.16, 0.18), beamMat);
+      addPagodaPiece(beam, 0, roofY - 0.22, d * 0.5 + 0.14);
+      const rearBeam = beam.clone();
+      addPagodaPiece(rearBeam, 0, roofY - 0.22, -d * 0.5 - 0.14);
+      if (level === 2) {
+        const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.45, 8), trimMat);
+        addPagodaPiece(crown, 0, roofY + 1.22, 0);
+        const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), trimMat);
+        addPagodaPiece(pearl, 0, roofY + 2.05, 0);
+      }
+    };
+    const addFloor = (floorY, w, d, level, hole = null) => {
+      addSplitDeck(floorY, w, d, hole);
+      const wallH = 1.78;
+      addRail(floorY, w, d);
+      addLattice(floorY, w, d, level);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, wallH + 0.32, 8), beamMat);
+          addPagodaPiece(pillar, sx * (w * 0.5 - 0.34), floorY + wallH * 0.5, sz * (d * 0.5 - 0.34));
+        }
+      }
+      for (const x of [-w * 0.22, w * 0.22]) addLantern(x, floorY + 1.52, d * 0.5 + 0.34);
+      addRoof(floorY + wallH + 0.2, w, d, level);
+      if (level === 0) {
+        const matTop = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.18, 0.82), mats.wood);
+        addPagodaPiece(matTop, 0.8, floorY + 0.34, -1.1);
+        const scroll = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.52), mat(0xf6e4b5));
+        addPagodaPiece(scroll, 0.8, floorY + 0.46, -1.1);
+      }
+    };
+    const addStairs = (startY, endY, startX, endX, startZ, endZ, rot = 0) => {
+      const steps = 12;
+      for (let i = 0; i < steps; i++) {
+        const t = (i + 0.5) / steps;
+        const x = startX + (endX - startX) * t;
+        const z = startZ + (endZ - startZ) * t;
+        const y = startY + (endY - startY) * t;
+        const step = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.18, 0.74), mats.wood);
+        step.rotation.y = rot;
+        addPagodaPiece(step, x, y + 0.04, z);
+        addWalkPlatform(px + x, pz + z, rot ? 0.92 : 1.64, rot ? 1.64 : 0.92, y + 0.15, rot, { maxRise: 1.15 });
+      }
+    };
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.5, 8), stoneMat);
+    base.scale.set(pagodaW * 0.62, 1, pagodaD * 0.55);
+    base.rotation.y = Math.PI / 8;
+    addPagodaPiece(base, 0, 2.92, 0);
+    addFloor(levelYs[0], pagodaW, pagodaD, 0);
+    addFloor(levelYs[1], pagodaW - 1.3, pagodaD - 1.0, 1, { x: -2.55, z: -1.92, w: 1.95, d: 1.9 });
+    addFloor(levelYs[2], pagodaW - 2.55, pagodaD - 2.0, 2, { x: 2.2, z: 1.68, w: 1.9, d: 1.85 });
+    addStairs(levelYs[0], levelYs[1], -2.55, -2.55, 2.25, -1.92, 0);
+    addStairs(levelYs[1], levelYs[2], 2.2, 2.2, -2.05, 1.68, 0);
+    const groundLight = new THREE.PointLight(0xffb54f, 0, 12, 1.55);
+    groundLight.position.set(0, levelYs[0] + 1.5, 0.2);
+    pagoda.add(groundLight);
+    const upperLight = new THREE.PointLight(0xffcb73, 0, 9, 1.6);
+    upperLight.position.set(0, levelYs[1] + 1.4, 0);
+    pagoda.add(upperLight);
+    pagodaLights.push(groundLight, upperLight);
+    pagoda.position.set(px, 0, pz);
+    group.add(pagoda);
+    shipNightLights.push({
+      group: pagoda,
+      material: pagodaGlow,
+      haloMaterial: null,
+      haloOpacity: 0,
+      lights: pagodaLights,
+      baseIntensity: 0.75,
+    });
+    const wallPad = 0.08;
+    addCollisionBox(px, pz - pagodaD * 0.5, pagodaW, 0.3, wallPad);
+    addCollisionBox(px - pagodaW * 0.5, pz, 0.3, pagodaD, wallPad);
+    addCollisionBox(px + pagodaW * 0.5, pz, 0.3, pagodaD, wallPad);
+    addCollisionBox(px - pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
+    addCollisionBox(px + pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
   } else if (data.theme === "fort" || data.theme === "naval") {
     for (let side of [-1, 1]) {
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.45, 3.2, 8), mats.rock);
@@ -3738,7 +3940,7 @@ function addShipNightLights(group, length, width, scale, tier, profile = "skiff"
     cage.position.set(pos.x, 1.72 * scale, pos.z);
     group.add(cage);
   });
-  const light = new THREE.PointLight(0xffb33e, 0, (12 + tier * 2.2) * scale, 1.45);
+  const light = new THREE.PointLight(0xffb33e, 0, (16 + tier * 2.8) * scale, 1.35);
   light.position.set(0, 1.92 * scale, length * 0.1 * scale);
   group.add(light);
   shipNightLights.push({
@@ -3747,7 +3949,7 @@ function addShipNightLights(group, length, width, scale, tier, profile = "skiff"
     haloMaterial,
     haloOpacity: 0.14 + Math.min(0.08, tier * 0.012),
     lights: [light],
-    baseIntensity: 1.15 + Math.min(0.65, tier * 0.11),
+    baseIntensity: 1.35 + Math.min(0.9, tier * 0.14),
   });
 }
 
@@ -5765,6 +5967,110 @@ function leviathanAttackHits(position, impactPoint, sideDir, type = state.shipTy
   return along <= 11 + shipHitRadius(type) * 0.35 && across <= 8 + shipHitRadius(type) * 0.45;
 }
 
+function leviathanVector(data, key, fallback = new THREE.Vector3()) {
+  return new THREE.Vector3(
+    Number.isFinite(Number(data?.[`${key}X`])) ? Number(data[`${key}X`]) : fallback.x,
+    Number.isFinite(Number(data?.[`${key}Y`])) ? Number(data[`${key}Y`]) : fallback.y,
+    Number.isFinite(Number(data?.[`${key}Z`])) ? Number(data[`${key}Z`]) : fallback.z,
+  );
+}
+
+function ownServerTarget(id) {
+  return Boolean(id && (id === multiplayer.networkId || id === playerId));
+}
+
+function syncServerLeviathan(data) {
+  if (!data?.id) {
+    if (leviathan?.serverControlled) {
+      scene.remove(leviathan.group);
+      leviathan = null;
+      state.leviathanGrabbed = false;
+      if (playerShip) playerShip.visible = true;
+    }
+    return;
+  }
+  const sideDir = new THREE.Vector3(Number(data.sideX) || 1, 0, Number(data.sideZ) || 0);
+  if (sideDir.lengthSq() < 0.01) sideDir.set(1, 0, 0);
+  sideDir.normalize();
+  const impactPoint = leviathanVector(data, "impact");
+  const startPosition = leviathanVector(data, "start", impactPoint.clone().add(sideDir.clone().multiplyScalar(64)).setY(-24));
+  const smashPosition = leviathanVector(data, "smash", impactPoint.clone().add(sideDir.clone().multiplyScalar(8.6)).setY(0.55));
+  const divePosition = leviathanVector(data, "dive", impactPoint.clone().add(sideDir.clone().multiplyScalar(-30)).setY(-24));
+  if (!leviathan || !leviathan.serverControlled || leviathan.serverId !== data.id) {
+    if (leviathan?.group) scene.remove(leviathan.group);
+    const group = makeLeviathanMesh();
+    group.position.copy(startPosition);
+    group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
+    group.rotation.x = 0.48;
+    group.scale.setScalar(1.1);
+    setLeviathanJawOpen(group, 1);
+    scene.add(group);
+    makeLeviathanAttackEffect(startPosition.clone().setY(0), sideDir, "breach");
+    leviathan = {
+      group,
+      serverControlled: true,
+      serverId: data.id,
+      targetId: data.targetId,
+      born: clock.elapsedTime - Math.max(0, (Date.now() - (Number(data.born) || Date.now())) / 1000),
+      grabbed: false,
+      crushed: false,
+      damaged: false,
+      sideDir: sideDir.clone(),
+      attack: { id: "breach" },
+      startPosition,
+      smashPosition,
+      divePosition,
+      impactPoint,
+      slamAt: 0,
+    };
+  }
+  leviathan.targetId = data.targetId;
+  leviathan.sideDir.copy(sideDir);
+  leviathan.startPosition.copy(startPosition);
+  leviathan.impactPoint.copy(impactPoint);
+  leviathan.smashPosition.copy(smashPosition);
+  leviathan.divePosition.copy(divePosition);
+  leviathan.crushed = Boolean(data.crushed) || leviathan.crushed;
+  leviathan.missed = Boolean(data.missed) || leviathan.missed;
+  leviathan.serverHit = Boolean(data.hit) || leviathan.serverHit;
+  leviathan.damaged = Boolean(data.damaged) || leviathan.damaged;
+  if (Number.isFinite(Number(data.born))) leviathan.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
+  if (Number.isFinite(Number(data.slamAt))) leviathan.slamAt = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.slamAt)) / 1000);
+  if (leviathan.crushed && !leviathan.impactEffectMade) {
+    leviathan.impactEffectMade = true;
+    makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, leviathan.serverHit ? "crush" : "miss");
+  }
+}
+
+function applyServerLeviathanStrike(message) {
+  const attack = message.attack || {};
+  syncServerLeviathan({ ...attack, crushed: true, hit: Boolean(message.hit), missed: !message.hit, slamAt: attack.slamAt || Date.now() });
+  if (!leviathan?.serverControlled) return;
+  const sideDir = leviathan.sideDir || new THREE.Vector3(1, 0, 0);
+  leviathan.crushed = true;
+  leviathan.serverHit = Boolean(message.hit);
+  leviathan.missed = !message.hit;
+  if (!leviathan.slamAt) leviathan.slamAt = clock.elapsedTime;
+  if (!leviathan.impactEffectMade) {
+    leviathan.impactEffectMade = true;
+    makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, message.hit ? "crush" : "miss");
+  }
+  if (message.hit && ownServerTarget(leviathan.targetId) && state.mode === "ship") {
+    state.leviathanGrabbed = true;
+    state.velocity.set(0, 0, 0);
+    playerShip.position.copy(leviathan.impactPoint);
+    playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
+    state.position.copy(playerShip.position);
+    makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), sideDir.clone().multiplyScalar(-1));
+    playerShip.visible = false;
+  }
+}
+
+function applyServerLeviathanDamage(message) {
+  if (!ownServerTarget(message.targetId) || state.mode !== "ship") return;
+  damageTarget(state, maxHp() * 4);
+}
+
 function summonLeviathan() {
   if (leviathan || clock.elapsedTime < leviathanCooldown || state.mode !== "ship") return;
   leviathanCooldown = clock.elapsedTime + 10.2;
@@ -5805,7 +6111,6 @@ function summonLeviathan() {
     impactPoint,
     slamAt: 0,
   };
-  toast(`You left the charted sea. The Leviathan ${attack.label}.`);
 }
 
 function makeFish() {
@@ -8024,14 +8329,9 @@ function updateShip(dt) {
   updateDocking(dt);
   if (state.fallingOffWorld) {
     state.fallingTimer += dt;
-    const outward = new THREE.Vector3(playerShip.position.x, 0, playerShip.position.z);
-    if (outward.lengthSq() > 0.01) outward.normalize();
-    state.velocity.add(outward.multiplyScalar(dt * 3.2));
-    state.velocity.multiplyScalar(0.985);
-    playerShip.position.add(state.velocity.clone().multiplyScalar(dt));
+    state.velocity.set(0, 0, 0);
     playerShip.position.y -= (4.5 + state.fallingTimer * 8.5) * dt;
-    playerShip.rotation.x += dt * (0.65 + state.fallingTimer * 0.18);
-    playerShip.rotation.z += dt * (0.95 + state.fallingTimer * 0.22);
+    playerShip.rotation.set(0, state.rotation, 0);
     if (Math.floor(state.fallingTimer * 6) !== Math.floor((state.fallingTimer - dt) * 6)) {
       makeSplashEffect(playerShip.position.clone().setY(0));
     }
@@ -8084,8 +8384,19 @@ function updateShip(dt) {
   if (Math.abs(playerShip.position.x) > WATERFALL_LIMIT || Math.abs(playerShip.position.z) > WATERFALL_LIMIT) {
     state.fallingOffWorld = true;
     state.fallingTimer = 0;
+    const overX = Math.abs(playerShip.position.x) - WATERFALL_LIMIT;
+    const overZ = Math.abs(playerShip.position.z) - WATERFALL_LIMIT;
+    if (overX >= overZ) {
+      playerShip.position.x = Math.sign(playerShip.position.x || 1) * (WATERFALL_LIMIT + 2.5);
+      playerShip.position.z = clamp(playerShip.position.z, -WATERFALL_LIMIT, WATERFALL_LIMIT);
+    } else {
+      playerShip.position.z = Math.sign(playerShip.position.z || 1) * (WATERFALL_LIMIT + 2.5);
+      playerShip.position.x = clamp(playerShip.position.x, -WATERFALL_LIMIT, WATERFALL_LIMIT);
+    }
+    state.velocity.set(0, 0, 0);
+    playerShip.rotation.set(0, state.rotation, 0);
     toast("You crossed the waterfall at the edge of the world.");
-  } else if (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT) summonLeviathan();
+  } else if (!multiplayer.serverWorld && (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT)) summonLeviathan();
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
   });
@@ -8758,11 +9069,12 @@ function updateLeviathan(dt) {
   const ease = (value) => value * value * (3 - 2 * value);
   const sideDir = leviathan.sideDir || new THREE.Vector3(1, 0, 0);
   const jawForward = sideDir.clone().multiplyScalar(-1);
+  const serverControlled = Boolean(leviathan.serverControlled);
   leviathan.group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
 
   const leapDuration = 3.15;
   if (!leviathan.crushed) {
-    if (age < 2.75 && state.mode === "ship") {
+    if (!serverControlled && age < 2.75 && state.mode === "ship") {
       const liveTarget = playerShip.position.clone();
       liveTarget.y = 0;
       leviathan.impactPoint.lerp(liveTarget, clamp(dt * 5.6, 0, 0.7));
@@ -8789,6 +9101,7 @@ function updateLeviathan(dt) {
     if (age >= leapDuration) {
       leviathan.crushed = true;
       leviathan.slamAt = clock.elapsedTime;
+      if (serverControlled) return;
       const hit = state.mode === "ship" && leviathanAttackHits(playerShip.position, leviathan.impactPoint, sideDir, state.shipType);
       if (hit) {
         state.leviathanGrabbed = true;
@@ -8818,12 +9131,12 @@ function updateLeviathan(dt) {
   leviathan.group.scale.setScalar(1.18 - diveT * 0.16);
   setLeviathanJawOpen(leviathan.group, 0.67 - diveT * 0.26, diveT * 0.1);
 
-  if (state.leviathanGrabbed && !leviathan.damaged) {
+  if (state.leviathanGrabbed && !leviathan.damaged && (!serverControlled || leviathan.serverHit)) {
     state.velocity.set(0, 0, 0);
     state.position.copy(playerShip.position);
   }
 
-  if (!leviathan.missed && !leviathan.damaged && slamAge > 0.48) {
+  if (!serverControlled && !leviathan.missed && !leviathan.damaged && slamAge > 0.48) {
     leviathan.damaged = true;
     damageTarget(state, maxHp() * 4);
   }
@@ -9607,7 +9920,9 @@ function syncServerWorld(world) {
   if (!world) return;
   multiplayer.serverWorld = true;
   if (Number.isFinite(Number(world.dayCycleTime))) {
-    environment.serverCycleTime = Number(world.dayCycleTime) % DAY_CYCLE_SECONDS;
+    environment.serverDayLength = Math.max(60, Number(world.dayLengthSeconds) || DAY_LENGTH_SECONDS);
+    environment.serverNightLength = Math.max(60, Number(world.nightLengthSeconds) || NIGHT_LENGTH_SECONDS);
+    environment.serverCycleTime = Number(world.dayCycleTime) % (environment.serverDayLength + environment.serverNightLength);
     environment.serverCycleUpdatedAt = clock.elapsedTime;
   }
 
@@ -9701,6 +10016,7 @@ function syncServerWorld(world) {
   crates.slice().forEach((crate) => {
     if (!crate.serverId || !seenCrates.has(crate.serverId)) removeCrate(crate);
   });
+  syncServerLeviathan(world.leviathan);
   syncKraken(world.kraken);
   syncServerBombs(world.bombs || []);
   syncServerBotBalloons(world.botBalloons || []);
@@ -9821,6 +10137,10 @@ function handleMultiplayerMessage(message) {
     applyRemotePlayerSunk(message);
   } else if (message.type === "krakenAttack") {
     applyKrakenAttack(message.attack);
+  } else if (message.type === "leviathanStrike") {
+    applyServerLeviathanStrike(message);
+  } else if (message.type === "leviathanDamage") {
+    applyServerLeviathanDamage(message);
   } else if (message.type === "krakenDefeated") {
     // The dropped tentacle reward is visible in-world; no popup needed.
   } else if (message.type === "botReward") {
