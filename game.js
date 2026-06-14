@@ -13,7 +13,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8edff0);
 scene.fog = new THREE.Fog(0x8edff0, 240, 980);
 
-const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1250);
+const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 4200);
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -858,6 +858,8 @@ const environment = {
   sun: null,
   warm: null,
   moonLight: null,
+  celestialRig: null,
+  celestialLine: null,
   sunDisc: null,
   moonDisc: null,
   phase: "day",
@@ -1166,16 +1168,17 @@ function shipStructureBoxes(type = state.shipType) {
     boxes.push({ id, z, w, d, floorY: deckY, roofY });
   };
   const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
-  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "treasure", "windrunner"]);
+  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "treasure", "windrunner"]);
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner"].includes(type);
   if (hasLargeArchitecture) {
+    const sternRoofY = type === "postship" ? 2.48 * scale : 2.08 * scale;
     boxes.push({
       id: "stern-castle",
       z: -length * 0.34,
       w: width * 0.68,
       d: length * 0.17,
       floorY: deckY + 0.02 * scale,
-      roofY: 2.08 * scale,
+      roofY: sternRoofY,
       interior: largeInteriorTypes.has(type),
     });
     boxes.push({
@@ -1224,8 +1227,9 @@ function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
   const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const doorHalfWidth = ["grandfrigate", "windrunner"].includes(type) ? 0.62 * scale : 0.48 * scale;
-  const doorDepth = ["grandfrigate", "windrunner"].includes(type) ? 0.58 * scale : 0.44 * scale;
+  const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
+  const doorHalfWidth = generousCabinDoor ? 0.62 * scale : 0.48 * scale;
+  const doorDepth = generousCabinDoor ? 0.58 * scale : 0.44 * scale;
   const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
     && Math.abs(localPoint.z - centerFacingZ) < doorDepth;
   return inner || door;
@@ -1682,18 +1686,35 @@ function addLights() {
   sun.shadow.camera.top = 145;
   sun.shadow.camera.bottom = -145;
   scene.add(sun);
+  scene.add(sun.target);
   const warm = new THREE.DirectionalLight(0xffdba0, 0.85);
   warm.position.set(80, 36, -70);
   scene.add(warm);
+  scene.add(warm.target);
   const moonLight = new THREE.DirectionalLight(0xaec8ff, 0);
   moonLight.position.set(80, 60, -70);
   scene.add(moonLight);
+  scene.add(moonLight.target);
+  const celestialEdgeDistance = WATERFALL_LIMIT + 620;
+  const celestialSideDrift = WATERFALL_LIMIT * 0.14;
+  const celestialRig = new THREE.Group();
+  celestialRig.position.set(0, 20, 0);
+  scene.add(celestialRig);
+  const celestialLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-celestialEdgeDistance, 0, -celestialSideDrift),
+      new THREE.Vector3(celestialEdgeDistance, 0, celestialSideDrift),
+    ]),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false })
+  );
+  celestialLine.visible = false;
+  celestialRig.add(celestialLine);
   const sunDisc = new THREE.Mesh(
     new THREE.SphereGeometry(12, 24, 14),
     new THREE.MeshBasicMaterial({ color: 0xfff1a6, fog: false })
   );
-  sunDisc.position.set(-240, 130, 120);
-  scene.add(sunDisc);
+  sunDisc.position.set(-celestialEdgeDistance, 0, -celestialSideDrift);
+  celestialRig.add(sunDisc);
   const moonDisc = new THREE.Mesh(
     new THREE.SphereGeometry(8.5, 24, 14),
     new THREE.MeshBasicMaterial({ color: 0xdfe9ff, fog: false })
@@ -1704,14 +1725,32 @@ function addLights() {
   );
   moonShadow.position.set(3.1, 1.1, 1.1);
   moonDisc.add(moonShadow);
-  moonDisc.position.set(220, 70, -160);
-  scene.add(moonDisc);
-  Object.assign(environment, { hemi, sun, warm, moonLight, sunDisc, moonDisc });
+  moonDisc.position.set(celestialEdgeDistance, 0, celestialSideDrift);
+  celestialRig.add(moonDisc);
+  Object.assign(environment, { hemi, sun, warm, moonLight, celestialRig, celestialLine, sunDisc, moonDisc });
 }
 
 function smoothStep(value) {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+function lightingFocusPosition() {
+  const balloon = state.viewMode === "balloon" ? activeBalloon() : null;
+  if (balloon?.group && !balloon.destroyed) return balloon.group.position;
+  if ((state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land") && character) return character.position;
+  if (playerShip) return playerShip.position;
+  return state.position;
+}
+
+function aimDirectionalLightFromCelestial(light, celestialPosition, focusPosition, distance = 760) {
+  const direction = celestialPosition.clone().sub(focusPosition);
+  if (direction.lengthSq() < 0.001) direction.set(0, 1, 0);
+  direction.normalize();
+  light.position.copy(focusPosition).add(direction.multiplyScalar(distance));
+  light.target.position.copy(focusPosition);
+  light.updateMatrixWorld();
+  light.target.updateMatrixWorld();
 }
 
 function updateShipNightLights(amount) {
@@ -1741,6 +1780,7 @@ function updateDayNightCycle() {
   const isNight = cycleTime >= dayLength;
   const dayProgress = clamp(cycleTime / dayLength, 0, 1);
   const nightProgress = isNight ? clamp((cycleTime - dayLength) / nightLength, 0, 1) : 0;
+  const cycleProgress = isNight ? 0.5 + nightProgress * 0.5 : dayProgress * 0.5;
   const sunriseProgress = !isNight ? clamp(cycleTime / SUNRISE_SECONDS, 0, 1) : 0;
   const sunsetProgress = !isNight ? clamp((cycleTime - (dayLength - SUNSET_SECONDS)) / SUNSET_SECONDS, 0, 1) : 0;
   const sunriseTransition = !isNight && cycleTime < SUNRISE_SECONDS ? 1 - smoothStep(sunriseProgress) : 0;
@@ -1755,20 +1795,28 @@ function updateDayNightCycle() {
   const dayAmount = 1 - nightFactor;
   const twilight = clamp(Math.max(sunriseWarmth, sunsetWarmth), 0, 1);
 
-  const celestialPath = (progress, baseY, arcY) => {
-    const arc = Math.PI * progress;
-    return new THREE.Vector3(-Math.cos(arc) * 250, baseY + Math.sin(arc) * arcY, -150 + progress * 260);
-  };
-  const sunPos = celestialPath(dayProgress, 12, 170);
-  environment.sun.position.copy(sunPos);
-  environment.warm.position.copy(sunPos);
-  environment.sunDisc.position.copy(sunPos.clone().multiplyScalar(1.6));
-  environment.sunDisc.visible = !isNight;
-
-  const moonPos = celestialPath(nightProgress, 28, 145);
-  environment.moonLight.position.copy(moonPos);
-  environment.moonDisc.position.copy(moonPos.clone().multiplyScalar(1.6));
-  environment.moonDisc.visible = isNight || sunriseTransition > 0.15;
+  const celestialAngle = cycleProgress * Math.PI * 2;
+  const celestialEdgeDistance = WATERFALL_LIMIT + 620;
+  const celestialSideDrift = WATERFALL_LIMIT * 0.14;
+  const horizontalX = -Math.cos(celestialAngle) * celestialEdgeDistance;
+  const horizontalZ = -Math.cos(celestialAngle) * celestialSideDrift;
+  const verticalY = Math.sin(celestialAngle) * 520;
+  const sunLocal = new THREE.Vector3(horizontalX, verticalY, horizontalZ);
+  const moonLocal = sunLocal.clone().multiplyScalar(-1);
+  environment.sunDisc.position.copy(sunLocal);
+  environment.moonDisc.position.copy(moonLocal);
+  if (environment.celestialLine?.geometry) {
+    environment.celestialLine.geometry.setFromPoints([sunLocal, moonLocal]);
+  }
+  const sunPos = environment.sunDisc.getWorldPosition(new THREE.Vector3());
+  const moonPos = environment.moonDisc.getWorldPosition(new THREE.Vector3());
+  const lightFocus = lightingFocusPosition().clone();
+  lightFocus.y += state.viewMode === "balloon" ? 6 : 1.2;
+  aimDirectionalLightFromCelestial(environment.sun, sunPos, lightFocus, 820);
+  aimDirectionalLightFromCelestial(environment.warm, sunPos, lightFocus, 820);
+  aimDirectionalLightFromCelestial(environment.moonLight, moonPos, lightFocus, 820);
+  environment.sunDisc.visible = sunPos.y > 5 || !isNight;
+  environment.moonDisc.visible = moonPos.y > 5 || isNight || sunriseTransition > 0.15;
 
   environment.sun.intensity = 0.18 + dayAmount * 2.25 + twilight * 0.35;
   environment.hemi.intensity = 0.18 + dayAmount * 1.18;
@@ -1842,13 +1890,43 @@ function addWorldWaterfall() {
 
 function makeCloud() {
   const cloud = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.86 });
-  for (let i = 0; i < 5; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(2.6 + Math.random() * 2.2, 8, 6), cloudMat);
-    puff.position.set(i * 3.4 + Math.random(), Math.random() * 1.2, (Math.random() - 0.5) * 3);
+  const softMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 1,
+    transparent: true,
+    opacity: 0.36,
+    depthWrite: false,
+  });
+  const shadeMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 1,
+    transparent: true,
+    opacity: 0.2,
+    depthWrite: false,
+  });
+  const wispMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  for (let i = 0; i < 8; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), i < 3 ? shadeMat : softMat);
+    puff.scale.set(4.2 + Math.random() * 3.4, 0.65 + Math.random() * 0.42, 1.55 + Math.random() * 1.65);
+    puff.position.set(i * 2.35 + (Math.random() - 0.5) * 1.9, Math.random() * 0.75, (Math.random() - 0.5) * 3.7);
+    puff.rotation.set((Math.random() - 0.5) * 0.08, Math.random() * Math.PI, (Math.random() - 0.5) * 0.12);
     cloud.add(puff);
   }
-  cloud.scale.setScalar(1.5 + Math.random() * 1.4);
+  for (let i = 0; i < 5; i++) {
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(8 + Math.random() * 8, 1.1 + Math.random() * 0.9), wispMat.clone());
+    sheet.material.opacity = 0.08 + Math.random() * 0.1;
+    sheet.position.set(2.5 + i * 3.2 + (Math.random() - 0.5) * 2.2, -0.45 + Math.random() * 0.6, (Math.random() - 0.5) * 4.8);
+    sheet.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.08);
+    cloud.add(sheet);
+  }
+  cloud.scale.set(1.3 + Math.random() * 1.25, 1, 1.05 + Math.random() * 0.55);
   cloud.position.set((Math.random() - 0.5) * SEA_SIZE * 0.72, 42 + Math.random() * 18, (Math.random() - 0.5) * SEA_SIZE * 0.72);
   cloud.userData.cloud = 0.7 + Math.random() * 0.9;
   scene.add(cloud);
@@ -2046,8 +2124,8 @@ function makeIsland(data) {
   ];
   const terrainFeatures = [];
   const walkPlatforms = [];
-  const addCollisionBox = (x, z, w, d, pad = 0.45, rot = 0) => {
-    collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot });
+  const addCollisionBox = (x, z, w, d, pad = 0.45, rot = 0, options = {}) => {
+    collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot, ...options });
   };
   const addWalkPlatform = (x, z, w, d, y, rot = 0, options = {}) => {
     walkPlatforms.push({ x: data.x + x, z: data.z + z, w, d, y, rot, ...options });
@@ -2127,7 +2205,15 @@ function makeIsland(data) {
     group.add(cloth);
     obstacles.push({ x: data.x + x, z: data.z + z, r: 1.6 });
   };
-  const addInteriorHouse = (x, z, w, d, color, roofColor = accent) => {
+  const addInteriorHouse = (x, z, w, d, color, roofColor = accent, options = {}) => {
+    const style = options.style || "standard";
+    const tallStyles = new Set(["twoStory", "warehouse", "towerHouse", "villa", "pagodaHouse"]);
+    const floors = clamp(options.floors || (tallStyles.has(style) ? 2 : 1), 1, 2);
+    const wallH = floors > 1 ? (style === "towerHouse" ? 3.65 : 3.25) : (style === "warehouse" ? 2.45 : 1.9);
+    const wallY = 3.12 + wallH * 0.5;
+    const roofH = style === "towerHouse" ? 1.45 : style === "pagodaHouse" ? 0.95 : style === "longhouse" || style === "warehouse" ? 1.05 : 1.25;
+    const roofY = 3.12 + wallH + roofH * 0.5 - 0.06;
+    const windowRows = floors > 1 ? [3.95, 5.18] : [4.3];
     noTreeZones.push({ x, z, r: Math.max(w, d) * 0.78 + 2.4 });
     const house = new THREE.Group();
     const glowMaterial = new THREE.MeshBasicMaterial({
@@ -2150,38 +2236,147 @@ function makeIsland(data) {
     floor.position.y = 3.08;
     floor.receiveShadow = true;
     house.add(floor);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(w, 1.9, 0.22), mat(color));
-    back.position.set(0, 4.05, -d * 0.5);
+    const wallMat = mat(color);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, 0.22), wallMat);
+    back.position.set(0, wallY, -d * 0.5);
     house.add(back);
     for (const side of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.9, d), mat(color));
-      wall.position.set(side * w * 0.5, 4.05, 0);
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.22, wallH, d), wallMat);
+      wall.position.set(side * w * 0.5, wallY, 0);
       house.add(wall);
-      const window = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.08), mats.gold);
-      window.position.set(side * (w * 0.5 + 0.02), 4.3, -d * 0.06);
-      house.add(window);
-      const windowGlow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.46, 0.035), glowMaterial);
-      windowGlow.position.set(side * (w * 0.5 + 0.045), 4.3, -d * 0.06);
-      house.add(windowGlow);
+      windowRows.forEach((rowY, rowIndex) => {
+        const windowZ = rowIndex % 2 === 0 ? -d * 0.16 : d * 0.16;
+        const window = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.08), mats.gold);
+        window.position.set(side * (w * 0.5 + 0.02), rowY, windowZ);
+        house.add(window);
+        const windowGlow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.46, 0.035), glowMaterial);
+        windowGlow.position.set(side * (w * 0.5 + 0.045), rowY, windowZ);
+        house.add(windowGlow);
+      });
     }
-    const leftFront = new THREE.Mesh(new THREE.BoxGeometry(w * 0.34, 1.9, 0.22), mat(color));
-    leftFront.position.set(-w * 0.33, 4.05, d * 0.5);
+    const leftFront = new THREE.Mesh(new THREE.BoxGeometry(w * 0.34, wallH, 0.22), wallMat);
+    leftFront.position.set(-w * 0.33, wallY, d * 0.5);
     const rightFront = leftFront.clone();
     rightFront.position.x = w * 0.33;
     house.add(leftFront, rightFront);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.58, 1.25, 4), mat(roofColor));
-    roof.position.y = 5.35;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    house.add(roof);
+    if (floors > 1) {
+      const upperWalkY = 4.72;
+      const upperFloorY = upperWalkY - 0.06;
+      const floorW = w * 0.88;
+      const floorD = d * 0.82;
+      const hole = { x: -w * 0.28, z: -d * 0.03, w: Math.min(1.35, w * 0.34), d: d * 0.48 };
+      const addUpperPanel = (cx, cz, pw, pd) => {
+        if (pw <= 0.18 || pd <= 0.18) return;
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(pw, 0.12, pd), mats.plank);
+        panel.position.set(cx, upperFloorY, cz);
+        panel.receiveShadow = true;
+        house.add(panel);
+        addWalkPlatform(x + cx, z + cz, Math.max(0.35, pw - 0.08), Math.max(0.35, pd - 0.08), upperWalkY, 0, { maxRise: 0.9 });
+      };
+      const floorMinX = -floorW * 0.5;
+      const floorMaxX = floorW * 0.5;
+      const floorMinZ = -floorD * 0.5;
+      const floorMaxZ = floorD * 0.5;
+      const holeMinX = hole.x - hole.w * 0.5;
+      const holeMaxX = hole.x + hole.w * 0.5;
+      const holeMinZ = hole.z - hole.d * 0.5;
+      const holeMaxZ = hole.z + hole.d * 0.5;
+      addUpperPanel((floorMinX + holeMinX) * 0.5, 0, holeMinX - floorMinX, floorD);
+      addUpperPanel((holeMaxX + floorMaxX) * 0.5, 0, floorMaxX - holeMaxX, floorD);
+      addUpperPanel(hole.x, (floorMinZ + holeMinZ) * 0.5, hole.w, holeMinZ - floorMinZ);
+      addUpperPanel(hole.x, (holeMaxZ + floorMaxZ) * 0.5, hole.w, floorMaxZ - holeMaxZ);
+      for (let i = 0; i < 10; i++) {
+        const t = (i + 0.5) / 10;
+        const stepX = hole.x;
+        const stepZ = d * 0.28 + (-d * 0.34 - d * 0.28) * t;
+        const stepY = 3.24 + (upperWalkY - 3.24) * t;
+        const step = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.16, 0.46), mats.wood);
+        step.position.set(stepX, stepY - 0.08, stepZ);
+        step.castShadow = true;
+        step.receiveShadow = true;
+        house.add(step);
+        addWalkPlatform(x + stepX, z + stepZ, 1.22, 0.54, stepY, 0, { maxRise: 0.7 });
+      }
+      const balcony = new THREE.Mesh(new THREE.BoxGeometry(w * 0.64, 0.13, 0.72), mats.plank);
+      balcony.position.set(0, 4.78, d * 0.65);
+      balcony.castShadow = true;
+      house.add(balcony);
+      addWalkPlatform(x, z + d * 0.65, w * 0.64, 0.72, 4.86, 0, { maxRise: 0.75 });
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 0.66, 0.12, 0.12), mats.dark);
+      rail.position.set(0, 5.05, d * 0.98);
+      house.add(rail);
+      for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.1), mats.dark);
+        post.position.set(side * w * 0.32, 4.98, d * 0.98);
+        house.add(post);
+      }
+    }
+    if (style === "flat") {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.44, 0.22, d + 0.44), mat(roofColor));
+      roof.position.y = roofY;
+      roof.castShadow = true;
+      house.add(roof);
+    } else {
+      const sides = style === "towerHouse" ? 6 : 4;
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.58, roofH, sides), mat(roofColor));
+      roof.position.y = roofY;
+      roof.rotation.y = Math.PI / sides;
+      if (style === "longhouse" || style === "warehouse") roof.scale.set(1.28, 1, 0.72);
+      roof.castShadow = true;
+      house.add(roof);
+      if (style === "pagodaHouse") {
+        for (let i = 0; i < 2; i++) {
+          const eave = new THREE.Mesh(new THREE.BoxGeometry(w + 1.2 - i * 0.38, 0.12, d + 1.2 - i * 0.38), mat(roofColor));
+          eave.position.y = 4.78 + i * 1.16;
+          eave.castShadow = true;
+          house.add(eave);
+        }
+      }
+      if (style === "longhouse") {
+        const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, w + 0.82, 6), mats.dark);
+        ridge.rotation.z = Math.PI / 2;
+        ridge.position.y = roofY + roofH * 0.44;
+        house.add(ridge);
+      }
+    }
+    if (style === "warehouse") {
+      for (const side of [-1, 1]) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.55), mats.crate);
+        crate.position.set(side * w * 0.28, 3.36, d * 0.82);
+        crate.castShadow = true;
+        house.add(crate);
+      }
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 0.32, 0.08), mat(0xd8c28f));
+      sign.position.set(0, 4.42, d * 0.56);
+      house.add(sign);
+    } else if (style === "towerHouse") {
+      const lookout = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 0.78, d * 0.42), mat(new THREE.Color(color).multiplyScalar(0.88).getHex()));
+      lookout.position.set(0, roofY - 0.42, 0);
+      lookout.castShadow = true;
+      house.add(lookout);
+    } else if (style === "stilt") {
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.86, 6), mats.wood);
+          post.position.set(sx * w * 0.36, 2.66, sz * d * 0.34);
+          post.castShadow = true;
+          house.add(post);
+        }
+      }
+    } else if (style === "villa") {
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(w * 0.18, 0.055, 7, 16, Math.PI), mat(roofColor));
+      arch.rotation.set(0, Math.PI / 2, 0);
+      arch.position.set(0, 4.05, d * 0.62);
+      house.add(arch);
+    }
     const table = new THREE.Mesh(new THREE.BoxGeometry(w * 0.32, 0.22, d * 0.24), mats.wood);
     table.position.set(0.1, 3.35, -d * 0.08);
     house.add(table);
     const interiorLamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 9, 7), glowMaterial);
-    interiorLamp.position.set(0, 4.72, -d * 0.08);
+    interiorLamp.position.set(0, Math.min(roofY - roofH * 0.36, 5.75), -d * 0.08);
     house.add(interiorLamp);
     const doorwayLamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 9, 7), glowMaterial);
-    doorwayLamp.position.set(0, 4.42, d * 0.56);
+    doorwayLamp.position.set(0, floors > 1 ? 4.78 : 4.42, d * 0.56);
     house.add(doorwayLamp);
     const interiorGlow = new THREE.Mesh(new THREE.CircleGeometry(1, 32), glowHaloMaterial);
     interiorGlow.rotation.x = -Math.PI / 2;
@@ -2220,26 +2415,29 @@ function makeIsland(data) {
   };
   const addThemeHouse = () => {
     const profiles = {
-      norse: { x: radius * 0.15, z: radius * 0.02, w: 6.4, d: 3.1, color: 0x8b5a32, roof: 0x5a3b25, chimney: false },
-      pagoda: { x: radius * 0.18, z: radius * 0.02, w: 3.8, d: 3.8, color: 0xd9a45e, roof: 0xd99928, chimney: false },
-      iberian: { x: radius * 0.16, z: radius * 0.04, w: 4.4, d: 3.4, color: 0xf4e5c9, roof: 0xb84f44, chimney: true },
-      fort: { x: radius * 0.16, z: radius * 0.02, w: 4.8, d: 3.8, color: 0x9b9a87, roof: 0x4f5963, chimney: false },
-      naval: { x: radius * 0.17, z: radius * 0.02, w: 5.2, d: 3.4, color: 0xd8d2bd, roof: 0x4051a8, chimney: true },
-      trade: { x: radius * 0.18, z: radius * 0.02, w: 5.8, d: 3.2, color: 0xb77b42, roof: 0x7a5030, chimney: true },
-      lagoon: { x: radius * 0.18, z: radius * 0.04, w: 4.2, d: 3.2, color: 0xe2d0a5, roof: 0xd7b44a, chimney: false },
-      atoll: { x: radius * 0.18, z: radius * 0.04, w: 3.6, d: 3.0, color: 0xefc27c, roof: 0xef6f4f, chimney: false },
-      rocky: { x: radius * 0.17, z: radius * 0.02, w: 4.2, d: 3.4, color: 0x9b8b78, roof: 0x5b6268, chimney: true },
+      norse: { x: radius * 0.15, z: radius * 0.02, w: 7.0, d: 3.35, color: 0x8b5a32, roof: 0x5a3b25, chimney: false, style: "longhouse" },
+      pagoda: { x: radius * 0.18, z: radius * 0.02, w: 4.25, d: 4.05, color: 0xd9a45e, roof: 0xd99928, chimney: false, style: "pagodaHouse", floors: 2 },
+      iberian: { x: radius * 0.16, z: radius * 0.04, w: 4.8, d: 3.65, color: 0xf4e5c9, roof: 0xb84f44, chimney: true, style: "villa", floors: 2 },
+      fort: { x: radius * 0.16, z: radius * 0.02, w: 4.75, d: 3.75, color: 0x9b9a87, roof: 0x4f5963, chimney: false, style: "towerHouse", floors: 2 },
+      naval: { x: radius * 0.17, z: radius * 0.02, w: 5.45, d: 3.55, color: 0xd8d2bd, roof: 0x4051a8, chimney: true, style: "twoStory", floors: 2 },
+      trade: { x: radius * 0.18, z: radius * 0.02, w: 6.35, d: 3.65, color: 0xb77b42, roof: 0x7a5030, chimney: true, style: "warehouse", floors: 2 },
+      lagoon: { x: radius * 0.18, z: radius * 0.04, w: 4.4, d: 3.25, color: 0xe2d0a5, roof: 0xd7b44a, chimney: false, style: "stilt" },
+      atoll: { x: radius * 0.18, z: radius * 0.04, w: 3.8, d: 3.1, color: 0xefc27c, roof: 0xef6f4f, chimney: false, style: "cottage" },
+      rocky: { x: radius * 0.17, z: radius * 0.02, w: 4.4, d: 3.45, color: 0x9b8b78, roof: 0x5b6268, chimney: true, style: "twoStory", floors: 2 },
     };
-    const profile = clearHouseProfile({ ...(profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false }) });
+    const profile = clearHouseProfile({ ...(profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false, style: "standard" }) });
     if (!profile) return null;
-    const house = addInteriorHouse(profile.x, profile.z, profile.w, profile.d, profile.color, profile.roof);
+    const house = addInteriorHouse(profile.x, profile.z, profile.w, profile.d, profile.color, profile.roof, {
+      style: profile.style,
+      floors: profile.floors,
+    });
     if (profile.chimney) {
       const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.2, 0.42), mat(0x5a3b25));
       chimney.position.set(profile.x + profile.w * 0.28, 5.75, profile.z - profile.d * 0.25);
       chimney.castShadow = true;
       group.add(chimney);
     }
-    if (data.theme === "pagoda") {
+    if (data.theme === "pagoda" && profile.style !== "pagodaHouse") {
       for (let i = 0; i < 2; i++) {
         const eave = new THREE.Mesh(new THREE.BoxGeometry(profile.w + 1.2 - i * 0.5, 0.12, profile.d + 1.2 - i * 0.5), mat(profile.roof));
         eave.position.set(profile.x, 5.05 + i * 0.46, profile.z);
@@ -2247,7 +2445,7 @@ function makeIsland(data) {
         group.add(eave);
       }
     }
-    if (data.theme === "norse") {
+    if (data.theme === "norse" && profile.style !== "longhouse") {
       const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, profile.w + 0.7, 6), mats.dark);
       ridge.rotation.z = Math.PI / 2;
       ridge.position.set(profile.x, 5.75, profile.z);
@@ -2413,17 +2611,31 @@ function makeIsland(data) {
       { wall: 0xe2d0a5, roof: 0xd7b44a },
       { wall: 0x9b8b78, roof: 0x4f5963 },
     ];
+    const themedStyles = {
+      norse: ["longhouse", "cottage", "warehouse"],
+      pagoda: ["pagodaHouse", "twoStory", "stilt"],
+      iberian: ["villa", "twoStory", "cottage"],
+      fort: ["towerHouse", "twoStory", "warehouse"],
+      naval: ["twoStory", "towerHouse", "warehouse"],
+      trade: ["warehouse", "twoStory", "villa"],
+      lagoon: ["stilt", "cottage", "twoStory"],
+      atoll: ["cottage", "stilt", "standard"],
+      rocky: ["twoStory", "cottage", "towerHouse"],
+    };
+    const styles = themedStyles[data.theme] || ["standard", "twoStory", "warehouse"];
+    const style = slot.style || styles[(dockThemeSeed + index) % styles.length];
+    const floors = slot.floors || (["twoStory", "warehouse", "towerHouse", "villa", "pagodaHouse"].includes(style) ? 2 : 1);
     const palette = palettes[(dockThemeSeed + index) % palettes.length];
-    addInteriorHouse(slot.x, slot.z, slot.w, slot.d, slot.color || palette.wall, slot.roof || palette.roof);
+    addInteriorHouse(slot.x, slot.z, slot.w, slot.d, slot.color || palette.wall, slot.roof || palette.roof, { style, floors });
     if (index % 2 === 0) {
       const awning = new THREE.Mesh(new THREE.BoxGeometry(slot.w * 0.62, 0.12, 1.0), mat(accent));
-      awning.position.set(slot.x, 4.35, slot.z + slot.d * 0.62);
+      awning.position.set(slot.x, floors > 1 ? 4.85 : 4.35, slot.z + slot.d * 0.62);
       awning.rotation.x = -0.18;
       awning.castShadow = true;
       group.add(awning);
     } else {
       const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.1, 0.42), mat(0x5a3b25));
-      chimney.position.set(slot.x + slot.w * 0.28, 5.65, slot.z - slot.d * 0.25);
+      chimney.position.set(slot.x + slot.w * 0.28, floors > 1 ? 6.65 : 5.65, slot.z - slot.d * 0.25);
       chimney.castShadow = true;
       group.add(chimney);
     }
@@ -2432,11 +2644,11 @@ function makeIsland(data) {
     if (data.name === "Port Azure") return;
     const denseTown = ["trade", "market", "naval", "fort", "iberian"].includes(data.theme);
     const slots = [
-      { x: -radius * 0.08, z: radius * 0.28, w: 4.2, d: 3.2 },
+      { x: -radius * 0.08, z: radius * 0.28, w: 4.65, d: 3.35, style: denseTown ? "twoStory" : undefined, floors: denseTown ? 2 : undefined },
       { x: radius * 0.32, z: radius * 0.02, w: 3.7, d: 3.0 },
-      { x: -radius * 0.35, z: radius * 0.23, w: 4.7, d: 3.4 },
-      { x: radius * 0.16, z: -radius * 0.02, w: 3.8, d: 3.1 },
-      { x: radius * 0.04, z: radius * 0.39, w: 3.5, d: 2.9 },
+      { x: -radius * 0.35, z: radius * 0.23, w: 5.15, d: 3.55, style: denseTown ? "warehouse" : undefined, floors: denseTown ? 2 : undefined },
+      { x: radius * 0.16, z: -radius * 0.02, w: 4.1, d: 3.2 },
+      { x: radius * 0.04, z: radius * 0.39, w: 3.7, d: 3.0 },
     ];
     slots
       .filter((slot) => clearBuildSpot(slot.x, slot.z, Math.max(slot.w, slot.d)))
@@ -2451,6 +2663,9 @@ function makeIsland(data) {
     noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(castleW, castleD) * 0.72 + 5.5 });
     const baseY = 3.02;
     const wallH = 5.2;
+    const wallSink = 1.1;
+    const wallBodyH = wallH + wallSink;
+    const wallBodyY = baseY + wallH * 0.5 - wallSink * 0.5;
     const wallTopY = baseY + wallH;
     const topY = wallTopY + 0.18;
     const stone = mat(0x7e8991);
@@ -2526,11 +2741,11 @@ function makeIsland(data) {
       castle.add(flag);
     };
     addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, 0.18, castleD), mats.plank), 0, baseY + 0.02, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, wallH, 0.65), stone), 0, baseY + wallH * 0.5, -castleD * 0.5);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallH, castleD), stone), -castleW * 0.5, baseY + wallH * 0.5, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallH, castleD), stone), castleW * 0.5, baseY + wallH * 0.5, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.65), stone), -castleW * 0.32, baseY + wallH * 0.5, castleD * 0.5);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.65), stone), castleW * 0.32, baseY + wallH * 0.5, castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, wallBodyH, 0.65), stone), 0, wallBodyY, -castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallBodyH, castleD), stone), -castleW * 0.5, wallBodyY, 0);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallBodyH, castleD), stone), castleW * 0.5, wallBodyY, 0);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallBodyH, 0.65), stone), -castleW * 0.32, wallBodyY, castleD * 0.5);
+    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallBodyH, 0.65), stone), castleW * 0.32, wallBodyY, castleD * 0.5);
     for (const y of [baseY + 1.05, wallTopY - 0.48]) {
       addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 0.45, 0.18, 0.18), darkStone), 0, y, -castleD * 0.5 - 0.36);
       addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, 0.18, 0.18), darkStone), -castleW * 0.32, y, castleD * 0.5 + 0.36);
@@ -2543,8 +2758,8 @@ function makeIsland(data) {
     const gateGap = 3.55;
     for (const side of [-1, 1]) {
       const pierX = side * (gateGap * 0.5 + gatePierW * 0.5);
-      const pier = new THREE.Mesh(new THREE.BoxGeometry(gatePierW, wallH, 0.86), darkStone);
-      addCastlePiece(pier, pierX, baseY + wallH * 0.5, gateZ);
+      const pier = new THREE.Mesh(new THREE.BoxGeometry(gatePierW, wallBodyH, 0.86), darkStone);
+      addCastlePiece(pier, pierX, wallBodyY, gateZ);
       const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.34, wallH * 0.62, 0.32), stone);
       addCastlePiece(jamb, side * gateGap * 0.5, baseY + wallH * 0.31, gateZ + 0.38);
       const buttress = new THREE.Mesh(new THREE.BoxGeometry(0.66, wallH * 0.82, 1.28), stone);
@@ -2717,7 +2932,328 @@ function makeIsland(data) {
     });
     addWalkPlatform(castleX, castleZ, castleW - 1.4, castleD - 1.4, baseY + 0.13, 0, { maxRise: 0.9 });
   };
+  const addCrownHarborCastle = () => {
+    const castleX = radius * 0.28;
+    const castleZ = -radius * 0.24;
+    const fortW = 30;
+    const fortD = 22;
+    const baseY = 3.02;
+    const wallH = 4.4;
+    const wallSink = 1.1;
+    const wallBodyH = wallH + wallSink;
+    const wallBodyY = baseY + wallH * 0.5 - wallSink * 0.5;
+    const topY = baseY + wallH + 0.18;
+    noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(fortW, fortD) * 0.72 + 8 });
+    const stone = mat(0x7c8581);
+    const paleStone = mat(0xb6b59e);
+    const darkStone = mat(0x48565b);
+    const crownGold = mat(0xd99928);
+    const roofBlue = mat(0x355d8e);
+    const interiorStone = paleStone.clone();
+    interiorStone.side = THREE.DoubleSide;
+    interiorStone.needsUpdate = true;
+    const keepStone = stone.clone();
+    keepStone.side = THREE.DoubleSide;
+    keepStone.needsUpdate = true;
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffc46a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    });
+    const castle = new THREE.Group();
+    const crownLights = [];
+    const addPiece = (mesh, x, y, z) => {
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      castle.add(mesh);
+      return mesh;
+    };
+    const addWallLamp = (x, y, z, facing = "z", direction = 1) => {
+      const outwardX = facing === "x" ? direction : 0;
+      const outwardZ = facing === "z" ? direction : 0;
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(facing === "x" ? 0.08 : 0.42, 0.42, facing === "x" ? 0.42 : 0.08), mats.dark), x, y, z);
+      const armStart = new THREE.Vector3(x + outwardX * 0.04, y + 0.04, z + outwardZ * 0.04);
+      const armEnd = new THREE.Vector3(x + outwardX * 0.48, y - 0.06, z + outwardZ * 0.48);
+      addRope(castle, armStart, armEnd, 1, 0.03, mats.dark);
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
+      addPiece(lantern, armEnd.x + outwardX * 0.08, armEnd.y - 0.12, armEnd.z + outwardZ * 0.08);
+    };
+    const addFlag = (x, z, color = accent) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.055, 2.1, 7), mats.dark);
+      addPiece(pole, x, topY + 0.9, z);
+      const flag = clothPanel(1.2, 0.6, color, 0.035);
+      flag.position.set(x + 0.48, topY + 1.35, z);
+      flag.rotation.y = 0.08;
+      flag.castShadow = true;
+      castle.add(flag);
+    };
+    const addCannon = (x, z, yaw) => {
+      const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.22, 0.52), mats.wood);
+      carriage.rotation.y = yaw;
+      addPiece(carriage, x, topY + 0.08, z);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 1.45, 10), mats.dark);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.rotation.z = -yaw;
+      addPiece(barrel, x + Math.sin(yaw) * 0.38, topY + 0.36, z + Math.cos(yaw) * 0.38);
+      addCollisionBox(castleX + x, castleZ + z, 1.05, 0.82, 0.08, yaw, { minY: topY - 0.45, maxY: topY + 1.1 });
+    };
+    addPiece(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.42, 8), paleStone), 0, baseY - 0.18, 0).scale.set(fortW * 0.62, 1, fortD * 0.54);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW - 0.95, 0.22, fortD - 0.95), mats.plank), 0, baseY + 0.02, 0);
+    addWalkPlatform(castleX, castleZ, fortW - 1.05, fortD - 1.05, baseY + 0.14, 0, { maxRise: 0.9 });
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(fortW, wallBodyH, 0.82), stone);
+    addPiece(backWall, 0, wallBodyY, -fortD * 0.5);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.82, wallBodyH, fortD), stone), -fortW * 0.5, wallBodyY, 0);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.82, wallBodyH, fortD), stone), fortW * 0.5, wallBodyY, 0);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW * 0.32, wallBodyH, 0.82), stone), -fortW * 0.34, wallBodyY, fortD * 0.5);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW * 0.32, wallBodyH, 0.82), stone), fortW * 0.34, wallBodyY, fortD * 0.5);
+    const gateW = 4.2;
+    const gateZ = fortD * 0.5 + 0.12;
+    for (const sx of [-1, 1]) {
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 1.95, wallH + 1.4, 10), darkStone);
+      addPiece(tower, sx * (gateW * 0.5 + 1.45), baseY + (wallH + 1.25) * 0.5, gateZ);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(2.05, 1.25, 10), roofBlue);
+      addPiece(roof, sx * (gateW * 0.5 + 1.45), baseY + wallH + 1.35, gateZ);
+      addWallLamp(sx * (gateW * 0.5 + 3.22), baseY + 2.55, gateZ + 0.45, "z", 1);
+    }
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(gateW + 3.7, 1.1, 1.0), darkStone), 0, baseY + 3.85, gateZ);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(gateW + 4.2, 0.38, 1.18), crownGold), 0, baseY + 4.58, gateZ);
+    const gateArch = new THREE.Mesh(new THREE.TorusGeometry(gateW * 0.48, 0.15, 8, 22, Math.PI), paleStone);
+    gateArch.position.set(0, baseY + 2.72, gateZ + 0.52);
+    gateArch.rotation.x = Math.PI / 2;
+    castle.add(gateArch);
+    const portcullis = new THREE.Mesh(new THREE.BoxGeometry(gateW * 0.72, 2.9, 0.1), mats.dark);
+    addPiece(portcullis, 0, baseY + 1.45, gateZ + 0.22);
+    for (let i = -3; i <= 3; i++) addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.9, 0.12), mats.gold), i * 0.42, baseY + 1.45, gateZ + 0.34);
+    const drawbridge = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.18, 5.2), mats.wood);
+    drawbridge.rotation.x = -0.08;
+    addPiece(drawbridge, 0, baseY + 0.02, fortD * 0.5 + 3.0);
+    for (const sx of [-1, 1]) addRope(castle, new THREE.Vector3(sx * 1.8, baseY + 3.6, gateZ + 0.35), new THREE.Vector3(sx * 2.05, baseY + 0.62, fortD * 0.5 + 4.9), 1, 0.032, mats.dark);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const bastion = new THREE.Mesh(new THREE.BoxGeometry(6.4, wallH + 0.55, 6.4), darkStone);
+        bastion.rotation.y = Math.PI / 4;
+        addPiece(bastion, sx * (fortW * 0.5 + 1.45), baseY + (wallH + 0.42) * 0.5, sz * (fortD * 0.5 + 1.45));
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.28, 6.8), paleStone);
+        deck.rotation.y = Math.PI / 4;
+        addPiece(deck, sx * (fortW * 0.5 + 1.45), topY - 0.08, sz * (fortD * 0.5 + 1.45));
+        addWalkPlatform(castleX + sx * (fortW * 0.5 + 1.45), castleZ + sz * (fortD * 0.5 + 1.45), 6.8, 6.8, topY + 0.04, Math.PI / 4, { maxRise: 1.2 });
+        addFlag(sx * (fortW * 0.5 + 1.45), sz * (fortD * 0.5 + 1.45), sz > 0 ? accent : 0xfff1a6);
+        obstacles.push({ x: data.x + castleX + sx * (fortW * 0.5 + 1.45), z: data.z + castleZ + sz * (fortD * 0.5 + 1.45), r: 3.8 });
+      }
+    }
+    const wallWalks = [
+      { x: 0, z: -fortD * 0.5, w: fortW + 1.5, d: 3.2 },
+      { x: 0, z: fortD * 0.5, w: fortW + 1.5, d: 3.2 },
+      { x: -fortW * 0.5, z: 0, w: 3.2, d: fortD + 1.5 },
+      { x: fortW * 0.5, z: 0, w: 3.2, d: fortD + 1.5 },
+    ];
+    wallWalks.forEach((walk) => {
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(walk.w, 0.26, walk.d), paleStone), walk.x, topY - 0.13, walk.z);
+      addWalkPlatform(castleX + walk.x, castleZ + walk.z, walk.w - 0.2, walk.d - 0.2, topY, 0, { maxRise: 1.2 });
+    });
+    for (let i = 0; i < 9; i++) {
+      const x = -fortW * 0.42 + i * fortW * 0.105;
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.72, 0.72), darkStone), x, topY + 0.34, -fortD * 0.5);
+      if (i !== 4) addPiece(new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.72, 0.72), darkStone), x, topY + 0.34, fortD * 0.5);
+    }
+    for (let i = 0; i < 7; i++) {
+      const z = -fortD * 0.38 + i * fortD * 0.13;
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 1.0), darkStone), -fortW * 0.5, topY + 0.34, z);
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 1.0), darkStone), fortW * 0.5, topY + 0.34, z);
+    }
+    const keepX = -fortW * 0.18;
+    const keepZ = -fortD * 0.08;
+    const keep = new THREE.Mesh(new THREE.CylinderGeometry(4.15, 4.8, 6.2, 8), keepStone);
+    addPiece(keep, keepX, baseY + 3.1, keepZ);
+    const keepTop = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 0.32, 8), paleStone);
+    addPiece(keepTop, keepX, baseY + 6.36, keepZ);
+    const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(4.75, 2.2, 8), roofBlue);
+    addPiece(keepRoof, keepX, baseY + 7.6, keepZ);
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.12, 8, 18), crownGold);
+    crown.position.set(keepX, baseY + 8.95, keepZ);
+    crown.rotation.x = Math.PI / 2;
+    castle.add(crown);
+    const crownSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.2, 8), crownGold);
+    addPiece(crownSpire, keepX, baseY + 9.55, keepZ);
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const window = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.08), glowMaterial);
+      window.position.set(keepX + Math.sin(angle) * 4.22, baseY + 4.2, keepZ + Math.cos(angle) * 4.22);
+      window.rotation.y = angle;
+      castle.add(window);
+    }
+    const keepFloor = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.65, 0.16, 16), mats.plank);
+    keepFloor.rotation.y = Math.PI / 16;
+    addPiece(keepFloor, keepX, baseY + 0.1, keepZ);
+    const keepDoorZ = keepZ + 4.72;
+    const keepDoor = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.15, 0.16), mats.dark);
+    addPiece(keepDoor, keepX, baseY + 1.14, keepDoorZ);
+    for (const side of [-1, 1]) {
+      const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.34, 0.56), paleStone);
+      addPiece(jamb, keepX + side * 0.88, baseY + 1.22, keepDoorZ + 0.03);
+    }
+    const keepDoorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.26, 0.58), crownGold);
+    addPiece(keepDoorLintel, keepX, baseY + 2.36, keepDoorZ + 0.04);
+    const keepDoorArch = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.08, 8, 18, Math.PI), crownGold);
+    keepDoorArch.rotation.x = Math.PI / 2;
+    addPiece(keepDoorArch, keepX, baseY + 2.15, keepDoorZ + 0.12);
+    const keepThreshold = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.16, 0.92), paleStone);
+    addPiece(keepThreshold, keepX, baseY + 0.08, keepDoorZ + 0.42);
+    addWalkPlatform(castleX + keepX, castleZ + keepDoorZ + 0.42, 2.15, 0.98, baseY + 0.18, 0, { maxRise: 0.7 });
+    const exitTrimZ = keepZ + 3.58;
+    const exitBackPlate = new THREE.Mesh(new THREE.BoxGeometry(2.22, 2.42, 0.08), darkStone);
+    addPiece(exitBackPlate, keepX, baseY + 1.26, exitTrimZ);
+    const exitCutout = new THREE.Mesh(new THREE.BoxGeometry(1.38, 2.05, 0.09), mats.dark);
+    addPiece(exitCutout, keepX, baseY + 1.1, exitTrimZ + 0.05);
+    for (const side of [-1, 1]) {
+      const innerJamb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.18, 0.14), crownGold);
+      addPiece(innerJamb, keepX + side * 0.79, baseY + 1.18, exitTrimZ + 0.08);
+      const exitLamp = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), glowMaterial);
+      addPiece(exitLamp, keepX + side * 1.08, baseY + 1.8, exitTrimZ + 0.12);
+    }
+    const innerLintel = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.16, 0.14), crownGold);
+    addPiece(innerLintel, keepX, baseY + 2.2, exitTrimZ + 0.08);
+    const crossLong = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 2.4), crownGold);
+    addPiece(crossLong, keepX, baseY + 0.24, keepZ);
+    const crossWide = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.34), crownGold);
+    addPiece(crossWide, keepX, baseY + 0.25, keepZ);
+    const roundTable = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.28, 10), mats.wood);
+    addPiece(roundTable, keepX - 1.25, baseY + 0.42, keepZ - 0.55);
+    const mapTop = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.04, 0.68), mat(0xd8c28f));
+    mapTop.rotation.y = -0.22;
+    addPiece(mapTop, keepX - 1.25, baseY + 0.59, keepZ - 0.55);
+    const scrollShelf = new THREE.Mesh(new THREE.BoxGeometry(0.44, 1.12, 1.48), mats.wood);
+    addPiece(scrollShelf, keepX - 2.62, baseY + 0.78, keepZ + 0.62);
+    for (let i = 0; i < 3; i++) {
+      const shelfLine = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.07, 1.34), crownGold);
+      addPiece(shelfLine, keepX - 2.62, baseY + 0.42 + i * 0.34, keepZ + 0.62);
+    }
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.62, 0.72), mats.crate);
+    addPiece(chest, keepX + 1.68, baseY + 0.42, keepZ - 1.35);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.24, 0.46), mats.wood);
+    bench.rotation.y = Math.PI * 0.18;
+    addPiece(bench, keepX + 1.38, baseY + 0.36, keepZ + 1.26);
+    for (const offset of [-0.62, 0.62]) {
+      const benchLeg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.34, 0.13), mats.wood);
+      addPiece(benchLeg, keepX + 1.38 + offset, baseY + 0.2, keepZ + 1.26);
+    }
+    const weaponRack = new THREE.Mesh(new THREE.BoxGeometry(0.26, 1.18, 1.34), darkStone);
+    addPiece(weaponRack, keepX + 2.72, baseY + 0.82, keepZ + 0.08);
+    for (let i = -1; i <= 1; i++) {
+      const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.55, 5), mats.dark);
+      spear.rotation.z = 0.18;
+      addPiece(spear, keepX + 2.72, baseY + 1.06, keepZ + i * 0.36);
+    }
+    const keepLamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), glowMaterial);
+    addPiece(keepLamp, keepX, baseY + 3.25, keepZ);
+    addWalkPlatform(castleX + keepX, castleZ + keepZ, 6.6, 6.3, baseY + 0.18, 0, { maxRise: 0.8 });
+    const hallX = fortW * 0.2;
+    const hallZ = -fortD * 0.05;
+    const hallW = 7.2;
+    const hallD = 4.6;
+    const hallWallH = 3.2;
+    const hallDoorW = 1.48;
+    const hallBack = new THREE.Mesh(new THREE.BoxGeometry(hallW, hallWallH, 0.22), interiorStone);
+    addPiece(hallBack, hallX, baseY + hallWallH * 0.5, hallZ - hallD * 0.5);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.22, hallWallH, hallD), interiorStone), hallX - hallW * 0.5, baseY + hallWallH * 0.5, hallZ);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.22, hallWallH, hallD), interiorStone), hallX + hallW * 0.5, baseY + hallWallH * 0.5, hallZ);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry((hallW - hallDoorW) * 0.5, hallWallH, 0.22), interiorStone), hallX - (hallDoorW * 0.5 + (hallW - hallDoorW) * 0.25), baseY + hallWallH * 0.5, hallZ + hallD * 0.5);
+    addPiece(new THREE.Mesh(new THREE.BoxGeometry((hallW - hallDoorW) * 0.5, hallWallH, 0.22), interiorStone), hallX + (hallDoorW * 0.5 + (hallW - hallDoorW) * 0.25), baseY + hallWallH * 0.5, hallZ + hallD * 0.5);
+    const hallFloor = new THREE.Mesh(new THREE.BoxGeometry(hallW - 0.35, 0.12, hallD - 0.35), mats.plank);
+    addPiece(hallFloor, hallX, baseY + 0.08, hallZ);
+    const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(4.8, 1.5, 4), roofBlue);
+    hallRoof.rotation.y = Math.PI / 4;
+    addPiece(hallRoof, hallX, baseY + 4.05, hallZ);
+    const openDoor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.12), mats.dark);
+    addPiece(openDoor, hallX, baseY + 0.95, hallZ + hallD * 0.5 + 0.08);
+    const doorTrim = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.2, 0.16), crownGold);
+    addPiece(doorTrim, hallX, baseY + 1.9, hallZ + hallD * 0.5 + 0.12);
+    const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 1.2), mats.wood);
+    addPiece(table, hallX - 1.8, baseY + 0.5, hallZ - 1.1);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), mats.wood), hallX - 1.8 + sx * 1.05, baseY + 0.27, hallZ - 1.1 + sz * 0.46);
+    const benchA = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.2, 0.42), mats.wood);
+    addPiece(benchA, hallX + 1.55, baseY + 0.36, hallZ - 1.25);
+    const benchB = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.2, 0.42), mats.wood);
+    addPiece(benchB, hallX + 1.55, baseY + 0.36, hallZ + 0.55);
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.05, 0.72), mat(accent));
+    addPiece(banner, hallX + hallW * 0.5 - 0.08, baseY + 1.82, hallZ - 0.75);
+    const hallLamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
+    addPiece(hallLamp, hallX, baseY + 2.5, hallZ - 0.2);
+    addWalkPlatform(castleX + hallX, castleZ + hallZ, hallW - 0.5, hallD - 0.5, baseY + 0.18, 0, { maxRise: 0.8 });
+    const stairStartX = fortW * 0.37;
+    const stairStartZ = fortD * 0.18;
+    const stairEndX = fortW * 0.18;
+    const stairEndZ = fortD * 0.5 - 1.55;
+    for (let i = 0; i < 13; i++) {
+      const t = i / 12;
+      const stepY = baseY + 0.16 + t * (topY - baseY - 0.08);
+      const stepX = stairStartX + (stairEndX - stairStartX) * t;
+      const stepZ = stairStartZ + (stairEndZ - stairStartZ) * t;
+      const stepHeight = Math.max(0.24, stepY - baseY + 0.12);
+      addPiece(new THREE.Mesh(new THREE.BoxGeometry(2.25, stepHeight, 0.92), mats.wood), stepX, stepY - stepHeight * 0.5, stepZ);
+      addWalkPlatform(castleX + stepX, castleZ + stepZ, 2.4, 1.04, stepY, 0, { maxRise: 1.15 });
+    }
+    addCannon(-fortW * 0.28, fortD * 0.5 - 0.15, 0);
+    addCannon(fortW * 0.28, fortD * 0.5 - 0.15, 0);
+    addCannon(-fortW * 0.5 + 0.15, -fortD * 0.15, -Math.PI / 2);
+    addCannon(fortW * 0.5 - 0.15, -fortD * 0.15, Math.PI / 2);
+    for (const pos of [
+      [-fortW * 0.38, baseY + 2.5, fortD * 0.5 + 0.38, "z", 1],
+      [fortW * 0.38, baseY + 2.5, fortD * 0.5 + 0.38, "z", 1],
+      [-fortW * 0.5 - 0.38, baseY + 2.75, -fortD * 0.18, "x", -1],
+      [fortW * 0.5 + 0.38, baseY + 2.75, -fortD * 0.18, "x", 1],
+      [0, baseY + 2.62, -fortD * 0.5 - 0.38, "z", -1],
+    ]) addWallLamp(...pos);
+    const keepLight = new THREE.PointLight(0xffc46a, 0, 18, 1.45);
+    keepLight.position.set(keepX, baseY + 4.4, keepZ);
+    castle.add(keepLight);
+    const gateLight = new THREE.PointLight(0xffb44d, 0, 16, 1.5);
+    gateLight.position.set(0, baseY + 2.6, gateZ + 0.4);
+    castle.add(gateLight);
+    crownLights.push(keepLight, gateLight);
+    castle.position.set(castleX, 0, castleZ);
+    group.add(castle);
+    shipNightLights.push({
+      group: castle,
+      material: glowMaterial,
+      haloMaterial: null,
+      haloOpacity: 0,
+      lights: crownLights,
+      baseIntensity: 0.85,
+    });
+    addCollisionBox(castleX, castleZ - fortD * 0.5, fortW, 0.95, 0.12);
+    addCollisionBox(castleX - fortW * 0.5, castleZ, 0.95, fortD, 0.12);
+    addCollisionBox(castleX + fortW * 0.5, castleZ, 0.95, fortD, 0.12);
+    addCollisionBox(castleX - fortW * 0.34, castleZ + fortD * 0.5, fortW * 0.32, 0.95, 0.12);
+    addCollisionBox(castleX + fortW * 0.34, castleZ + fortD * 0.5, fortW * 0.32, 0.95, 0.12);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) addCollisionBox(castleX + sx * (fortW * 0.5 + 1.45), castleZ + sz * (fortD * 0.5 + 1.45), 5.3, 5.3, 0.12, Math.PI / 4);
+    }
+    addCollisionBox(castleX + keepX, castleZ + keepZ - 3.55, 6.4, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
+    addCollisionBox(castleX + keepX - 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
+    addCollisionBox(castleX + keepX + 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
+    addCollisionBox(castleX + keepX - 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
+    addCollisionBox(castleX + keepX + 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
+    addCollisionBox(castleX + keepX - 1.25, castleZ + keepZ - 0.55, 1.05, 1.05, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.1 });
+    addCollisionBox(castleX + keepX - 2.62, castleZ + keepZ + 0.62, 0.62, 1.62, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.55 });
+    addCollisionBox(castleX + keepX + 1.68, castleZ + keepZ - 1.35, 1.18, 0.82, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.05 });
+    addCollisionBox(castleX + keepX + 1.38, castleZ + keepZ + 1.26, 1.9, 0.58, 0.05, Math.PI * 0.18, { minY: baseY - 0.1, maxY: baseY + 0.9 });
+    addCollisionBox(castleX + keepX + 2.72, castleZ + keepZ + 0.08, 0.5, 1.5, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.75 });
+    const hallWallMaxY = baseY + 3.7;
+    addCollisionBox(castleX + hallX, castleZ + hallZ - hallD * 0.5, hallW, 0.28, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + hallX - hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + hallX + hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + hallX - hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + hallX + hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + fortW * 0.08, castleZ - fortD * 0.18, 2.75, 1.35, 0.06, 0, { minY: baseY - 0.15, maxY: baseY + 1.2 });
+    addWalkPlatform(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, baseY + 0.12, 0, { maxRise: 0.7 });
+    addCollisionBox(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, 0.08, 0, { maxY: baseY + 0.65, walkableTopY: baseY + 0.1 });
+  };
   addThemeHouse();
+  if (data.name === "Crown Harbor") addCrownHarborCastle();
   addExtraHouseCluster();
   if (data.theme === "starter") addPortAzureCastle();
   if (["lagoon", "atoll", "trade", "market", "dhow", "schooner"].includes(data.theme)) {
@@ -2902,6 +3438,13 @@ function makeIsland(data) {
     };
     const addStairs = (startY, endY, startX, endX, startZ, endZ, rot = 0) => {
       const steps = 12;
+      const addStairLanding = (x, z, y) => {
+        const landing = new THREE.Mesh(new THREE.BoxGeometry(rot ? 1.12 : 1.72, 0.16, rot ? 1.72 : 1.12), mats.wood);
+        landing.rotation.y = rot;
+        addPagodaPiece(landing, x, y - 0.08, z);
+        addWalkPlatform(px + x, pz + z, rot ? 1.2 : 1.82, rot ? 1.82 : 1.2, y, rot, { maxRise: 1.15 });
+      };
+      addStairLanding(startX, startZ, startY);
       for (let i = 0; i < steps; i++) {
         const t = (i + 0.5) / steps;
         const x = startX + (endX - startX) * t;
@@ -2912,6 +3455,7 @@ function makeIsland(data) {
         addPagodaPiece(step, x, y + 0.04, z);
         addWalkPlatform(px + x, pz + z, rot ? 0.92 : 1.64, rot ? 1.64 : 0.92, y + 0.15, rot, { maxRise: 1.15 });
       }
+      addStairLanding(endX, endZ, endY);
     };
     const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.5, 8), stoneMat);
     base.scale.set(pagodaW * 0.62, 1, pagodaD * 0.55);
@@ -2945,7 +3489,7 @@ function makeIsland(data) {
     addCollisionBox(px + pagodaW * 0.5, pz, 0.3, pagodaD, wallPad);
     addCollisionBox(px - pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
     addCollisionBox(px + pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
-  } else if (data.theme === "fort" || data.theme === "naval") {
+  } else if ((data.theme === "fort" || data.theme === "naval") && data.name !== "Crown Harbor") {
     for (let side of [-1, 1]) {
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.45, 3.2, 8), mats.rock);
       tower.position.set(side * 5.2, 3.55, -5.2);
@@ -3147,6 +3691,9 @@ function islandGroundY(island, point) {
 function pointBlockedOnIsland(island, point) {
   if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
   return island.collisionBoxes?.some((box) => {
+    const pointY = Number.isFinite(point.y) ? point.y : 0;
+    if (box.minY !== undefined && pointY < box.minY) return false;
+    if (box.maxY !== undefined && pointY > box.maxY) return false;
     if (box.walkableTopY !== undefined && point.y >= box.walkableTopY) return false;
     const pad = box.pad ?? 0.45;
     const dx = point.x - box.x;
@@ -4180,13 +4727,17 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const castleColor = ["galleon", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
   const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "treasure", "windrunner"]);
   const hasInterior = interiorTypes.has(type);
+  const postShipCabin = type === "postship";
   const sternWallMat = mat(castleColor);
   if (hasInterior) {
     sternWallMat.side = THREE.DoubleSide;
     sternWallMat.needsUpdate = true;
   }
-  const sternDeck = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, 0.7 * scale, actualLength * 0.17), sternWallMat);
-  sternDeck.position.set(0, 1.57 * scale, sternZ);
+  const sternDeckHeight = postShipCabin ? 1.04 * scale : 0.7 * scale;
+  const sternDeckY = postShipCabin ? 1.74 * scale : 1.57 * scale;
+  const sternRoofY = postShipCabin ? 2.34 * scale : 2.01 * scale;
+  const sternDeck = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, sternDeckHeight, actualLength * 0.17), sternWallMat);
+  sternDeck.position.set(0, sternDeckY, sternZ);
   sternDeck.castShadow = true;
   group.add(sternDeck);
   const sternRoofMat = hasInterior ? mats.hullDark.clone() : mats.hullDark;
@@ -4195,22 +4746,25 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
     sternRoofMat.needsUpdate = true;
   }
   const sternRoof = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.72, 0.16 * scale, actualLength * 0.19), sternRoofMat);
-  sternRoof.position.set(0, 2.01 * scale, sternZ);
+  sternRoof.position.set(0, sternRoofY, sternZ);
   sternRoof.castShadow = true;
   group.add(sternRoof);
-  addWindowRow(group, width, sternZ + actualLength * 0.09, 1.68 * scale, scale, 0xd99928, tier >= 5 ? 7 : 5);
+  addWindowRow(group, width, sternZ + actualLength * 0.09, (postShipCabin ? 1.92 : 1.68) * scale, scale, 0xd99928, tier >= 5 ? 7 : 5);
+  if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
   if (hasInterior) {
     const doorZ = sternZ - actualLength * 0.087;
-    const doorWidth = ["grandfrigate", "windrunner"].includes(type) ? 0.96 : 0.76;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, 0.68 * scale, 0.055 * scale), mats.dark);
-    door.position.set(0, 1.48 * scale, doorZ - 0.012 * scale);
+    const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
+    const doorWidth = generousCabinDoor ? 0.96 : 0.76;
+    const doorHeight = postShipCabin ? 0.96 : 0.68;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, doorHeight * scale, 0.055 * scale), mats.dark);
+    door.position.set(0, (postShipCabin ? 1.62 : 1.48) * scale, doorZ - 0.012 * scale);
     door.castShadow = false;
     group.add(door);
     const threshold = new THREE.Mesh(new THREE.BoxGeometry(0.86 * scale, 0.045 * scale, 0.2 * scale), mats.plank);
     threshold.position.set(0, 1.18 * scale, doorZ - 0.08 * scale);
     threshold.castShadow = true;
     group.add(threshold);
-    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.46, 0.035 * scale, actualLength * 0.08), mats.plank);
+    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * (postShipCabin ? 0.54 : 0.46), 0.035 * scale, actualLength * (postShipCabin ? 0.105 : 0.08)), mats.plank);
     interiorFloor.position.set(0, 1.23 * scale, sternZ - actualLength * 0.005);
     interiorFloor.receiveShadow = true;
     group.add(interiorFloor);
@@ -4229,16 +4783,60 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
     const innerMat = mat(0x5a4638);
     innerMat.side = THREE.DoubleSide;
     innerMat.needsUpdate = true;
-    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.54, 0.56 * scale, 0.035 * scale), innerMat);
-    rearWall.position.set(0, 1.54 * scale, sternZ + actualLength * 0.071);
+    const interiorWallHeight = postShipCabin ? 0.94 : 0.56;
+    const interiorWallY = postShipCabin ? 1.72 : 1.54;
+    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.54, interiorWallHeight * scale, 0.035 * scale), innerMat);
+    rearWall.position.set(0, interiorWallY * scale, sternZ + actualLength * 0.071);
     group.add(rearWall);
     for (const side of [-1, 1]) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, 0.56 * scale, actualLength * 0.115), innerMat);
-      sideWall.position.set(side * actualWidth * 0.32, 1.54 * scale, sternZ + actualLength * 0.002);
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, interiorWallHeight * scale, actualLength * 0.115), innerMat);
+      sideWall.position.set(side * actualWidth * 0.32, interiorWallY * scale, sternZ + actualLength * 0.002);
       group.add(sideWall);
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09 * scale, 8, 6), mats.gold);
-      lamp.position.set(side * actualWidth * 0.25, 1.72 * scale, sternZ - actualLength * 0.022);
+      lamp.position.set(side * actualWidth * 0.25, (postShipCabin ? 2.02 : 1.72) * scale, sternZ - actualLength * 0.022);
       group.add(lamp);
+    }
+    if (type === "postship") {
+      const chart = new THREE.Mesh(new THREE.BoxGeometry(0.46 * scale, 0.028 * scale, 0.34 * scale), mat(0xd8c28f));
+      chart.position.set(0.04 * scale, 1.51 * scale, sternZ + actualLength * 0.013);
+      chart.rotation.y = 0.14;
+      group.add(chart);
+      const writingDesk = new THREE.Mesh(new THREE.BoxGeometry(0.82 * scale, 0.16 * scale, 0.42 * scale), mat(0x6b482f));
+      writingDesk.position.set(-actualWidth * 0.11, 1.46 * scale, sternZ - actualLength * 0.022);
+      writingDesk.castShadow = true;
+      group.add(writingDesk);
+      const chair = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.34 * scale, 0.28 * scale), mat(0x493425));
+      chair.position.set(-actualWidth * 0.11, 1.37 * scale, sternZ - actualLength * 0.052);
+      chair.castShadow = true;
+      group.add(chair);
+      const seaChest = new THREE.Mesh(new THREE.BoxGeometry(0.46 * scale, 0.32 * scale, 0.32 * scale), mat(0x3e2b21));
+      seaChest.position.set(actualWidth * 0.19, 1.4 * scale, sternZ - actualLength * 0.03);
+      seaChest.castShadow = true;
+      group.add(seaChest);
+      for (const side of [-1, 1]) {
+        const bunk = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.16 * scale, 0.68 * scale), mat(0x493425));
+        bunk.position.set(side * actualWidth * 0.22, 1.36 * scale, sternZ + actualLength * 0.028);
+        bunk.castShadow = true;
+        group.add(bunk);
+        const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.42 * scale, 0.045 * scale, 0.52 * scale), mat(side < 0 ? 0x4051a8 : 0xb84f44));
+        blanket.position.set(side * actualWidth * 0.22, 1.47 * scale, sternZ + actualLength * 0.028);
+        group.add(blanket);
+      }
+      const aftShelf = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.36, 0.08 * scale, 0.12 * scale), mats.wood);
+      aftShelf.position.set(0, 1.98 * scale, sternZ + actualLength * 0.059);
+      aftShelf.castShadow = true;
+      group.add(aftShelf);
+      for (let i = -1; i <= 1; i++) {
+        const book = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.22 * scale, 0.11 * scale), mat(i === 0 ? 0xb84f44 : 0x4051a8));
+        book.position.set(i * 0.12 * scale, 2.13 * scale, sternZ + actualLength * 0.058);
+        group.add(book);
+      }
+      for (const side of [-1, 1]) {
+        const ceilingBeam = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.08 * scale, actualLength * 0.11), mats.wood);
+        ceilingBeam.position.set(side * actualWidth * 0.17, 2.2 * scale, sternZ + actualLength * 0.002);
+        ceilingBeam.castShadow = true;
+        group.add(ceilingBeam);
+      }
     }
   }
 
@@ -6879,11 +7477,22 @@ function updateAnimals(dt) {
 
 function makeStormCloud() {
   const group = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x3c4148, roughness: 1, transparent: true, opacity: 0.9 });
-  for (let i = 0; i < 12; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 3.8, 8, 6), cloudMat);
-    puff.position.set((Math.random() - 0.5) * 56, Math.random() * 7, (Math.random() - 0.5) * 48);
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x34383e, roughness: 1, transparent: true, opacity: 0.62, depthWrite: false });
+  const underMat = new THREE.MeshStandardMaterial({ color: 0x20242a, roughness: 1, transparent: true, opacity: 0.56, depthWrite: false });
+  const wispMat = new THREE.MeshBasicMaterial({ color: 0x3f464e, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  for (let i = 0; i < 14; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), i < 5 ? underMat : cloudMat);
+    puff.scale.set(9 + Math.random() * 9, 1.05 + Math.random() * 1.25, 4.8 + Math.random() * 5.5);
+    puff.position.set((Math.random() - 0.5) * 58, Math.random() * 6.6, (Math.random() - 0.5) * 48);
+    puff.rotation.set((Math.random() - 0.5) * 0.08, Math.random() * Math.PI, (Math.random() - 0.5) * 0.12);
     group.add(puff);
+  }
+  for (let i = 0; i < 9; i++) {
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(18 + Math.random() * 20, 2.6 + Math.random() * 2.2), wispMat.clone());
+    sheet.material.opacity = 0.1 + Math.random() * 0.16;
+    sheet.position.set((Math.random() - 0.5) * 62, -1.4 + Math.random() * 4, (Math.random() - 0.5) * 54);
+    sheet.rotation.set((Math.random() - 0.5) * 0.18, Math.random() * Math.PI, (Math.random() - 0.5) * 0.1);
+    group.add(sheet);
   }
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x1f2b35, transparent: true, opacity: 0.22, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2;
