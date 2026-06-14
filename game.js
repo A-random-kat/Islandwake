@@ -1893,22 +1893,22 @@ function makeCloud() {
   const softMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 1,
-    transparent: true,
-    opacity: 0.36,
-    depthWrite: false,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
   });
   const shadeMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 1,
-    transparent: true,
-    opacity: 0.2,
-    depthWrite: false,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
   });
   const wispMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    transparent: true,
-    opacity: 0.16,
-    depthWrite: false,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
     side: THREE.DoubleSide,
     fog: false,
   });
@@ -1921,7 +1921,7 @@ function makeCloud() {
   }
   for (let i = 0; i < 5; i++) {
     const sheet = new THREE.Mesh(new THREE.PlaneGeometry(8 + Math.random() * 8, 1.1 + Math.random() * 0.9), wispMat.clone());
-    sheet.material.opacity = 0.08 + Math.random() * 0.1;
+    sheet.material.opacity = 1;
     sheet.position.set(2.5 + i * 3.2 + (Math.random() - 0.5) * 2.2, -0.45 + Math.random() * 0.6, (Math.random() - 0.5) * 4.8);
     sheet.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.08);
     cloud.add(sheet);
@@ -7477,9 +7477,9 @@ function updateAnimals(dt) {
 
 function makeStormCloud() {
   const group = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x34383e, roughness: 1, transparent: true, opacity: 0.62, depthWrite: false });
-  const underMat = new THREE.MeshStandardMaterial({ color: 0x20242a, roughness: 1, transparent: true, opacity: 0.56, depthWrite: false });
-  const wispMat = new THREE.MeshBasicMaterial({ color: 0x3f464e, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x34383e, roughness: 1, transparent: false, opacity: 1, depthWrite: true });
+  const underMat = new THREE.MeshStandardMaterial({ color: 0x2d3137, roughness: 1, transparent: false, opacity: 1, depthWrite: true });
+  const wispMat = new THREE.MeshBasicMaterial({ color: 0x34383e, transparent: false, opacity: 1, depthWrite: true, side: THREE.DoubleSide, fog: false });
   for (let i = 0; i < 14; i++) {
     const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), i < 5 ? underMat : cloudMat);
     puff.scale.set(9 + Math.random() * 9, 1.05 + Math.random() * 1.25, 4.8 + Math.random() * 5.5);
@@ -7489,7 +7489,7 @@ function makeStormCloud() {
   }
   for (let i = 0; i < 9; i++) {
     const sheet = new THREE.Mesh(new THREE.PlaneGeometry(18 + Math.random() * 20, 2.6 + Math.random() * 2.2), wispMat.clone());
-    sheet.material.opacity = 0.1 + Math.random() * 0.16;
+    sheet.material.opacity = 1;
     sheet.position.set((Math.random() - 0.5) * 62, -1.4 + Math.random() * 4, (Math.random() - 0.5) * 54);
     sheet.rotation.set((Math.random() - 0.5) * 0.18, Math.random() * Math.PI, (Math.random() - 0.5) * 0.1);
     group.add(sheet);
