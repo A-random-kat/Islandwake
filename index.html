@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=156" />
+  <link rel="stylesheet" href="styles.css?v=163" />
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -127,9 +127,19 @@
       <button class="tab active" data-tab="goods" data-i18n="goodsTab">Goods</button>
       <button class="tab" data-tab="ships" data-i18n="shipsTab">Ships</button>
       <button class="tab" data-tab="ammo" data-i18n="shotTab">Shot</button>
+      <button class="tab" data-tab="build" data-i18n="buildTab">Build</button>
       <button class="tab" data-tab="upgrades" data-i18n="upgradesTab">Upgrades</button>
     </nav>
     <div id="shopBody"></div>
+  </aside>
+
+  <aside id="inventoryPanel" class="inventory-panel panel hidden">
+    <header>
+      <strong data-i18n="inventory">Inventory</strong>
+      <button id="closeInventory" title="Close" data-i18n-title="close">x</button>
+    </header>
+    <div id="inventoryBody"></div>
+    <label class="snap-toggle"><input id="snapBuild" type="checkbox" checked> <span data-i18n="snapBuild">Snap building pieces</span></label>
   </aside>
 
   <script>
@@ -159,6 +169,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=156"></script>
+  <script type="module" src="game.js?v=163"></script>
 </body>
 </html>

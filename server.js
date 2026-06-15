@@ -12,6 +12,9 @@ const bombs = [];
 const botBalloons = [];
 const whales = [];
 const storms = [];
+const islandClaims = new Map();
+const buildings = [];
+const buildInventories = new Map();
 const worldBounds = 880;
 const visibleBounds = worldBounds * 1.12;
 const islandSpacingScale = 2.45;
@@ -57,6 +60,7 @@ let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
 let nextBotBalloonId = 1;
+let nextBuildingId = 1;
 let kraken = null;
 let leviathan = null;
 const leviathanCooldowns = new Map();
@@ -91,6 +95,18 @@ const islandCenters = [
   { x: 6, z: -326, radius: 6 },
   { x: -286, z: 268, radius: 9 },
   { x: 312, z: -72, radius: 7 },
+  { name: "Unnamed Isle A", x: -72, z: -60, radius: 5.6, claimable: true },
+  { name: "Unnamed Isle B", x: 52, z: -76, radius: 5.2, claimable: true },
+  { name: "Unnamed Isle C", x: -10, z: 54, radius: 4.8, claimable: true },
+  { name: "Unnamed Isle D", x: 82, z: 48, radius: 5.4, claimable: true },
+  { name: "Unnamed Isle E", x: -116, z: 20, radius: 5.1, claimable: true },
+  { name: "Unnamed Isle F", x: 134, z: -18, radius: 4.7, claimable: true },
+  { name: "Unnamed Isle G", x: -246, z: 78, radius: 5.8, claimable: true },
+  { name: "Unnamed Isle H", x: 242, z: 118, radius: 5.5, claimable: true },
+  { name: "Unnamed Isle I", x: -156, z: -258, radius: 5.3, claimable: true },
+  { name: "Unnamed Isle J", x: 154, z: 284, radius: 5.0, claimable: true },
+  { name: "Unnamed Isle K", x: 318, z: -156, radius: 4.9, claimable: true },
+  { name: "Unnamed Isle L", x: -324, z: -116, radius: 5.4, claimable: true },
 ].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 4 }));
 
 const whaleZonePortAzure = islandCenters[0] || { z: -24 };
@@ -137,6 +153,45 @@ const shipStats = [
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
 ];
+
+const buildItemTypes = new Set(["flag", "floor", "wall", "cornerWall", "door", "roof", "table"]);
+const buildItemPrices = { flag: 200, floor: 20, wall: 20, cornerWall: 20, door: 20, roof: 20, table: 20 };
+
+function emptyBuildInventory() {
+  return Object.fromEntries([...buildItemTypes].map((type) => [type, 0]));
+}
+
+function inventoryFor(socket) {
+  if (!buildInventories.has(socket.id)) buildInventories.set(socket.id, emptyBuildInventory());
+  return buildInventories.get(socket.id);
+}
+
+function sendBuildInventory(socket, extra = {}) {
+  send(socket, {
+    type: "buildInventory",
+    inventory: inventoryFor(socket),
+    gold: Number.isFinite(Number(socket.player?.gold)) ? Number(socket.player.gold) : undefined,
+    ...extra,
+  });
+}
+
+function cleanClaimName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ").replace(/[<>]/g, "").slice(0, 24);
+  return cleaned || "Unnamed Island";
+}
+
+function claimableIslandByName(name) {
+  return islandCenters.find((island) => island.claimable && island.name === name) || null;
+}
+
+function pointInsideIsland(island, x, z, margin = 3) {
+  if (!island || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+  return Math.hypot(x - island.x, z - island.z) <= island.radius - margin;
+}
+
+function buildReject(socket, reason) {
+  send(socket, { type: "buildError", reason });
+}
 
 const shipRegen = {
   skiff: 1, shallop: 1, pinnace: 1, hoy: 2, yawl: 1, balinger: 2, felucca: 1, bilander: 2,
@@ -1687,6 +1742,7 @@ function updateBotBalloons(now, dt) {
 }
 
 function explodeBalloonBomb(bomb) {
+  const explodedAt = Date.now();
   const rewardSocket = clients.get(bomb.owner) || null;
   for (const crate of crates) {
     const distance = Math.hypot(crate.x - bomb.x, crate.z - bomb.z);
@@ -1741,6 +1797,7 @@ function explodeBalloonBomb(bomb) {
       damage: Math.round(balloonBombDamage * falloff),
       x: bomb.x,
       z: bomb.z,
+      sentAt: explodedAt,
     });
   }
   if (kraken?.alive) {
@@ -1752,7 +1809,7 @@ function explodeBalloonBomb(bomb) {
       damageKraken(balloonBombDamage * falloff, rewardSocket, { allowRemote: true });
     }
   }
-  broadcast({ type: "bombExplode", id: bomb.id, x: bomb.x, z: bomb.z });
+  broadcast({ type: "bombExplode", id: bomb.id, x: bomb.x, z: bomb.z, sentAt: explodedAt });
 }
 
 function updateBalloonBombs(now) {
@@ -1921,7 +1978,8 @@ function updateKraken(now, dt) {
   kraken.currentAttack = { ...attack, until: now + krakenSlamDelayMs + 1800 };
   broadcast({
     type: "krakenAttack",
-    attack,
+    attack: { ...attack, sentAt: now },
+    sentAt: now,
   });
   setTimeout(() => {
     if (!kraken?.alive) return;
@@ -2002,6 +2060,8 @@ function worldSnapshot() {
     dayLengthSeconds,
     nightLengthSeconds,
     dayCycleSeconds,
+    islandClaims: [...islandClaims.values()],
+    buildings,
     leviathan: leviathanSnapshot(),
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
@@ -2483,6 +2543,7 @@ server.on("upgrade", (req, socket) => {
   socket.pending = Buffer.alloc(0);
   clients.set(socket.id, socket);
   send(socket, { type: "welcome", id: socket.id });
+  sendBuildInventory(socket);
   send(socket, worldSnapshot());
   socket.on("data", (buffer) => readFrames(socket, buffer));
   socket.on("close", () => leave(socket));
@@ -2492,10 +2553,25 @@ server.on("upgrade", (req, socket) => {
 function leave(socket) {
   if (!clients.has(socket.id)) return;
   clients.delete(socket.id);
+  buildInventories.delete(socket.id);
+  let changedWorld = false;
+  for (const [island, claim] of islandClaims) {
+    if (claim.owner === socket.id) {
+      islandClaims.delete(island);
+      changedWorld = true;
+    }
+  }
+  for (let i = buildings.length - 1; i >= 0; i--) {
+    if (buildings[i].owner === socket.id) {
+      buildings.splice(i, 1);
+      changedWorld = true;
+    }
+  }
   for (const bot of bots) {
     if (bot.targetPlayer === socket.id) bot.targetPlayer = null;
   }
   broadcast({ type: "leave", id: socket.id }, socket);
+  if (changedWorld) broadcast(worldSnapshot());
 }
 
 function readFrames(socket, chunk) {
@@ -2579,6 +2655,7 @@ function handleMessage(socket, text) {
         if (other !== socket && other.player) send(socket, { type: "state", player: other.player });
       }
       send(socket, worldSnapshot());
+      sendBuildInventory(socket);
     }
   }
   if (message.type === "shot") {
@@ -2591,6 +2668,106 @@ function handleMessage(socket, text) {
         sentAt: Date.now(),
       },
     }, socket);
+  }
+  if (message.type === "buyBuild") {
+    const itemType = message.item || message.typeId || message.buildType;
+    if (!buildItemTypes.has(itemType)) return;
+    const amount = Math.max(1, Math.min(50, Math.floor(Number(message.amount) || 1)));
+    const cost = (buildItemPrices[itemType] || 20) * amount;
+    const currentGold = Number(socket.player?.gold);
+    if (!Number.isFinite(currentGold) || currentGold < cost) {
+      send(socket, { type: "buildError", reason: "Not enough gold." });
+      return;
+    }
+    socket.player.gold = Math.max(0, currentGold - cost);
+    const inventory = inventoryFor(socket);
+    inventory[itemType] = Math.min(999, (Number(inventory[itemType]) || 0) + amount);
+    sendBuildInventory(socket, { bought: itemType, amount, cost });
+  }
+  if (message.type === "clearBuildInventory") {
+    buildInventories.set(socket.id, emptyBuildInventory());
+    sendBuildInventory(socket);
+  }
+  if (message.type === "placeBuilding") {
+    const pieceData = message.piece || {};
+    const islandName = pieceData.island || pieceData.islandName;
+    const island = claimableIslandByName(islandName);
+    if (!island || !buildItemTypes.has(pieceData.type)) return buildReject(socket, "That building spot is not valid.");
+    const claim = islandClaims.get(island.name);
+    const inventory = inventoryFor(socket);
+    if ((Number(inventory[pieceData.type]) || 0) <= 0) {
+      buildReject(socket, "You do not have that building piece.");
+      return;
+    }
+    if (pieceData.type === "flag" && claim) {
+      buildReject(socket, "That island is already claimed.");
+      return;
+    }
+    const ownsIsland = claim && (
+      claim.owner === socket.id
+      || claim.clientId === pieceData.clientId
+      || claim.clientId === pieceData.owner
+      || claim.sessionId === pieceData.sessionId
+    );
+    if (pieceData.type !== "flag" && !ownsIsland) return buildReject(socket, "You can only build on islands you claimed.");
+    const x = Number(pieceData.x);
+    const z = Number(pieceData.z);
+    if (!pointInsideIsland(island, x, z, 4)) return buildReject(socket, "Build on the top of the island, away from the edge.");
+    if (buildings.length > 420) buildings.shift();
+    let newClaim = null;
+    if (pieceData.type === "flag") {
+      newClaim = {
+        island: island.name,
+        name: cleanClaimName(pieceData.claimName || message.name),
+        owner: socket.id,
+        clientId: String(pieceData.clientId || pieceData.owner || "").slice(0, 80),
+        sessionId: String(pieceData.sessionId || "").slice(0, 80),
+        ownerName: String(pieceData.ownerName || socket.player?.name || "Captain").slice(0, 24),
+      };
+      islandClaims.set(island.name, newClaim);
+    }
+    const piece = {
+      id: String(pieceData.id || `building-${nextBuildingId++}`).slice(0, 80),
+      island: island.name,
+      type: pieceData.type,
+      x,
+      y: Math.max(0, Math.min(18, Number(pieceData.y) || 2)),
+      z,
+      rotation: Number(pieceData.rotation) || 0,
+      owner: socket.id,
+      clientId: String(pieceData.clientId || pieceData.owner || "").slice(0, 80),
+    };
+    const existingIndex = buildings.findIndex((item) => item.id === piece.id);
+    if (existingIndex >= 0) buildings[existingIndex] = piece;
+    else buildings.push(piece);
+    inventory[piece.type] = Math.max(0, (Number(inventory[piece.type]) || 0) - 1);
+    if (newClaim) broadcast({ type: "islandClaimed", claim: newClaim });
+    sendBuildInventory(socket);
+    broadcast({ type: "buildingPlaced", piece });
+    broadcast(worldSnapshot());
+  }
+  if (message.type === "removeBuilding") {
+    const id = String(message.id || "").slice(0, 80);
+    const index = buildings.findIndex((piece) => piece.id === id && piece.owner === socket.id);
+    if (index < 0) return;
+    const [piece] = buildings.splice(index, 1);
+    const inventory = inventoryFor(socket);
+    inventory[piece.type] = Math.min(999, (Number(inventory[piece.type]) || 0) + 1);
+    if (piece.type === "flag") {
+      const claim = islandClaims.get(piece.island);
+      if (claim?.owner === socket.id) {
+        islandClaims.delete(piece.island);
+        for (let i = buildings.length - 1; i >= 0; i--) {
+          if (buildings[i].owner === socket.id && buildings[i].island === piece.island) {
+            const [removedPiece] = buildings.splice(i, 1);
+            inventory[removedPiece.type] = Math.min(999, (Number(inventory[removedPiece.type]) || 0) + 1);
+          }
+        }
+      }
+    }
+    sendBuildInventory(socket, { removed: piece.type });
+    broadcast({ type: "buildingRemoved", id: piece.id });
+    broadcast(worldSnapshot());
   }
   if (message.type === "balloonBomb") {
     const bomb = spawnBalloonBomb(message, socket);
@@ -2639,6 +2816,8 @@ function handleMessage(socket, text) {
     const tier = shipTierForDrop(shipType);
     spawnCrates(x, z, crateDropCount({ level, tier }), level, tier);
     spawnBlubberBits(x, z, message.blubber);
+    buildInventories.set(socket.id, emptyBuildInventory());
+    sendBuildInventory(socket);
     socket.lastPlayerCrateDropAt = now;
     broadcast(worldSnapshot());
   }

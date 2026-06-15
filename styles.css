@@ -595,7 +595,7 @@ button.active {
 
 .shop nav {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
@@ -638,6 +638,85 @@ button.active {
 .row .actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.build-row h3,
+.inventory-item h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.inventory-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 76px;
+  z-index: 11;
+  width: min(340px, calc(100vw - 32px));
+  pointer-events: auto;
+}
+
+.inventory-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inventory-panel header button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+}
+
+#inventoryBody {
+  display: grid;
+  gap: 6px;
+}
+
+.inventory-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(16, 32, 42, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.inventory-item h3 {
+  margin: 0 0 3px;
+  font-size: 13px;
+}
+
+.inventory-item p {
+  margin: 0;
+  color: #496875;
+  font-size: 11.5px;
+}
+
+.inventory-item button {
+  min-width: 74px;
+}
+
+.inventory-item.selected {
+  border-color: rgba(47, 138, 165, 0.55);
+  background: rgba(47, 138, 165, 0.13);
+}
+
+.snap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: #41606d;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .ship-row {

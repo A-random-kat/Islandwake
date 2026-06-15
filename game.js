@@ -46,6 +46,10 @@ const ui = {
   closeLeaderboard: document.querySelector("#closeLeaderboard"),
   openLeaderboard: document.querySelector("#openLeaderboard"),
   ammoHotbar: document.querySelector("#ammoHotbar"),
+  inventoryPanel: document.querySelector("#inventoryPanel"),
+  inventoryBody: document.querySelector("#inventoryBody"),
+  closeInventory: document.querySelector("#closeInventory"),
+  snapBuild: document.querySelector("#snapBuild"),
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
@@ -114,6 +118,19 @@ const CANNONBALL_TYPES = {
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
+const BUILD_GRID_SIZE = 3.2;
+const BUILD_PLACE_MAX_DISTANCE = 58;
+const BUILD_EDGE_MARGIN = 2.4;
+const BUILD_ITEMS = {
+  flag: { id: "flag", name: "Claim Flag", price: 200, short: "Flag", description: "Claim an unnamed island and give it a name." },
+  floor: { id: "floor", name: "Floor", price: 20, short: "Floor", description: "Flat deck-like flooring that snaps beside other floors." },
+  wall: { id: "wall", name: "Wall", price: 20, short: "Wall", description: "A solid wall with a player collision hitbox." },
+  cornerWall: { id: "cornerWall", name: "Corner Wall", price: 20, short: "Corner", description: "An L-shaped wall corner for house outlines." },
+  door: { id: "door", name: "Door Wall", price: 20, short: "Door", description: "A wall piece with a doorway you can walk through." },
+  roof: { id: "roof", name: "Roof", price: 20, short: "Roof", description: "A raised roof cap with a walkable top hitbox." },
+  table: { id: "table", name: "Table", price: 20, short: "Table", description: "A small table with a solid collision hitbox." },
+};
+const BUILD_ITEM_ORDER = Object.keys(BUILD_ITEMS);
 const LANGUAGE_OPTIONS = {
   en: "English",
   zh: "中文",
@@ -132,7 +149,7 @@ const I18N = {
       guideToolsTitle: "Tools", guideToolsBody: "Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.",
       guideProgressTitle: "Progress", guideProgressBody: "Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.", startPlaying: "Start playing",
       cargo: "Cargo", noTarget: "No target", map: "Map", wind: "Wind", toggleWindMarkers: "Toggle wind markers", openMinimap: "Open minimap", gold: "Gold", openLeaderboard: "Open leaderboard", close: "Close", harborMarket: "Harbor Market",
-      goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", upgradesTab: "Upgrades", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
+      goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", buildTab: "Build", upgradesTab: "Upgrades", inventory: "Inventory", snapBuild: "Snap building pieces", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
       lvlInfinite: "Lvl. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
       dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop",
       unchartedShop: "{island} is uncharted. There are no shops, shipwrights, or trade goods here.", marketIntro: "{culture} market | Hold {hold}/{capacity}{blubber}. Buy low, then sell where demand is higher.", blubberInHold: " | Blubber {count} in hold",
@@ -140,6 +157,7 @@ const I18N = {
       sellHere: "Sell here for {price}g.", bestKnownResale: "Best known resale is {price}g at {island}.", betterSellHere: "This is one of the better places to sell it.", possibleProfit: "{profit}g possible profit if you haul it there.", weakTradeRoute: "Buying here is not a strong trade route right now.",
       shipwrightIntro: "{island} shipwrights sell {culture} hulls. Faster ships usually have less armor; larger ships carry and push more.", price: "{price}g", sailing: "Sailing", shipStats: "HP {hp} / Armor {armor}% / Speed {speed} / Regen {regen}/s / Hold {hold}", vsYourShip: "Vs your {ship}: {stats}",
       emptySlot: "Empty", emptySlotTitle: "Empty slot", hotbarFull: "Hotbar Full", replaceAmmoPrompt: "Replace one non-basic slot with {ammo}.", slot: "Slot {slot}", basic: "Basic", hotAirBalloon: "Hot Air Balloon", balloonShopDesc: "Owned {owned}/{max}. Ballooners can launch them for scouting and bombing.", each: "{price}g each", buyFive: "Buy 5",
+      buildingSupplies: "Building supplies", buildShopIntro: "Buy supplies here, then press I to open inventory. Flags claim unnamed islands; other pieces can be built on islands you own.", selected: "Selected", select: "Select", noneSelected: "No build item selected.", placeHint: "Select a piece, look at your claimed island, then press Z to place it.", claimedBy: "Claimed by {name}", unclaimedIsland: "Unnamed Island", claimNamePrompt: "Name your island", claimFirst: "Place a flag on an unnamed island first.", ownedIslandOnly: "You can only build on islands you claimed.", tooFarBuild: "Look at a spot on your docked island.", alreadyClaimed: "That island is already claimed.", buildPlaced: "{item} placed.", islandClaimed: "{island} claimed.", noBuildItem: "You do not have that building piece.", itemCount: "Owned {count}",
       upgradePoints: "Upgrade points: <b>{points}</b>", spend: "Spend", max: "Max", cannonDamage: "Cannon Damage", fireRate: "Fire Rate", cannonRange: "Cannon Range",
       speedVeryFast: "very fast", speedQuick: "quick", speedSlow: "slow", speedSteady: "steady", noArmor: "no armor", heavyArmor: "heavy armor", solidArmor: "solid armor", lightArmor: "light armor", hugeHold: "huge cargo hold", largeHold: "large cargo hold", smallHold: "small cargo hold", usefulHold: "useful cargo hold", massiveHp: "massive hull HP", highHp: "high hull HP", lightHp: "light hull HP", goodHp: "good hull HP",
       speedBuild: "Built for speed, not soaking hits.", heavyBuild: "Heavy and hard to push, but slow to reposition.", balancedBuild: "Balanced enough for trading and fights.", shipRole: "{speed} ship with {durability}, {defense}, and a {hold}. {handling}",
@@ -321,6 +339,18 @@ const islandData = [
   { name: "Bluecap Isle", culture: "Uncharted", x: 184, z: 388, radius: 9, color: 0x62b983, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Driftwood Cay", culture: "Uncharted", x: 442, z: -48, radius: 7, color: 0x88c478, accent: 0xb77b42, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Copper Atoll", culture: "Uncharted", x: -448, z: 178, radius: 8, color: 0x90ba68, accent: 0xd99928, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle A", culture: "Uncharted", x: -72, z: -60, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle B", culture: "Uncharted", x: 52, z: -76, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle C", culture: "Uncharted", x: -10, z: 54, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle D", culture: "Uncharted", x: 82, z: 48, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle E", culture: "Uncharted", x: -116, z: 20, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle F", culture: "Uncharted", x: 134, z: -18, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle G", culture: "Uncharted", x: -246, z: 78, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle H", culture: "Uncharted", x: 242, z: 118, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle I", culture: "Uncharted", x: -156, z: -258, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle J", culture: "Uncharted", x: 154, z: 284, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle K", culture: "Uncharted", x: 318, z: -156, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle L", culture: "Uncharted", x: -324, z: -116, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
 ].map(spreadIslandData);
 
 const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
@@ -564,6 +594,10 @@ const state = {
   selectedAmmo: "basic",
   selectedAmmoSlot: 0,
   pendingAmmoAssign: null,
+  inventory: Object.fromEntries(BUILD_ITEM_ORDER.map((id) => [id, 0])),
+  selectedBuildItem: null,
+  inventoryOpen: false,
+  buildSnap: true,
   docking: null,
   fallingOffWorld: false,
   fallingTimer: 0,
@@ -671,8 +705,28 @@ function goodName(name) {
   return localize("goods", name, name);
 }
 
+const islandClaimNames = new Map();
+
+function shouldShowIslandLabel(islandOrName) {
+  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
+  if (!name) return false;
+  const island = typeof islandOrName === "object"
+    ? islandOrName
+    : typeof islandData !== "undefined"
+      ? islandData.find((item) => item.name === name)
+      : null;
+  return !island?.unnamed || islandClaimNames.has(name);
+}
+
 function islandName(islandOrName) {
   const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
+  if (name && islandClaimNames.has(name)) return islandClaimNames.get(name).name;
+  const island = typeof islandOrName === "object"
+    ? islandOrName
+    : typeof islandData !== "undefined"
+      ? islandData.find((item) => item.name === name)
+      : null;
+  if (island?.unnamed) return t("unclaimedIsland");
   return localize("islands", name, name);
 }
 
@@ -784,6 +838,7 @@ function refreshLanguageUI() {
   if (ui.playerName) ui.playerName.title = t("captainName");
   refreshIslandLabels();
   updateAmmoHotbar(true);
+  renderInventory();
   updateHud();
   if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
 }
@@ -825,12 +880,17 @@ const balloons = [];
 const serverBotBalloons = [];
 const balloonBombs = [];
 const crates = [];
+const buildingPieces = [];
+const buildingPieceMap = new Map();
 const labels = [];
 const ramCooldowns = new Map();
 const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const SHOT_REPLAY_MAX_AGE_MS = 3200;
+const TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS = 4200;
+const BOMB_EXPLOSION_REPLAY_MAX_AGE_MS = 2600;
+const KRAKEN_ATTACK_REPLAY_MAX_AGE_MS = KRAKEN_ATTACK_LIFE * 1000 + 450;
 const CRATE_LIFETIME = 120;
 const WHALE_BIT_LIFETIME = 300;
 const CRATE_SINK_TIME = 5;
@@ -847,6 +907,7 @@ let fishingBobber;
 let balloonReticle;
 let leviathan;
 let leviathanCooldown = 0;
+let tabHiddenAt = 0;
 let krakenBoss = null;
 let treasureSpawnTimer = 10 + Math.random() * 18;
 let nextStormAt = 35 + Math.random() * 85;
@@ -2033,6 +2094,28 @@ function makeIsland(data) {
       grass.receiveShadow = true;
       group.add(grass);
     });
+    if (data.emptyIsland) {
+      collisionBoxes.push({ x: data.x, z: data.z, w: radius * 1.34, d: radius * 1.18, pad: 0, maxY: 0.35 });
+      const label = makeLabel(islandName(data));
+      label.visible = shouldShowIslandLabel(data);
+      label.position.set(data.x, 8.2, data.z);
+      scene.add(label);
+      labels.push(label);
+      scene.add(group);
+      return {
+        ...data,
+        group,
+        radius,
+        landY: 1.82,
+        obstacles,
+        collisionBoxes,
+        terrainFeatures,
+        walkPlatforms,
+        label,
+        dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.86),
+        shop: new THREE.Vector3(data.x, 0, data.z),
+      };
+    }
     const hillX = -radius * 0.12;
     const hillZ = -radius * 0.08;
     const hillR = radius * 0.22;
@@ -3642,8 +3725,510 @@ function makeLabel(text) {
 
 function refreshIslandLabels() {
   islands.forEach((island) => {
-    if (island.label) setLabelText(island.label, islandName(island.name));
+    if (!island.label) return;
+    island.label.visible = shouldShowIslandLabel(island);
+    if (island.label.visible) setLabelText(island.label, islandName(island));
   });
+}
+
+function buildItemName(id) {
+  return BUILD_ITEMS[id]?.name || id;
+}
+
+function buildInventoryCount(id) {
+  return Math.max(0, Math.floor(Number(state.inventory[id]) || 0));
+}
+
+function applyBuildInventory(message) {
+  const next = message?.inventory || {};
+  BUILD_ITEM_ORDER.forEach((id) => {
+    state.inventory[id] = Math.max(0, Math.floor(Number(next[id]) || 0));
+  });
+  if (message?.bought && BUILD_ITEMS[message.bought]) {
+    state.selectedBuildItem = message.bought;
+    toast(`Bought ${message.amount || 1} ${buildItemName(message.bought)}.`);
+  }
+  if (state.selectedBuildItem && buildInventoryCount(state.selectedBuildItem) <= 0) state.selectedBuildItem = null;
+  if (!state.infiniteGold && Number.isFinite(Number(message?.gold))) state.gold = Math.max(0, Number(message.gold));
+  renderInventory();
+  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+  updateHud();
+}
+
+function clearBuildInventory(notifyServer = true) {
+  BUILD_ITEM_ORDER.forEach((id) => {
+    state.inventory[id] = 0;
+  });
+  state.selectedBuildItem = null;
+  renderInventory();
+  if (notifyServer && multiplayer.serverWorld) sendMultiplayer({ type: "clearBuildInventory" });
+}
+
+function islandClaimFor(islandOrName) {
+  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
+  return name ? islandClaimNames.get(name) || null : null;
+}
+
+function playerOwnsIsland(island) {
+  const claim = islandClaimFor(island);
+  if (!claim) return false;
+  return [claim.owner, claim.clientId, claim.sessionId].includes(captainId)
+    || [claim.owner, claim.clientId, claim.sessionId].includes(playerId)
+    || [claim.owner, claim.clientId, claim.sessionId].includes(multiplayer.networkId);
+}
+
+function cleanIslandClaimName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ").replace(/[<>]/g, "").slice(0, 24);
+  return cleaned || `${captainName()}'s Isle`;
+}
+
+function applyIslandClaim(data) {
+  if (!data?.island) return;
+  const island = islands.find((item) => item.name === data.island);
+  if (!island) return;
+  const claim = {
+    island: island.name,
+    name: cleanIslandClaimName(data.name),
+    owner: data.owner || data.clientId || data.sessionId || "",
+    clientId: data.clientId || "",
+    sessionId: data.sessionId || "",
+    ownerName: data.ownerName || data.captain || "",
+  };
+  islandClaimNames.set(island.name, claim);
+  if (island.label) {
+    island.label.visible = true;
+    setLabelText(island.label, islandName(island));
+  }
+  if (state.dockedAt === island.name) updateHud();
+}
+
+function syncIslandClaims(claims = []) {
+  islandClaimNames.clear();
+  (Array.isArray(claims) ? claims : []).forEach((claim) => applyIslandClaim(claim));
+  refreshIslandLabels();
+  renderInventory();
+  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+}
+
+function localPointInRotatedRect(point, rect, pad = 0) {
+  const dx = point.x - rect.x;
+  const dz = point.z - rect.z;
+  const rot = rect.rot || 0;
+  const cos = Math.cos(-rot);
+  const sin = Math.sin(-rot);
+  const localX = dx * cos - dz * sin;
+  const localZ = dx * sin + dz * cos;
+  return Math.abs(localX) <= rect.w * 0.5 + pad && Math.abs(localZ) <= rect.d * 0.5 + pad;
+}
+
+function addBuildingMeshPart(group, mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function makeBuildingMesh(piece) {
+  const group = new THREE.Group();
+  const type = piece.type || "floor";
+  const wood = mats.plank;
+  const darkWood = mats.wood;
+  const cloth = mat(0xd84c3f);
+  if (type === "floor") {
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.18, BUILD_GRID_SIZE), wood);
+    floor.position.y = 0.09;
+    addBuildingMeshPart(group, floor);
+    for (const z of [-1, 1]) {
+      const plankLine = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 0.92, 0.04, 0.08), darkWood);
+      plankLine.position.set(0, 0.21, z * BUILD_GRID_SIZE * 0.22);
+      addBuildingMeshPart(group, plankLine);
+    }
+  } else if (type === "wall") {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
+    wall.position.y = 1.18;
+    addBuildingMeshPart(group, wall);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE + 0.18, 0.16, 0.48), darkWood);
+    cap.position.y = 2.42;
+    addBuildingMeshPart(group, cap);
+  } else if (type === "cornerWall") {
+    const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
+    wallA.position.set(BUILD_GRID_SIZE * 0.25, 1.18, -BUILD_GRID_SIZE * 0.25);
+    addBuildingMeshPart(group, wallA);
+    const wallB = new THREE.Mesh(new THREE.BoxGeometry(0.34, 2.35, BUILD_GRID_SIZE), wood);
+    wallB.position.set(-BUILD_GRID_SIZE * 0.25, 1.18, BUILD_GRID_SIZE * 0.25);
+    addBuildingMeshPart(group, wallB);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.48, 2.55, 0.48), darkWood);
+    post.position.set(-BUILD_GRID_SIZE * 0.5, 1.28, -BUILD_GRID_SIZE * 0.5);
+    addBuildingMeshPart(group, post);
+  } else if (type === "door") {
+    for (const x of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, 0.34), wood);
+      post.position.set(x * 1.28, 1.18, 0);
+      addBuildingMeshPart(group, post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.42, 0.42), darkWood);
+    lintel.position.y = 2.28;
+    addBuildingMeshPart(group, lintel);
+  } else if (type === "roof") {
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(BUILD_GRID_SIZE * 0.82, 1.1, 4), mat(0xb45f3f));
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = 0.76;
+    addBuildingMeshPart(group, roof);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 1.06, 0.16, BUILD_GRID_SIZE * 1.06), darkWood);
+    deck.position.y = 0.12;
+    addBuildingMeshPart(group, deck);
+  } else if (type === "table") {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.22, 1.25), darkWood);
+    top.position.y = 0.9;
+    addBuildingMeshPart(group, top);
+    for (const x of [-0.82, 0.82]) {
+      for (const z of [-0.42, 0.42]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.18), mats.wood);
+        leg.position.set(x, 0.44, z);
+        addBuildingMeshPart(group, leg);
+      }
+    }
+  } else {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.2, 7), mats.wood);
+    pole.position.y = 1.6;
+    addBuildingMeshPart(group, pole);
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.82, 1.28), cloth);
+    banner.position.set(0, 2.48, 0.62);
+    addBuildingMeshPart(group, banner);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.22, 8), mats.rock);
+    base.position.y = 0.11;
+    addBuildingMeshPart(group, base);
+  }
+  group.position.set(Number(piece.x) || 0, Number(piece.y) || 0, Number(piece.z) || 0);
+  group.rotation.y = Number(piece.rotation) || 0;
+  return group;
+}
+
+function removeBuildingPiece(piece) {
+  if (!piece) return;
+  scene.remove(piece.group);
+  buildingPieces.splice(buildingPieces.indexOf(piece), 1);
+  buildingPieceMap.delete(piece.id);
+}
+
+function buildingPieceIsMine(piece) {
+  if (!piece) return false;
+  return [piece.owner, piece.clientId, piece.sessionId].includes(captainId)
+    || [piece.owner, piece.clientId, piece.sessionId].includes(playerId)
+    || [piece.owner, piece.clientId, piece.sessionId].includes(multiplayer.networkId);
+}
+
+function removeBuildingPieceById(id) {
+  const piece = buildingPieceMap.get(id);
+  if (piece) removeBuildingPiece(piece);
+}
+
+function upsertBuildingPiece(data) {
+  if (!data?.id || !BUILD_ITEMS[data.type]) return;
+  const islandNameValue = data.island || data.islandName;
+  const island = islands.find((item) => item.name === islandNameValue);
+  if (!island) return;
+  const piece = {
+    id: data.id,
+    island: island.name,
+    type: data.type,
+    x: Number(data.x) || island.group.position.x,
+    y: Number.isFinite(Number(data.y)) ? Number(data.y) : island.landY,
+    z: Number(data.z) || island.group.position.z,
+    rotation: Number(data.rotation) || 0,
+    owner: data.owner || "",
+    clientId: data.clientId || "",
+    sessionId: data.sessionId || "",
+  };
+  const existing = buildingPieceMap.get(piece.id);
+  if (existing) {
+    Object.assign(existing, piece);
+    existing.group.position.set(piece.x, piece.y, piece.z);
+    existing.group.rotation.y = piece.rotation;
+    return;
+  }
+  piece.group = makeBuildingMesh(piece);
+  scene.add(piece.group);
+  buildingPieces.push(piece);
+  buildingPieceMap.set(piece.id, piece);
+}
+
+function syncBuildingPieces(items = []) {
+  const seen = new Set();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (!item?.id) return;
+    seen.add(item.id);
+    upsertBuildingPiece(item);
+  });
+  buildingPieces.slice().forEach((piece) => {
+    if (!seen.has(piece.id)) removeBuildingPiece(piece);
+  });
+}
+
+function buildingSurfaceYAt(island, point, baseY) {
+  let y = baseY;
+  buildingPieces.forEach((piece) => {
+    if (piece.island !== island.name) return;
+    const type = piece.type;
+    if (type !== "floor" && type !== "roof") return;
+    const surfaceY = piece.y + (type === "floor" ? 0.2 : 2.36);
+    const currentY = Number.isFinite(point.y) ? point.y : y;
+    if (surfaceY - currentY > 1.35) return;
+    if (localPointInRotatedRect(point, { x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.08, d: BUILD_GRID_SIZE * 1.08, rot: piece.rotation }, 0.08)) {
+      y = Math.max(y, surfaceY);
+    }
+  });
+  return y;
+}
+
+function buildingCollisionBoxes(piece) {
+  const base = { x: piece.x, z: piece.z, rot: piece.rotation || 0, minY: piece.y - 0.15, maxY: piece.y + 2.7 };
+  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.34 }];
+  if (piece.type === "cornerWall") {
+    return [
+      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.34 },
+      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.34, d: BUILD_GRID_SIZE },
+    ];
+  }
+  if (piece.type === "door") {
+    return [
+      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: 0.34 },
+      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: 0.34 },
+    ];
+  }
+  if (piece.type === "table") return [{ ...base, w: 2.25, d: 1.25, maxY: piece.y + 1.1 }];
+  if (piece.type === "flag") return [{ ...base, w: 0.85, d: 0.85, maxY: piece.y + 3.2 }];
+  return [];
+}
+
+function pointBlockedByBuildings(island, point) {
+  return buildingPieces.some((piece) => {
+    if (piece.island !== island.name) return false;
+    return buildingCollisionBoxes(piece).some((box) => {
+      const pointY = Number.isFinite(point.y) ? point.y : island.landY;
+      if (pointY < box.minY || pointY > box.maxY) return false;
+      return localPointInRotatedRect(point, box, 0.2);
+    });
+  });
+}
+
+function snapBuildPoint(island, point, type) {
+  if (!state.buildSnap || type === "flag") return point;
+  let nearest = null;
+  let best = BUILD_GRID_SIZE * 1.55;
+  buildingPieces.forEach((piece) => {
+    if (piece.island !== island.name) return;
+    const distance = Math.hypot(point.x - piece.x, point.z - piece.z);
+    if (distance < best) {
+      nearest = piece;
+      best = distance;
+    }
+  });
+  if (!nearest) {
+    point.x = Math.round(point.x / (BUILD_GRID_SIZE * 0.5)) * (BUILD_GRID_SIZE * 0.5);
+    point.z = Math.round(point.z / (BUILD_GRID_SIZE * 0.5)) * (BUILD_GRID_SIZE * 0.5);
+    return point;
+  }
+  const dx = point.x - nearest.x;
+  const dz = point.z - nearest.z;
+  if (Math.abs(dx) > Math.abs(dz)) {
+    point.x = nearest.x + Math.sign(dx || 1) * BUILD_GRID_SIZE;
+    point.z = nearest.z;
+  } else {
+    point.x = nearest.x;
+    point.z = nearest.z + Math.sign(dz || 1) * BUILD_GRID_SIZE;
+  }
+  return point;
+}
+
+function buildRotationForType(type) {
+  if (type === "floor" || type === "roof" || type === "table" || type === "flag") return 0;
+  return Math.round(character.rotation.y / (Math.PI / 2)) * (Math.PI / 2);
+}
+
+function renderInventory() {
+  if (!ui.inventoryBody) return;
+  ui.inventoryPanel?.classList.toggle("hidden", !state.inventoryOpen);
+  if (ui.snapBuild) ui.snapBuild.checked = state.buildSnap;
+  const rows = BUILD_ITEM_ORDER.map((id) => {
+    const item = BUILD_ITEMS[id];
+    const count = buildInventoryCount(id);
+    const selected = state.selectedBuildItem === id;
+    return `<div class="inventory-item${selected ? " selected" : ""}"><div><h3>${item.name} <span class="price">x${count}</span></h3><p>${item.description}</p></div><button data-build-select="${id}" ${count <= 0 ? "disabled" : ""}>${selected ? t("selected") : t("select")}</button></div>`;
+  }).join("");
+  const selected = state.selectedBuildItem ? `${buildItemName(state.selectedBuildItem)} selected.` : t("noneSelected");
+  ui.inventoryBody.innerHTML = `<p class="stats">${selected} ${t("placeHint")}</p>${rows}`;
+}
+
+function setInventoryOpen(open) {
+  state.inventoryOpen = Boolean(open);
+  renderInventory();
+}
+
+function buildAimPointForIsland(island) {
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster
+    .intersectObject(island.group, true)
+    .filter((hit) => hit.distance <= BUILD_PLACE_MAX_DISTANCE && dist2(hit.point, island.group.position) <= island.radius - BUILD_EDGE_MARGIN);
+  for (const hit of hits) {
+    const groundY = islandGroundY(island, hit.point);
+    if (groundY === null) continue;
+    if (Math.abs(hit.point.y - groundY) < 2.6 || hit.face?.normal?.y > 0.18) {
+      return new THREE.Vector3(hit.point.x, groundY, hit.point.z);
+    }
+  }
+  const topPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -island.landY);
+  const planePoint = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(topPlane, planePoint)) {
+    const groundY = islandGroundY(island, planePoint);
+    if (groundY !== null && dist2(planePoint, island.group.position) <= island.radius - BUILD_EDGE_MARGIN) {
+      return new THREE.Vector3(planePoint.x, groundY, planePoint.z);
+    }
+  }
+  return null;
+}
+
+function buildPlacementFootprints(type, point, rotation) {
+  const base = { x: point.x, z: point.z, rot: rotation || 0 };
+  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.42 }];
+  if (type === "cornerWall") {
+    return [
+      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.42 },
+      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.42, d: BUILD_GRID_SIZE },
+    ];
+  }
+  if (type === "door") {
+    return [
+      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
+      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
+    ];
+  }
+  if (type === "table") return [{ ...base, w: 2.35, d: 1.35 }];
+  if (type === "flag") return [{ ...base, w: 1.0, d: 1.0 }];
+  return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_GRID_SIZE }];
+}
+
+function buildPlacementValid(island, type, point, rotation) {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.z) || !Number.isFinite(point.y)) return false;
+  if (dist2(point, island.group.position) > island.radius - BUILD_EDGE_MARGIN) return false;
+  const groundY = islandGroundY(island, point);
+  if (groundY === null || Math.abs(point.y - groundY) > 0.7) return false;
+  const footprints = buildPlacementFootprints(type, point, rotation);
+  return footprints.every((footprint) => {
+    const samples = [
+      { x: footprint.x, z: footprint.z },
+      { x: footprint.x + Math.cos(footprint.rot) * footprint.w * 0.42, z: footprint.z - Math.sin(footprint.rot) * footprint.w * 0.42 },
+      { x: footprint.x - Math.cos(footprint.rot) * footprint.w * 0.42, z: footprint.z + Math.sin(footprint.rot) * footprint.w * 0.42 },
+      { x: footprint.x + Math.sin(footprint.rot) * footprint.d * 0.42, z: footprint.z + Math.cos(footprint.rot) * footprint.d * 0.42 },
+      { x: footprint.x - Math.sin(footprint.rot) * footprint.d * 0.42, z: footprint.z - Math.cos(footprint.rot) * footprint.d * 0.42 },
+    ];
+    return samples.every((sample) => {
+      const samplePoint = new THREE.Vector3(sample.x, point.y, sample.z);
+      const sampleY = islandGroundY(island, samplePoint);
+      if (sampleY === null || Math.abs(sampleY - point.y) > 1.15) return false;
+      if (dist2(samplePoint, island.group.position) > island.radius - 1.2) return false;
+      if (pointBlockedOnIsland(island, samplePoint)) return false;
+      return true;
+    });
+  });
+}
+
+function placeSelectedBuildItem() {
+  const type = state.selectedBuildItem;
+  if (!BUILD_ITEMS[type]) return;
+  if (buildInventoryCount(type) <= 0) {
+    state.selectedBuildItem = null;
+    renderInventory();
+    return toast(t("noBuildItem"));
+  }
+  const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
+  if (!island || state.mode !== "land") return toast(t("tooFarBuild"));
+  const aimed = buildAimPointForIsland(island);
+  if (!aimed) return toast(t("tooFarBuild"));
+  const point = aimed.clone();
+  if (dist2(point, island.group.position) > island.radius - 1.2) return toast(t("tooFarBuild"));
+  if (type === "flag") {
+    if (!island.claimable || !island.unnamed) return toast(t("claimFirst"));
+    if (islandClaimFor(island)) return toast(t("alreadyClaimed"));
+  } else if (!playerOwnsIsland(island)) {
+    return toast(t("ownedIslandOnly"));
+  }
+  snapBuildPoint(island, point, type);
+  const groundY = islandGroundY(island, point) ?? island.landY;
+  point.y = groundY;
+  const rotation = buildRotationForType(type);
+  if (!buildPlacementValid(island, type, point, rotation)) return toast(t("tooFarBuild"));
+  let claimName = "";
+  if (type === "flag") {
+    claimName = cleanIslandClaimName(prompt(t("claimNamePrompt"), `${captainName()}'s Isle`));
+  }
+  const piece = {
+    id: crypto.randomUUID(),
+    island: island.name,
+    type,
+    x: point.x,
+    y: point.y,
+    z: point.z,
+    rotation,
+    owner: captainId,
+    clientId: captainId,
+    sessionId: playerId,
+    ownerName: captainName(),
+    claimName,
+  };
+  if (multiplayer.serverWorld) {
+    if (!sendMultiplayer({ type: "placeBuilding", piece })) toast("Building server disconnected.");
+    return;
+  }
+  if (type === "flag") {
+    const claim = { island: island.name, name: claimName, owner: captainId, clientId: captainId, sessionId: playerId, ownerName: captainName() };
+    applyIslandClaim(claim);
+    sendMultiplayer({ type: "claimIsland", ...claim });
+    toast(t("islandClaimed", { island: claimName }));
+  }
+  upsertBuildingPiece(piece);
+  sendMultiplayer({ type: "placeBuilding", piece });
+  state.inventory[type] = buildInventoryCount(type) - 1;
+  if (state.inventory[type] <= 0) state.selectedBuildItem = null;
+  renderInventory();
+  renderShop();
+  updateHud();
+  toast(t("buildPlaced", { item: buildItemName(type) }));
+}
+
+function removeLookedAtBuilding() {
+  if (state.mode !== "land") return;
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const hits = buildingPieces
+    .map((piece) => {
+      const hit = raycaster.intersectObject(piece.group, true)[0];
+      return hit ? { piece, distance: hit.distance } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance - b.distance);
+  const target = hits.find((hit) => hit.distance < 28)?.piece;
+  if (!target) return;
+  if (!buildingPieceIsMine(target)) return toast(t("ownedIslandOnly"));
+  if (multiplayer.serverWorld) {
+    sendMultiplayer({ type: "removeBuilding", id: target.id });
+    return;
+  }
+  removeBuildingPiece(target);
+  state.inventory[target.type] = buildInventoryCount(target.type) + 1;
+  if (target.type === "flag") {
+    islandClaimNames.delete(target.island);
+    buildingPieces
+      .filter((piece) => piece.island === target.island && buildingPieceIsMine(piece))
+      .forEach((piece) => {
+        state.inventory[piece.type] = buildInventoryCount(piece.type) + 1;
+        removeBuildingPiece(piece);
+      });
+    refreshIslandLabels();
+  }
+  renderInventory();
+  renderShop();
+  updateHud();
+  sendMultiplayer({ type: "buildingRemoved", id: target.id });
 }
 
 function islandGroundY(island, point) {
@@ -3691,11 +4276,13 @@ function islandGroundY(island, point) {
       y = Math.max(y, island.landY + coneSlope * peak.h * 0.94);
     });
   });
+  y = buildingSurfaceYAt(island, point, y);
   return y;
 }
 
 function pointBlockedOnIsland(island, point) {
   if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
+  if (pointBlockedByBuildings(island, point)) return true;
   return island.collisionBoxes?.some((box) => {
     const pointY = Number.isFinite(point.y) ? point.y : 0;
     if (box.minY !== undefined && pointY < box.minY) return false;
@@ -5407,9 +5994,17 @@ function removeProjectile(shot, impact = "none") {
   if (index >= 0) projectiles.splice(index, 1);
 }
 
-function addImpactEffect(group, life = 0.7) {
+function addImpactEffect(group, life = 0.7, options = {}) {
+  const initialAge = Math.max(0, Number(options.initialAge) || 0);
+  const now = Date.now();
   scene.add(group);
-  impactEffects.push({ group, life, age: 0 });
+  impactEffects.push({
+    group,
+    life,
+    age: Math.min(initialAge, life),
+    bornWall: now - initialAge * 1000,
+    maxWallAge: Math.max(Number(options.maxWallAge) || 0, life * 1000 + 250),
+  });
 }
 
 function makeSplashEffect(position) {
@@ -5434,10 +6029,13 @@ function makeSplashEffect(position) {
 }
 
 function addWaveHazard(position, options = {}) {
+  const delay = Math.max(0, Number(options.delay) || 0);
+  const life = options.life || 1.6;
   waveHazards.push({
     position: position.clone().setY(0),
-    born: clock.elapsedTime + (options.delay || 0),
-    life: options.life || 1.6,
+    born: clock.elapsedTime + delay,
+    bornWall: Date.now() + delay * 1000,
+    life,
     radiusStart: options.radiusStart || 5,
     radiusEnd: options.radiusEnd || 24,
     thickness: options.thickness || 3,
@@ -5448,8 +6046,11 @@ function addWaveHazard(position, options = {}) {
 }
 
 function updateWaveHazards(dt) {
+  const nowWall = Date.now();
   waveHazards.slice().forEach((hazard) => {
-    const age = clock.elapsedTime - hazard.born;
+    const clockAge = clock.elapsedTime - hazard.born;
+    const wallAge = Number.isFinite(hazard.bornWall) ? (nowWall - hazard.bornWall) / 1000 : clockAge;
+    const age = Math.max(clockAge, wallAge);
     if (age < 0) return;
     const t = clamp(age / hazard.life, 0, 1);
     const radius = hazard.radiusStart + (hazard.radiusEnd - hazard.radiusStart) * t;
@@ -5470,7 +6071,7 @@ function updateWaveHazards(dt) {
       }
     } else if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
     bots.forEach((bot) => applyTo(bot, bot.group.position, bot.velocity, bot.shipType));
-    if (age > hazard.life) waveHazards.splice(waveHazards.indexOf(hazard), 1);
+    if (age > hazard.life || (Number.isFinite(hazard.bornWall) && nowWall - hazard.bornWall > hazard.life * 1000 + 300)) waveHazards.splice(waveHazards.indexOf(hazard), 1);
   });
 }
 
@@ -6281,8 +6882,9 @@ function submergeKrakenTentacleNear(worldPoint) {
     }
   });
   if (!closest) return;
-  closest.userData.submergeStart = clock.elapsedTime;
-  closest.userData.submergeUntil = clock.elapsedTime + KRAKEN_ATTACK_LIFE * 0.82;
+  const now = Date.now() / 1000;
+  closest.userData.submergeStart = now;
+  closest.userData.submergeUntil = now + KRAKEN_ATTACK_LIFE * 0.82;
   closest.userData.submergeDepth = 72;
 }
 
@@ -6332,8 +6934,9 @@ function krakenAttackCurve(data, t) {
   ], false, "catmullrom", 0.45);
 }
 
-function makeKrakenAttackEffect(attack) {
+function makeKrakenAttackEffect(attack, options = {}) {
   const group = new THREE.Group();
+  const initialAge = Math.max(0, Number(options.initialAge) || 0);
   const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
   const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
   const dir = target.clone().sub(source);
@@ -6429,8 +7032,11 @@ function makeKrakenAttackEffect(attack) {
   riseSplash.rotation.x = -Math.PI / 2;
   riseSplash.userData.krakenRiseSplash = true;
   group.add(riseSplash);
-  addImpactEffect(group, KRAKEN_ATTACK_LIFE);
-  addWaveHazard(target, { dps: 10, force: 22, radiusStart: 5.2, radiusEnd: 25, thickness: 3.4, life: 1.55, delay: KRAKEN_SLAM_DELAY_MS / 1000 });
+  addImpactEffect(group, KRAKEN_ATTACK_LIFE, {
+    initialAge,
+    maxWallAge: KRAKEN_ATTACK_REPLAY_MAX_AGE_MS,
+  });
+  addWaveHazard(target, { dps: 10, force: 22, radiusStart: 5.2, radiusEnd: 25, thickness: 3.4, life: 1.55, delay: Math.max(0, KRAKEN_SLAM_DELAY_MS / 1000 - initialAge) });
 }
 
 function krakenAttackWallContains(position, attack, padding = 0) {
@@ -6479,8 +7085,9 @@ function krakenAttackEvadePoint(position, attack, shipType = "skiff") {
 
 function activeKrakenEvadePoint(position, shipType = "skiff") {
   const now = clock.elapsedTime;
+  const nowWall = Date.now();
   for (let i = activeKrakenAttacks.length - 1; i >= 0; i--) {
-    if ((activeKrakenAttacks[i].until || 0) < now) {
+    if ((activeKrakenAttacks[i].until || 0) < now || (activeKrakenAttacks[i].untilWall || 0) < nowWall) {
       activeKrakenAttacks.splice(i, 1);
       continue;
     }
@@ -6492,11 +7099,22 @@ function activeKrakenEvadePoint(position, shipType = "skiff") {
 
 function applyKrakenAttack(attack) {
   if (!attack) return;
+  const sentAt = Number(attack.sentAt);
+  const ageMs = Number.isFinite(sentAt) ? Math.max(0, Date.now() - sentAt) : 0;
+  if (ageMs > KRAKEN_ATTACK_REPLAY_MAX_AGE_MS) return;
+  const initialAge = ageMs / 1000;
   const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  activeKrakenAttacks.push({ ...attack, until: clock.elapsedTime + KRAKEN_ATTACK_LIFE });
+  activeKrakenAttacks.push({
+    ...attack,
+    until: clock.elapsedTime + Math.max(0, KRAKEN_ATTACK_LIFE - initialAge),
+    untilWall: Date.now() + Math.max(0, KRAKEN_ATTACK_LIFE * 1000 - ageMs),
+  });
   submergeKrakenTentacleNear(slamPoint);
-  makeKrakenAttackEffect(attack);
+  makeKrakenAttackEffect(attack, { initialAge });
+  const damageDelay = Math.max(0, KRAKEN_SLAM_DELAY_MS - ageMs);
+  const startedWall = Date.now() - ageMs;
   setTimeout(() => {
+    if (Date.now() - startedWall > KRAKEN_SLAM_DELAY_MS + 800) return;
     if (state.mode === "ship" && (krakenAttackSlamContains(playerShip.position, attack, shipHitRadius(state.shipType)) || krakenAttackWallContains(playerShip.position, attack, shipHitRadius(state.shipType) * 0.4))) {
       damageTarget(state, maxHp() * 4);
     }
@@ -6507,7 +7125,7 @@ function applyKrakenAttack(attack) {
         }
       });
     }
-  }, KRAKEN_SLAM_DELAY_MS);
+  }, damageDelay);
 }
 
 function makeLeviathanAttackEffect(position, outward, attackId) {
@@ -7637,6 +8255,7 @@ function damageTarget(target, amount, options = {}) {
       toast(`Sank a level ${level} ship. Crates overboard!`);
     } else {
       dropPlayerDeathCrates(deathPos);
+      clearBuildInventory(false);
       const lostGold = Math.floor(state.gold * 0.25);
       state.gold = Math.max(0, state.gold - lostGold);
       clearBurnVisual(state);
@@ -7771,6 +8390,18 @@ ui.openLeaderboard?.addEventListener("click", () => {
   ui.openLeaderboard.classList.add("hidden");
   renderLeaderboard();
 });
+ui.closeInventory?.addEventListener("click", () => setInventoryOpen(false));
+ui.inventoryBody?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-build-select]");
+  if (!button) return;
+  const type = button.dataset.buildSelect;
+  if (!BUILD_ITEMS[type] || buildInventoryCount(type) <= 0) return;
+  state.selectedBuildItem = state.selectedBuildItem === type ? null : type;
+  renderInventory();
+});
+ui.snapBuild?.addEventListener("change", () => {
+  state.buildSnap = Boolean(ui.snapBuild.checked);
+});
 ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
   state.shopTab = tab.dataset.tab;
   ui.tabs.forEach((item) => item.classList.toggle("active", item === tab));
@@ -7880,6 +8511,16 @@ addEventListener("keydown", (event) => {
     openIslandShop();
     return;
   }
+  if (key === "i" || code === "keyi") {
+    event.preventDefault();
+    setInventoryOpen(!state.inventoryOpen);
+    return;
+  }
+  if (key === "z" || code === "keyz") {
+    event.preventDefault();
+    placeSelectedBuildItem();
+    return;
+  }
   if ((key === " " || key === "spacebar") && state.mode === "land" && state.grounded) {
     event.preventDefault();
     state.walkVelocityY = 12;
@@ -7920,6 +8561,11 @@ addEventListener("keydown", (event) => {
     state.fishing = null;
     state.rodCooldown = 0.35;
     toast("Line retracted.");
+    return;
+  }
+  if (key === "x") {
+    event.preventDefault();
+    removeLookedAtBuilding();
     return;
   }
   if (key === "n") {
@@ -7982,7 +8628,7 @@ function startDocking(island) {
   if (!island || state.mode !== "ship") return;
   state.docking = { island: island.name, remaining: 5 };
   state.velocity.multiplyScalar(0.25);
-  toast(`Docking at ${island.name}: 5 seconds.`);
+  toast(`Docking at ${islandName(island)}: 5 seconds.`);
 }
 
 function updateDocking(dt) {
@@ -8019,7 +8665,7 @@ function dockAtIsland(island) {
   playerShip.position.y = SHIP_WATERLINE_Y;
   state.velocity.set(0, 0, 0);
   closeShop();
-  toast(`Docked at ${island.name}. Press R for the market or C to set sail.`);
+  toast(`Docked at ${islandName(island)}. Press R for the market or C to set sail.`);
   updateHud();
 }
 
@@ -8236,7 +8882,7 @@ function inspectWithSpyglass(dir = null, requireShipHit = false) {
 
 function openShop(island) {
   state.dockedAt = island.name;
-  ui.shopIsland.textContent = islandName(island.name);
+  ui.shopIsland.textContent = islandName(island);
   ui.shop.classList.remove("hidden");
   renderShop();
 }
@@ -8349,7 +8995,7 @@ function renderShop() {
   const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
   ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
   if (island.exploreOnly) {
-    ui.shopBody.innerHTML = `<p class="stats">${t("unchartedShop", { island: islandName(island.name) })}</p>`;
+    ui.shopBody.innerHTML = `<p class="stats">${t("unchartedShop", { island: islandName(island) })}</p>`;
     return;
   }
   if (state.shopTab === "goods") {
@@ -8371,7 +9017,7 @@ function renderShop() {
     }).join("");
   } else if (state.shopTab === "ships") {
     const ships = availableShipsForIsland(island);
-    ui.shopBody.innerHTML = `<p class="stats">${t("shipwrightIntro", { island: islandName(island.name), culture: cultureName(island.culture) })}</p>` + ships.map((ship) => {
+    ui.shopBody.innerHTML = `<p class="stats">${t("shipwrightIntro", { island: islandName(island), culture: cultureName(island.culture) })}</p>` + ships.map((ship) => {
       const owned = ship.id === state.shipType;
       const preview = shipPreviewImage(ship.id);
       const previewMarkup = preview
@@ -8394,6 +9040,11 @@ function renderShop() {
       const description = ammoDescription(ammo);
       return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button></div></div>`;
     }).join("") + balloonRow;
+  } else if (state.shopTab === "build") {
+    ui.shopBody.innerHTML = `<p class="stats">${t("buildShopIntro")}</p>` + BUILD_ITEM_ORDER.map((id) => {
+      const item = BUILD_ITEMS[id];
+      return `<div class="row build-row"><div><h3>${item.name} <span class="price">${t("each", { price: item.price })}</span></h3><p>${t("itemCount", { count: buildInventoryCount(id) })}. ${item.description}</p></div><div class="actions"><button data-buy-build="${id}" data-amount="1">${t("buy")}</button><button data-buy-build="${id}" data-amount="5">${t("buyFive")}</button></div></div>`;
+    }).join("");
   } else {
     const ups = [
       ["damage", t("cannonDamage"), upgradeDescription("damage")],
@@ -8464,6 +9115,22 @@ ui.shopBody.addEventListener("click", (event) => {
     state.gold -= BALLOON_COST;
     state.balloonStock++;
     toast("Hot air balloon purchased.");
+  }
+  if (button.dataset.buyBuild) {
+    const item = BUILD_ITEMS[button.dataset.buyBuild];
+    if (!item) return;
+    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 50);
+    const cost = item.price * amount;
+    if (state.gold < cost) return toast("Not enough gold.");
+    if (multiplayer.serverWorld) {
+      sendMultiplayer({ type: "buyBuild", item: item.id, amount });
+      return;
+    }
+    state.gold -= cost;
+    state.inventory[item.id] = buildInventoryCount(item.id) + amount;
+    state.selectedBuildItem = item.id;
+    renderInventory();
+    toast(`Bought ${amount} ${item.name}.`);
   }
   if (button.dataset.upgrade) {
     if (state.points < 1) return toast("Level up to earn upgrade points.");
@@ -8677,7 +9344,7 @@ function dropBalloonBomb(balloon) {
   const mesh = makeBalloonBombMesh();
   mesh.position.copy(start);
   scene.add(mesh);
-  balloonBombs.push({ mesh, start, velocity, born: clock.elapsedTime });
+  balloonBombs.push({ mesh, start, velocity, born: clock.elapsedTime, bornWall: Date.now() });
   toast("Bomb away.");
 }
 
@@ -8906,7 +9573,9 @@ function updateBalloons(dt) {
       bomb.mesh.rotation.z += dt * 1.7;
       return;
     }
-    const age = Math.max(0, clock.elapsedTime - (bomb.born ?? clock.elapsedTime));
+    const age = Number.isFinite(bomb.bornWall)
+      ? Math.max(0, (Date.now() - bomb.bornWall) / 1000)
+      : Math.max(0, clock.elapsedTime - (bomb.born ?? clock.elapsedTime));
     bomb.mesh.position.copy(bomb.start.clone().add(bomb.velocity.clone().multiplyScalar(age)));
     bomb.mesh.position.y = bomb.start.y + bomb.velocity.y * age - 0.5 * BALLOON_BOMB_GRAVITY * age * age;
     bomb.mesh.rotation.x += dt * 4;
@@ -9539,8 +10208,10 @@ function updateKrakenAttackEffect(effect, t) {
 }
 
 function updateImpactEffects(dt) {
+  const nowWall = Date.now();
   impactEffects.slice().forEach((effect) => {
-    effect.age += dt;
+    const wallAge = Number.isFinite(effect.bornWall) ? Math.max(0, (nowWall - effect.bornWall) / 1000) : 0;
+    effect.age = Math.max(effect.age + dt, wallAge);
     const t = clamp(effect.age / effect.life, 0, 1);
     const fade = 1 - t;
     if (effect.group.userData.krakenAttack) updateKrakenAttackEffect(effect, t);
@@ -9571,7 +10242,7 @@ function updateImpactEffects(dt) {
       }
       if (child.material) child.material.opacity = Math.max(0, fade * (child.userData.puff ? 0.45 : 0.9));
     });
-    if (effect.age >= effect.life) {
+    if (effect.age >= effect.life || (Number.isFinite(effect.maxWallAge) && nowWall - effect.bornWall > effect.maxWallAge)) {
       scene.remove(effect.group);
       effect.group.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();
@@ -9579,6 +10250,41 @@ function updateImpactEffects(dt) {
       });
       impactEffects.splice(impactEffects.indexOf(effect), 1);
     }
+  });
+}
+
+function disposeTransientObject(object) {
+  if (!object) return;
+  scene.remove(object);
+  object.traverse?.((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose?.());
+    else if (child.material) child.material.dispose?.();
+  });
+}
+
+function clearPastTransientEffects() {
+  impactEffects.splice(0).forEach((effect) => disposeTransientObject(effect.group));
+  balloonBombs.splice(0).forEach((bomb) => disposeTransientObject(bomb.mesh));
+  waveHazards.length = 0;
+  activeKrakenAttacks.length = 0;
+  krakenBoss?.group?.children.forEach((child) => {
+    if (!child.userData?.tentacle) return;
+    delete child.userData.submergeStart;
+    delete child.userData.submergeUntil;
+    delete child.userData.submergeDepth;
+    child.visible = true;
+  });
+}
+
+function setupTransientResumeCleanup() {
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      tabHiddenAt = Date.now();
+      return;
+    }
+    if (tabHiddenAt && Date.now() - tabHiddenAt > 1400) clearPastTransientEffects();
+    tabHiddenAt = 0;
   });
 }
 
@@ -9759,6 +10465,7 @@ function updateKraken(dt) {
   if (!krakenBoss?.group) return;
   const ease = (value) => value * value * (3 - 2 * value);
   const now = clock.elapsedTime;
+  const nowWall = Date.now() / 1000;
   if (krakenBoss.alive) {
     krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.58) * 0.18;
   }
@@ -9768,10 +10475,10 @@ function updateKraken(dt) {
       let dive = 0;
       if (Number.isFinite(started)) {
         const until = child.userData.submergeUntil || started + KRAKEN_ATTACK_LIFE * 0.82;
-        const down = ease(clamp((now - started) / 0.8, 0, 1));
-        const up = ease(clamp((now - until) / 1.25, 0, 1));
+        const down = ease(clamp((nowWall - started) / 0.8, 0, 1));
+        const up = ease(clamp((nowWall - until) / 1.25, 0, 1));
         dive = down * (1 - up);
-        if (now > until + 1.35) {
+        if (nowWall > until + 1.35) {
           delete child.userData.submergeStart;
           delete child.userData.submergeUntil;
           delete child.userData.submergeDepth;
@@ -9900,7 +10607,7 @@ function updateHud() {
     ui.dockPrompt.innerHTML = state.docking
       ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
       : state.mode === "ship"
-      ? t("pressDock", { island: islandName(island.name) })
+      ? t("pressDock", { island: islandName(island) })
       : t("pressSailShop");
   }
   updateSpyPanel();
@@ -10154,9 +10861,11 @@ function updateMinimap() {
   }
   islands.forEach((island) => {
     const pos = drawMapDot(ctx, island.group.position.x, island.group.position.z, Math.max(3, island.radius * size / (MAP_LIMIT * 2.45)), "#72bf61", "#f3df9b");
-    ctx.fillStyle = "#17313c";
-    ctx.font = `700 ${Math.max(7, size * 0.024)}px sans-serif`;
-    ctx.fillText(island.name, pos.x + 4, pos.y - 4);
+    if (shouldShowIslandLabel(island)) {
+      ctx.fillStyle = "#17313c";
+      ctx.font = `700 ${Math.max(7, size * 0.024)}px sans-serif`;
+      ctx.fillText(islandName(island), pos.x + 4, pos.y - 4);
+    }
   });
   crates.forEach((crate) => drawMapDot(
     ctx,
@@ -10541,6 +11250,8 @@ function syncServerStorms(items = []) {
 function syncServerWorld(world) {
   if (!world) return;
   multiplayer.serverWorld = true;
+  const worldSentAt = Number(world.serverTime);
+  const transientWorldStale = Number.isFinite(worldSentAt) && Date.now() - worldSentAt > TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS;
   if (Number.isFinite(Number(world.dayCycleTime))) {
     environment.serverDayLength = Math.max(60, Number(world.dayLengthSeconds) || DAY_LENGTH_SECONDS);
     environment.serverNightLength = Math.max(60, Number(world.nightLengthSeconds) || NIGHT_LENGTH_SECONDS);
@@ -10640,10 +11351,12 @@ function syncServerWorld(world) {
   });
   syncServerLeviathan(world.leviathan);
   syncKraken(world.kraken);
-  syncServerBombs(world.bombs || []);
+  syncServerBombs(transientWorldStale ? [] : (world.bombs || []));
   syncServerBotBalloons(world.botBalloons || []);
   syncServerWhales(world.whales || []);
   syncServerStorms(world.storms || []);
+  syncIslandClaims(world.islandClaims || []);
+  syncBuildingPieces(world.buildings || []);
 }
 
 function applyCrateReward(crate) {
@@ -10719,6 +11432,8 @@ function handleMultiplayerMessage(message) {
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
   } else if (message.type === "bombHit") {
+    const sentAt = Number(message.sentAt);
+    if (Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS) return;
     if (state.mode === "ship") damageTarget(state, Number(message.damage) || BALLOON_BOMB_DAMAGE, { ignoreArmor: true });
   } else if (message.type === "whaleRam") {
     if (state.mode === "ship") {
@@ -10739,11 +11454,14 @@ function handleMultiplayerMessage(message) {
   } else if (message.type === "lightningStrike") {
     showServerLightning(message.x, message.z);
   } else if (message.type === "bombExplode") {
+    const sentAt = Number(message.sentAt);
+    const stale = Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS;
     const bomb = balloonBombs.find((item) => item.serverId === message.id);
     if (bomb) {
       scene.remove(bomb.mesh);
       balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
     }
+    if (stale) return;
     const x = Number(message.x);
     const z = Number(message.z);
     if (Number.isFinite(x) && Number.isFinite(z)) detonateBalloonBomb(new THREE.Vector3(x, 0, z), { visualOnly: true, affectAnimals: true });
@@ -10758,7 +11476,7 @@ function handleMultiplayerMessage(message) {
   } else if (message.type === "playerSunk") {
     applyRemotePlayerSunk(message);
   } else if (message.type === "krakenAttack") {
-    applyKrakenAttack(message.attack);
+    applyKrakenAttack({ ...(message.attack || {}), sentAt: Number(message.attack?.sentAt) || Number(message.sentAt) || undefined });
   } else if (message.type === "leviathanStrike") {
     applyServerLeviathanStrike(message);
   } else if (message.type === "leviathanDamage") {
@@ -10769,6 +11487,21 @@ function handleMultiplayerMessage(message) {
     state.gold += Number(message.gold) || 0;
     addXP(Number(message.xp) || 0);
     toast(`Sank a level ${message.level || 1} ship. Crates overboard!`);
+  } else if (message.type === "buildInventory") {
+    applyBuildInventory(message);
+  } else if (message.type === "buildError") {
+    toast(message.reason || t("noBuildItem"));
+  } else if (message.type === "islandClaimed" || message.type === "claimIsland") {
+    applyIslandClaim(message.claim || message);
+  } else if (message.type === "buildingPlaced" || message.type === "placeBuilding") {
+    const piece = message.piece || message;
+    upsertBuildingPiece(piece);
+    if (buildingPieceIsMine(piece)) {
+      if (piece.type === "flag" && piece.claimName) toast(t("islandClaimed", { island: piece.claimName }));
+      else toast(t("buildPlaced", { item: buildItemName(piece.type) }));
+    }
+  } else if (message.type === "buildingRemoved") {
+    removeBuildingPieceById(message.id);
   } else if (message.x !== undefined) {
     upsertRemotePlayer(message);
   }
@@ -10946,5 +11679,6 @@ initWorld();
 refreshLanguageUI();
 setupNameGate();
 setupMultiplayer();
+setupTransientResumeCleanup();
 updateHud();
 frame();
