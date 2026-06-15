@@ -79,7 +79,7 @@ const KRAKEN_SLAM_DELAY_MS = 2900;
 const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
 const MAP_LIMIT = 880;
 const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
-const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 170;
+const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 720;
 const ISLAND_RADIUS_SCALE = 4;
 const ISLAND_SPACING_SCALE = 2.45;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
@@ -567,6 +567,9 @@ const state = {
   docking: null,
   fallingOffWorld: false,
   fallingTimer: 0,
+  fallVelocityY: 0,
+  fallDrift: new THREE.Vector3(),
+  fallSpin: new THREE.Vector3(),
   viewMode: "ship",
   activeBalloonIndex: -1,
   balloonStock: 0,
@@ -1829,7 +1832,9 @@ function updateDayNightCycle() {
   environment.moonLight.color.setHex(0xb8ccff);
   environment.sunDisc.material.color.setHex(twilight > 0.05 ? 0xffde8a : 0xfff1a6);
   environment.moonDisc.material.color.setHex(0xdfe9ff);
-  const sky = new THREE.Color(0x8edff0).lerp(new THREE.Color(0xffd27a), twilight * 0.66).lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
+  const sky = new THREE.Color(0x8edff0)
+    .lerp(new THREE.Color(0xffd27a), twilight * 0.66)
+    .lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
   scene.background.copy(sky);
   scene.fog.color.copy(sky);
   scene.fog.near = 185 + dayAmount * 55;
@@ -1851,9 +1856,10 @@ function addSea() {
   grid.material.transparent = true;
   grid.material.opacity = 0.08;
   scene.add(grid);
+  const foamLimit = WATERFALL_LIMIT - 28;
   for (let i = 0; i < 160; i++) {
     const foam = new THREE.Mesh(new THREE.BoxGeometry(3 + Math.random() * 8, 0.04, 0.14), mat(0xd9fbff));
-    foam.position.set((Math.random() - 0.5) * SEA_SIZE, 0.035, (Math.random() - 0.5) * SEA_SIZE);
+    foam.position.set((Math.random() - 0.5) * foamLimit * 2, 0.035, (Math.random() - 0.5) * foamLimit * 2);
     foam.rotation.y = Math.random() * Math.PI;
     foam.userData.drift = Math.random() * 100;
     scene.add(foam);
@@ -5624,47 +5630,50 @@ function makeLeviathanMesh() {
   const reptileHide = new THREE.MeshStandardMaterial({ color: 0x6d4d4a, roughness: 0.96, metalness: 0.03, flatShading: true });
   const reptileDark = new THREE.MeshStandardMaterial({ color: 0x3e2e31, roughness: 0.98, metalness: 0.02, flatShading: true });
   const toothMat = mat(0xf0e2c6, 0.76);
-  const scarMat = new THREE.MeshStandardMaterial({ color: 0xb9372c, emissive: 0x5a0d08, emissiveIntensity: 0.45, roughness: 0.7, metalness: 0.02 });
+  const scarMat = new THREE.MeshStandardMaterial({ color: 0x4c3030, roughness: 0.82, metalness: 0.02 });
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffa126, emissive: 0xff6b00, emissiveIntensity: 1.85, roughness: 0.45, metalness: 0 });
   const bodyPath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.0, -4.1, 7.1),
-    new THREE.Vector3(-1.05, -4.75, 17.5),
-    new THREE.Vector3(1.45, -5.8, 29.8),
-    new THREE.Vector3(-1.15, -7.05, 43.2),
-    new THREE.Vector3(0.35, -8.7, 61.5),
+    new THREE.Vector3(0.0, -4.0, 6.8),
+    new THREE.Vector3(-0.4, -4.7, 15.5),
+    new THREE.Vector3(0.55, -5.7, 26.5),
+    new THREE.Vector3(-0.35, -7.1, 39.5),
+    new THREE.Vector3(0.1, -8.5, 51.0),
   ], false, "catmullrom", 0.38);
-  const body = new THREE.Mesh(makeTaperedTubeGeometry(bodyPath, 3.15, 0.78, {
-    segments: 58,
+  const body = new THREE.Mesh(makeTaperedTubeGeometry(bodyPath, 4.35, 1.35, {
+    segments: 54,
     radialSegments: 18,
-    oval: 0.76,
+    oval: 0.92,
   }), hide);
   body.castShadow = true;
   group.add(body);
+  const shoulderMass = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 12), hide);
+  shoulderMass.scale.set(3.85, 1.35, 4.9);
+  shoulderMass.position.set(0, -4.15, 8.2);
+  shoulderMass.castShadow = true;
+  group.add(shoulderMass);
   const backRidgePath = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0.0, -1.2, 7.7),
-    new THREE.Vector3(-1.18, -1.72, 18.6),
-    new THREE.Vector3(1.42, -2.55, 31.2),
-    new THREE.Vector3(-1.0, -3.72, 45.0),
-    new THREE.Vector3(0.2, -5.05, 58.0),
+    new THREE.Vector3(-0.35, -1.85, 17.8),
+    new THREE.Vector3(0.38, -2.8, 29.8),
+    new THREE.Vector3(-0.25, -4.2, 43.5),
   ], false, "catmullrom", 0.34);
-  const backRidge = new THREE.Mesh(makeTaperedTubeGeometry(backRidgePath, 1.55, 0.28, {
-    segments: 52,
+  const backRidge = new THREE.Mesh(makeTaperedTubeGeometry(backRidgePath, 1.25, 0.42, {
+    segments: 38,
     radialSegments: 10,
-    oval: 0.42,
+    oval: 0.5,
   }), reptileDark);
   backRidge.castShadow = true;
   group.add(backRidge);
   const bellyPath = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0.0, -5.15, 7.0),
-    new THREE.Vector3(-0.9, -5.9, 17.4),
-    new THREE.Vector3(1.16, -6.95, 29.4),
-    new THREE.Vector3(-0.86, -8.1, 42.8),
-    new THREE.Vector3(0.25, -9.55, 58.0),
+    new THREE.Vector3(-0.35, -6.05, 16.6),
+    new THREE.Vector3(0.48, -7.3, 28.2),
+    new THREE.Vector3(-0.18, -8.75, 42.5),
   ], false, "catmullrom", 0.38);
-  const bodyBelly = new THREE.Mesh(makeTaperedTubeGeometry(bellyPath, 1.1, 0.22, {
-    segments: 48,
+  const bodyBelly = new THREE.Mesh(makeTaperedTubeGeometry(bellyPath, 1.45, 0.42, {
+    segments: 36,
     radialSegments: 10,
-    oval: 0.36,
+    oval: 0.5,
   }), bellyMat);
   bodyBelly.castShadow = true;
   group.add(bodyBelly);
@@ -5685,11 +5694,12 @@ function makeLeviathanMesh() {
   group.add(throat);
 
   const head = new THREE.Mesh(makeLeviathanSkullGeometry(), reptileHide);
+  head.scale.set(1.12, 1.04, 1.02);
   head.castShadow = true;
   group.add(head);
 
-  const brow = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.42, 1.15), reptileDark);
-  brow.position.set(0, 3.54, -7.04);
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.34, 0.95), reptileDark);
+  brow.position.set(0, 3.48, -7.14);
   brow.rotation.x = -0.12;
   brow.castShadow = true;
   group.add(brow);
@@ -5732,18 +5742,11 @@ function makeLeviathanMesh() {
     eye.rotation.z = side * -0.1;
     group.add(eye);
 
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.38, 2.65, 7), mats.rock);
-    horn.position.set(side * 1.54, 4.62, -5.52);
-    horn.rotation.x = -0.72;
-    horn.rotation.z = side * 0.38;
-    horn.castShadow = true;
-    group.add(horn);
-    const cheekFin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3.9, 4), darkHide);
-    cheekFin.position.set(side * 3.12, 1.65, -5.72);
-    cheekFin.rotation.z = side * -1.1;
-    cheekFin.rotation.y = side * 0.54;
-    cheekFin.castShadow = true;
-    group.add(cheekFin);
+    const templePlate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 1.45), darkHide);
+    templePlate.position.set(side * 1.88, 4.18, -5.58);
+    templePlate.rotation.set(-0.32, side * 0.22, side * 0.14);
+    templePlate.castShadow = true;
+    group.add(templePlate);
 
     const nostril = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.48), darkHide);
     nostril.position.set(side * 0.54, 2.32, -10.42);
@@ -5766,67 +5769,54 @@ function makeLeviathanMesh() {
       group.add(bottomTooth);
     }
 
-    for (let i = 0; i < 5; i++) {
-      const gill = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.56 - i * 0.035, 0.16), scarMat);
-      gill.position.set(side * 3.45, 2.25 - i * 0.32, -4.9 + i * 0.18);
+    for (let i = 0; i < 3; i++) {
+      const gill = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46 - i * 0.035, 0.14), scarMat);
+      gill.position.set(side * 3.32, 2.16 - i * 0.36, -4.82 + i * 0.2);
       gill.rotation.y = side * 0.86;
       gill.rotation.z = side * 0.14;
       group.add(gill);
     }
   }
 
-  for (let i = 0; i < 12; i++) {
-    const t = i / 11;
-    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.22 + Math.sin(t * Math.PI) * 0.3, 1.25 + Math.sin(t * Math.PI) * 1.25, 6), i % 3 === 0 ? mats.rock : darkHide);
-    crest.position.set(0, 2.7 + t * 2.15, 3.6 - t * 11.2);
+  for (let i = 0; i < 7; i++) {
+    const t = i / 6;
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.24 + Math.sin(t * Math.PI) * 0.28, 1.55 + Math.sin(t * Math.PI) * 1.15, 6), darkHide);
+    crest.position.set(0, 2.62 + t * 2.05, 2.8 - t * 9.2);
     crest.rotation.x = Math.PI - 0.1;
     crest.castShadow = true;
     group.add(crest);
   }
 
-  for (let i = 0; i < 18; i++) {
-    const t = i / 17;
+  for (let i = 0; i < 8; i++) {
+    const t = i / 7;
     const side = i % 2 ? 1 : -1;
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62 - t * 0.25, 0.12, 0.38 + t * 0.18), reptileDark);
-    plate.position.set(side * (0.55 + Math.sin(t * Math.PI) * 1.18), 3.25 + Math.sin(t * Math.PI) * 0.55, -3.6 - t * 6.25);
-    plate.rotation.set(-0.22, side * 0.42, side * 0.18);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5 - t * 0.14, 0.1, 0.42 + t * 0.12), reptileDark);
+    plate.position.set(side * (0.72 + Math.sin(t * Math.PI) * 0.9), 3.18 + Math.sin(t * Math.PI) * 0.35, -3.8 - t * 5.8);
+    plate.rotation.set(-0.16, side * 0.32, side * 0.12);
     plate.castShadow = true;
     group.add(plate);
   }
 
-  for (let i = 0; i < 8; i++) {
-    const slash = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.92 + (i % 3) * 0.24), scarMat);
-    slash.position.set((i % 2 ? 1 : -1) * (0.55 + (i % 4) * 0.38), 3.2 + Math.sin(i) * 0.5, -5.4 - i * 0.38);
+  for (let i = 0; i < 3; i++) {
+    const slash = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.78 + i * 0.12), scarMat);
+    slash.position.set((i % 2 ? 1 : -1) * (0.75 + i * 0.32), 3.0 + Math.sin(i) * 0.28, -5.7 - i * 0.52);
     slash.rotation.set(0.2, (i % 2 ? 0.6 : -0.6), (i % 2 ? 0.45 : -0.45));
     group.add(slash);
   }
 
-  for (let i = 0; i < 22; i++) {
-    const t = i / 21;
+  for (let i = 0; i < 10; i++) {
+    const t = i / 9;
     const p = bodyPath.getPoint(t);
     const spine = new THREE.Mesh(
-      new THREE.ConeGeometry(0.72 - t * 0.44, 2.85 - t * 1.45, 6),
-      i % 4 === 0 ? mats.rock : darkHide
+      new THREE.ConeGeometry(0.92 - t * 0.48, 3.3 - t * 1.55, 6),
+      darkHide
     );
     spine.position.copy(p);
-    spine.position.y += 3.25 - t * 1.65;
+    spine.position.y += 3.75 - t * 1.75;
     spine.rotation.x = Math.PI - 0.22 + Math.sin(t * Math.PI * 3) * 0.1;
     spine.rotation.z = Math.sin(t * Math.PI * 2) * 0.22;
     spine.castShadow = true;
     group.add(spine);
-  }
-
-  for (let side of [-1, 1]) {
-    for (let i = 0; i < 3; i++) {
-      const whiskerPath = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(side * (1.0 + i * 0.25), 1.65 - i * 0.18, -8.2),
-        new THREE.Vector3(side * (2.8 + i * 0.7), 1.2 - i * 0.35, -8.8 - i * 0.2),
-        new THREE.Vector3(side * (4.4 + i * 0.9), 0.35 - i * 0.25, -8.25 + i * 0.22),
-      ]);
-      const whisker = new THREE.Mesh(new THREE.TubeGeometry(whiskerPath, 12, 0.055, 6, false), darkHide);
-      whisker.castShadow = true;
-      group.add(whisker);
-    }
   }
 
   const waterMask = new THREE.Mesh(new THREE.RingGeometry(3.8, 6.8, 36), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
@@ -7654,6 +7644,9 @@ function damageTarget(target, amount, options = {}) {
       state.leviathanGrabbed = false;
       state.fallingOffWorld = false;
       state.fallingTimer = 0;
+      state.fallVelocityY = 0;
+      state.fallDrift.set(0, 0, 0);
+      state.fallSpin.set(0, 0, 0);
       state.viewMode = "ship";
       state.activeBalloonIndex = -1;
       resetCharacterHealth();
@@ -8938,16 +8931,25 @@ function updateShip(dt) {
   updateDocking(dt);
   if (state.fallingOffWorld) {
     state.fallingTimer += dt;
-    state.velocity.set(0, 0, 0);
-    playerShip.position.y -= (4.5 + state.fallingTimer * 8.5) * dt;
-    playerShip.rotation.set(0, state.rotation, 0);
-    if (Math.floor(state.fallingTimer * 6) !== Math.floor((state.fallingTimer - dt) * 6)) {
-      makeSplashEffect(playerShip.position.clone().setY(0));
-    }
+    state.fallVelocityY -= (27 + state.fallingTimer * 8) * dt;
+    const drift = state.fallDrift.clone().multiplyScalar(dt);
+    playerShip.position.add(drift);
+    playerShip.position.y += state.fallVelocityY * dt;
+    state.fallDrift.multiplyScalar(Math.pow(0.985, dt * 60));
+    state.velocity.copy(state.fallDrift);
+    playerShip.rotation.set(
+      Math.sin(state.fallingTimer * 1.6) * 0.22 + state.fallSpin.x * state.fallingTimer,
+      state.rotation + state.fallSpin.y * state.fallingTimer,
+      Math.cos(state.fallingTimer * 1.35) * 0.18 + state.fallSpin.z * state.fallingTimer,
+    );
     state.position.copy(playerShip.position);
-    if (state.fallingTimer > 4.6) {
+    if (state.fallingTimer > 9.2 || playerShip.position.y < -820) {
       state.fallingOffWorld = false;
       state.fallingTimer = 0;
+      state.fallVelocityY = 0;
+      state.fallDrift.set(0, 0, 0);
+      state.fallSpin.set(0, 0, 0);
+      playerShip.rotation.set(0, state.rotation, 0);
       damageTarget(state, maxHp() * 4);
     }
     return;
@@ -8993,18 +8995,14 @@ function updateShip(dt) {
   if (Math.abs(playerShip.position.x) > WATERFALL_LIMIT || Math.abs(playerShip.position.z) > WATERFALL_LIMIT) {
     state.fallingOffWorld = true;
     state.fallingTimer = 0;
-    const overX = Math.abs(playerShip.position.x) - WATERFALL_LIMIT;
-    const overZ = Math.abs(playerShip.position.z) - WATERFALL_LIMIT;
-    if (overX >= overZ) {
-      playerShip.position.x = Math.sign(playerShip.position.x || 1) * (WATERFALL_LIMIT + 2.5);
-      playerShip.position.z = clamp(playerShip.position.z, -WATERFALL_LIMIT, WATERFALL_LIMIT);
-    } else {
-      playerShip.position.z = Math.sign(playerShip.position.z || 1) * (WATERFALL_LIMIT + 2.5);
-      playerShip.position.x = clamp(playerShip.position.x, -WATERFALL_LIMIT, WATERFALL_LIMIT);
-    }
-    state.velocity.set(0, 0, 0);
-    playerShip.rotation.set(0, state.rotation, 0);
-    toast("You crossed the waterfall at the edge of the world.");
+    state.fallVelocityY = -4.5;
+    state.fallSpin.set((Math.random() - 0.5) * 0.26, (Math.random() - 0.5) * 0.18, (Math.random() - 0.5) * 0.32);
+    const outward = playerShip.position.clone().setY(0);
+    if (outward.lengthSq() < 0.01) outward.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
+    outward.normalize();
+    state.fallDrift.copy(state.velocity);
+    if (state.fallDrift.length() < 12) state.fallDrift.add(outward.multiplyScalar(12));
+    makeSplashEffect(playerShip.position.clone().setY(0));
   } else if (!multiplayer.serverWorld && (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT)) summonLeviathan();
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
@@ -9807,6 +9805,18 @@ function updateCamera(dt) {
   if (keys.has("arrowup")) state.cameraPitch = clamp(state.cameraPitch + 0.55 * dt, -0.18, 0.92);
   if (keys.has("arrowdown")) state.cameraPitch = clamp(state.cameraPitch - 0.55 * dt, -0.18, 0.92);
   camera.up.set(0, 1, 0);
+  if (state.fallingOffWorld && playerShip) {
+    if (character) character.visible = false;
+    const target = playerShip.position;
+    const cameraHeight = 16 + clamp(state.cameraPitch, -0.18, 0.92) * 18;
+    const orbitRadius = 38;
+    const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * orbitRadius, cameraHeight, Math.cos(state.cameraYaw) * orbitRadius);
+    const desired = target.clone().add(offset);
+    camera.position.lerp(desired, 0.14);
+    camera.lookAt(target.x, target.y, target.z);
+    labels.forEach((label) => label.lookAt(camera.position));
+    return;
+  }
   if (state.viewMode === "deck" || state.viewMode === "swim") {
     if (character) character.visible = false;
     const swim = state.viewMode === "swim";
@@ -9987,6 +9997,9 @@ function teleportGoldDiggerTo(point, source = "map") {
   state.docking = null;
   state.fallingOffWorld = false;
   state.fallingTimer = 0;
+  state.fallVelocityY = 0;
+  state.fallDrift.set(0, 0, 0);
+  state.fallSpin.set(0, 0, 0);
   state.leviathanGrabbed = false;
   state.activeBalloonIndex = -1;
   state.velocity.set(0, 0, 0);
