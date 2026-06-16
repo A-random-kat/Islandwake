@@ -339,18 +339,18 @@ const islandData = [
   { name: "Bluecap Isle", culture: "Uncharted", x: 184, z: 388, radius: 9, color: 0x62b983, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Driftwood Cay", culture: "Uncharted", x: 442, z: -48, radius: 7, color: 0x88c478, accent: 0xb77b42, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Copper Atoll", culture: "Uncharted", x: -448, z: 178, radius: 8, color: 0x90ba68, accent: 0xd99928, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle A", culture: "Uncharted", x: -72, z: -60, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle B", culture: "Uncharted", x: 52, z: -76, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle C", culture: "Uncharted", x: -10, z: 54, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle D", culture: "Uncharted", x: 82, z: 48, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle E", culture: "Uncharted", x: -116, z: 20, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle F", culture: "Uncharted", x: 134, z: -18, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle G", culture: "Uncharted", x: -246, z: 78, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle H", culture: "Uncharted", x: 242, z: 118, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle I", culture: "Uncharted", x: -156, z: -258, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle J", culture: "Uncharted", x: 154, z: 284, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle K", culture: "Uncharted", x: 318, z: -156, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle L", culture: "Uncharted", x: -324, z: -116, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle A", culture: "Uncharted", x: -116, z: -92, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle B", culture: "Uncharted", x: 86, z: -112, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle C", culture: "Uncharted", x: -44, z: 76, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle D", culture: "Uncharted", x: 122, z: 84, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle E", culture: "Uncharted", x: -156, z: 46, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle F", culture: "Uncharted", x: 186, z: -32, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle G", culture: "Uncharted", x: -282, z: 108, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle H", culture: "Uncharted", x: 284, z: 150, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle I", culture: "Uncharted", x: -196, z: -294, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle J", culture: "Uncharted", x: 190, z: 326, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle K", culture: "Uncharted", x: 358, z: -190, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Unnamed Isle L", culture: "Uncharted", x: -368, z: -150, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
 ].map(spreadIslandData);
 
 const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
@@ -885,6 +885,7 @@ const buildingPieceMap = new Map();
 let buildPreview = null;
 let buildPreviewType = null;
 let lastShopPointerHandledAt = 0;
+let lastInventoryPointerHandledAt = 0;
 const labels = [];
 const ramCooldowns = new Map();
 const SHIP_WATERLINE_Y = -0.42;
@@ -2070,29 +2071,39 @@ function makeIsland(data) {
     const collisionBoxes = [];
     const terrainFeatures = [];
     const walkPlatforms = [];
+    const smallLandY = data.emptyIsland ? 1.26 : 1.58;
+    const lobeHitScale = data.emptyIsland ? 0.84 : 0.92;
     const lobeSpecs = data.lobes || [
       { x: -radius * 0.18, z: -radius * 0.08, rx: radius * 0.58, rz: radius * 0.42, rot: 0.25 },
       { x: radius * 0.22, z: radius * 0.1, rx: radius * 0.42, rz: radius * 0.56, rot: -0.42 },
       { x: -radius * 0.02, z: radius * 0.3, rx: radius * 0.34, rz: radius * 0.26, rot: 0.72 },
     ];
-    const surfaceLobes = lobeSpecs.map((lobe) => ({ ...lobe }));
+    const surfaceLobes = lobeSpecs.map((lobe) => ({
+      ...lobe,
+      rx: lobe.rx * lobeHitScale,
+      rz: lobe.rz * lobeHitScale,
+    }));
     lobeSpecs.forEach((lobe, index) => {
+      const sandHeight = data.emptyIsland ? 0.82 : 1.0;
+      const grassHeight = data.emptyIsland ? 0.42 : 0.52;
+      const sandY = (data.emptyIsland ? 0.45 : 0.58) + index * 0.03;
+      const grassY = sandY + sandHeight * 0.5 + grassHeight * 0.5 - 0.02;
       const shallow = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.07, 12), mats.shallows);
       shallow.scale.set(lobe.rx + 5, 1, lobe.rz + 5);
       shallow.position.set(lobe.x, 0.08, lobe.z);
       shallow.rotation.y = lobe.rot;
       shallow.receiveShadow = true;
       group.add(shallow);
-      const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1.35, 10), mats.sand);
+      const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, sandHeight, 10), mats.sand);
       sand.scale.set(lobe.rx, 1, lobe.rz);
-      sand.position.set(lobe.x, 0.78 + index * 0.04, lobe.z);
+      sand.position.set(lobe.x, sandY, lobe.z);
       sand.rotation.y = lobe.rot;
       sand.castShadow = true;
       sand.receiveShadow = true;
       group.add(sand);
-      const grass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.65, 9), mat(index % 2 ? data.color : new THREE.Color(data.color).multiplyScalar(0.88).getHex()));
+      const grass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, grassHeight, 9), mat(index % 2 ? data.color : new THREE.Color(data.color).multiplyScalar(0.88).getHex()));
       grass.scale.set(lobe.rx * 0.72, 1, lobe.rz * 0.72);
-      grass.position.set(lobe.x, 1.72 + index * 0.04, lobe.z);
+      grass.position.set(lobe.x, grassY, lobe.z);
       grass.rotation.y = lobe.rot + 0.18;
       grass.castShadow = true;
       grass.receiveShadow = true;
@@ -2107,7 +2118,7 @@ function makeIsland(data) {
           d: lobe.rz * 1.78,
           rot: lobe.rot,
           pad: 0,
-          maxY: 0.35,
+          maxY: 0.24,
         });
       });
       const label = makeLabel(islandName(data));
@@ -2120,7 +2131,7 @@ function makeIsland(data) {
         ...data,
         group,
         radius,
-        landY: 1.82,
+        landY: smallLandY,
         obstacles,
         collisionBoxes,
         terrainFeatures,
@@ -2135,16 +2146,16 @@ function makeIsland(data) {
     const hillZ = -radius * 0.08;
     const hillR = radius * 0.22;
     const hill = new THREE.Mesh(new THREE.ConeGeometry(hillR, radius * 0.28, 7), mats.rock);
-    hill.position.set(hillX, 2.25 + radius * 0.14, hillZ);
+    hill.position.set(hillX, smallLandY + radius * 0.1, hillZ);
     hill.scale.z = 0.72;
     hill.rotation.y = 0.4;
     hill.castShadow = true;
     group.add(hill);
-    terrainFeatures.push({ x: data.x + hillX, z: data.z + hillZ, r: hillR, h: radius * 0.26 });
+    terrainFeatures.push({ x: data.x + hillX, z: data.z + hillZ, r: hillR, h: radius * 0.2 });
     for (let i = 0; i < 10; i++) {
       const angle = i * 1.65 + Math.random() * 0.25;
       const tree = makeIslandTree(i % 2 ? "rocky" : "atoll");
-      tree.position.set(Math.cos(angle) * radius * (0.24 + Math.random() * 0.18), 1.85, Math.sin(angle) * radius * (0.2 + Math.random() * 0.16));
+      tree.position.set(Math.cos(angle) * radius * (0.24 + Math.random() * 0.18), smallLandY + 0.12, Math.sin(angle) * radius * (0.2 + Math.random() * 0.16));
       if (Math.hypot(tree.position.x - hillX, tree.position.z - hillZ) < hillR + 3.2) continue;
       tree.scale.setScalar(0.55 + Math.random() * 0.32);
       group.add(tree);
@@ -2156,7 +2167,7 @@ function makeIsland(data) {
       rock.position.set((Math.random() - 0.5) * radius * 1.2, 2.05, (Math.random() - 0.5) * radius * 1.05);
       rock.rotation.set(Math.random(), Math.random(), Math.random());
       rock.scale.set(0.8 + Math.random() * 0.8, 0.45 + Math.random() * 0.65, 0.8 + Math.random() * 0.8);
-      rock.position.y = 2.12 + rockSize * rock.scale.y * 0.46;
+      rock.position.y = smallLandY + 0.25 + rockSize * rock.scale.y * 0.42;
       rock.castShadow = true;
       group.add(rock);
       obstacles.push({ x: data.x + rock.position.x, z: data.z + rock.position.z, r: 0.9 * Math.max(rock.scale.x, rock.scale.z) });
@@ -2177,7 +2188,7 @@ function makeIsland(data) {
       ...data,
       group,
       radius,
-      landY: 2.15,
+      landY: smallLandY,
       obstacles,
       collisionBoxes,
       terrainFeatures,
@@ -4315,7 +4326,7 @@ function updateBuildPreview() {
     return;
   }
   const placement = buildPlacementForSelected();
-  if (!placement.point || !placement.island) {
+  if (!placement.point || !placement.island?.unnamed || !placement.island?.claimable) {
     hideBuildPreview();
     return;
   }
@@ -4617,17 +4628,24 @@ function landingPointForShip(island, shipPosition) {
   const center = island.group.position;
   const baseAngle = Math.atan2(shipPosition.x - center.x, shipPosition.z - center.z);
   const offsets = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, Math.PI];
+  const distances = island.surfaceLobes?.length
+    ? [0.62, 0.54, 0.46, 0.72, 0.36, 0.28].map((fraction) => island.radius * fraction)
+    : [island.radius - 4.1];
   for (const offset of offsets) {
     const angle = baseAngle + offset;
-    const point = new THREE.Vector3(
-      center.x + Math.sin(angle) * (island.radius - 4.1),
-      0,
-      center.z + Math.cos(angle) * (island.radius - 4.1),
-    );
-    const y = walkableGroundY(island, point);
-    if (y !== null) return { point, y };
+    for (const distance of distances) {
+      const point = new THREE.Vector3(
+        center.x + Math.sin(angle) * distance,
+        0,
+        center.z + Math.cos(angle) * distance,
+      );
+      const y = walkableGroundY(island, point);
+      if (y !== null) return { point, y };
+    }
   }
-  const fallback = island.dock.clone().add(new THREE.Vector3(0, 0, -4));
+  const fallback = island.surfaceLobes?.length
+    ? center.clone()
+    : island.dock.clone().add(new THREE.Vector3(0, 0, -4));
   return { point: fallback, y: islandGroundY(island, fallback) || island.landY };
 }
 
@@ -8591,14 +8609,22 @@ ui.openLeaderboard?.addEventListener("click", () => {
   renderLeaderboard();
 });
 ui.closeInventory?.addEventListener("click", () => setInventoryOpen(false));
-ui.inventoryBody?.addEventListener("click", (event) => {
+function handleInventoryBodyAction(event) {
   const button = event.target.closest("[data-build-select]");
   if (!button) return;
+  const now = performance.now();
+  if (event.type === "click" && now - lastInventoryPointerHandledAt < 450) return;
+  if (event.type === "pointerdown") lastInventoryPointerHandledAt = now;
+  event.preventDefault();
+  event.stopPropagation();
+  if (button.disabled) return;
   const type = button.dataset.buildSelect;
   if (!BUILD_ITEMS[type] || buildInventoryCount(type) <= 0) return;
   state.selectedBuildItem = state.selectedBuildItem === type ? null : type;
   renderInventory();
-});
+}
+ui.inventoryBody?.addEventListener("pointerdown", handleInventoryBodyAction);
+ui.inventoryBody?.addEventListener("click", handleInventoryBodyAction);
 ui.snapBuild?.addEventListener("change", () => {
   state.buildSnap = Boolean(ui.snapBuild.checked);
 });

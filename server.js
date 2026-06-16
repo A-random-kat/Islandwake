@@ -95,18 +95,18 @@ const islandCenters = [
   { x: 6, z: -326, radius: 6 },
   { x: -286, z: 268, radius: 9 },
   { x: 312, z: -72, radius: 7 },
-  { name: "Unnamed Isle A", x: -72, z: -60, radius: 5.6, claimable: true },
-  { name: "Unnamed Isle B", x: 52, z: -76, radius: 5.2, claimable: true },
-  { name: "Unnamed Isle C", x: -10, z: 54, radius: 4.8, claimable: true },
-  { name: "Unnamed Isle D", x: 82, z: 48, radius: 5.4, claimable: true },
-  { name: "Unnamed Isle E", x: -116, z: 20, radius: 5.1, claimable: true },
-  { name: "Unnamed Isle F", x: 134, z: -18, radius: 4.7, claimable: true },
-  { name: "Unnamed Isle G", x: -246, z: 78, radius: 5.8, claimable: true },
-  { name: "Unnamed Isle H", x: 242, z: 118, radius: 5.5, claimable: true },
-  { name: "Unnamed Isle I", x: -156, z: -258, radius: 5.3, claimable: true },
-  { name: "Unnamed Isle J", x: 154, z: 284, radius: 5.0, claimable: true },
-  { name: "Unnamed Isle K", x: 318, z: -156, radius: 4.9, claimable: true },
-  { name: "Unnamed Isle L", x: -324, z: -116, radius: 5.4, claimable: true },
+  { name: "Unnamed Isle A", x: -116, z: -92, radius: 5.6, claimable: true },
+  { name: "Unnamed Isle B", x: 86, z: -112, radius: 5.2, claimable: true },
+  { name: "Unnamed Isle C", x: -44, z: 76, radius: 4.8, claimable: true },
+  { name: "Unnamed Isle D", x: 122, z: 84, radius: 5.4, claimable: true },
+  { name: "Unnamed Isle E", x: -156, z: 46, radius: 5.1, claimable: true },
+  { name: "Unnamed Isle F", x: 186, z: -32, radius: 4.7, claimable: true },
+  { name: "Unnamed Isle G", x: -282, z: 108, radius: 5.8, claimable: true },
+  { name: "Unnamed Isle H", x: 284, z: 150, radius: 5.5, claimable: true },
+  { name: "Unnamed Isle I", x: -196, z: -294, radius: 5.3, claimable: true },
+  { name: "Unnamed Isle J", x: 190, z: 326, radius: 5.0, claimable: true },
+  { name: "Unnamed Isle K", x: 358, z: -190, radius: 4.9, claimable: true },
+  { name: "Unnamed Isle L", x: -368, z: -150, radius: 5.4, claimable: true },
 ].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 4 }));
 
 const whaleZonePortAzure = islandCenters[0] || { z: -24 };
@@ -193,9 +193,10 @@ function claimIslandLobes(radius) {
 }
 
 function pointInsideLobedIsland(island, x, z, margin = 0) {
+  const hitScale = island.claimable ? 0.84 : 0.92;
   return claimIslandLobes(island.radius).some((lobe) => {
-    const rx = Math.max(0.2, lobe.rx - margin);
-    const rz = Math.max(0.2, lobe.rz - margin);
+    const rx = Math.max(0.2, lobe.rx * hitScale - margin);
+    const rz = Math.max(0.2, lobe.rz * hitScale - margin);
     const dx = x - island.x - lobe.x;
     const dz = z - island.z - lobe.z;
     const cos = Math.cos(-lobe.rot);
