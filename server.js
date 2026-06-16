@@ -2736,7 +2736,7 @@ function handleMessage(socket, text) {
     if (pieceData.type !== "flag" && !ownsIsland) return buildReject(socket, "You can only build on islands you claimed.");
     const x = Number(pieceData.x);
     const z = Number(pieceData.z);
-    if (!pointInsideIsland(island, x, z, 4)) return buildReject(socket, "Build on the top of the island, away from the edge.");
+    if (!pointInsideIsland(island, x, z, 0.2)) return buildReject(socket, "Build on the top of the island, away from the edge.");
     if (buildings.length > 420) buildings.shift();
     let newClaim = null;
     if (pieceData.type === "flag") {

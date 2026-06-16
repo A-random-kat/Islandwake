@@ -153,7 +153,7 @@ const I18N = {
       cargo: "Cargo", noTarget: "No target", map: "Map", wind: "Wind", toggleWindMarkers: "Toggle wind markers", openMinimap: "Open minimap", gold: "Gold", openLeaderboard: "Open leaderboard", close: "Close", harborMarket: "Harbor Market",
       goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", buildTab: "Build", upgradesTab: "Upgrades", inventory: "Inventory", snapBuild: "Snap building pieces", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
       lvlInfinite: "Lvl. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
-      dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop",
+      dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop", pressSailBuild: "Press <b>C</b> to set sail or <b>R</b> to rotate buildings",
       unchartedShop: "{island} is uncharted. There are no shops, shipwrights, or trade goods here.", marketIntro: "{culture} market | Hold {hold}/{capacity}{blubber}. Buy low, then sell where demand is higher.", blubberInHold: " | Blubber {count} in hold",
       buy: "Buy", sell: "Sell", buyPrice: "Buy {price}g", sellPrice: "Sell {price}g", owned: "Owned {count}.", blubberTrade: "Owned {owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.",
       sellHere: "Sell here for {price}g.", bestKnownResale: "Best known resale is {price}g at {island}.", betterSellHere: "This is one of the better places to sell it.", possibleProfit: "{profit}g possible profit if you haul it there.", weakTradeRoute: "Buying here is not a strong trade route right now.",
@@ -600,6 +600,7 @@ const state = {
   selectedBuildItem: null,
   inventoryOpen: false,
   buildSnap: true,
+  buildRotationOffset: 0,
   docking: null,
   fallingOffWorld: false,
   fallingTimer: 0,
@@ -4261,7 +4262,7 @@ function snapBuildByFootprints(island, point, type, rotation) {
                 z: point.z + existingPoint.z - candidatePoint.z,
               };
               const moved = Math.hypot(snapped.x - point.x, snapped.z - point.z);
-              if (moved > BUILD_GRID_SIZE * 0.74) return;
+              if (moved > BUILD_GRID_SIZE * 0.32) return;
               const snappedFootprint = {
                 ...candidateFootprint,
                 x: candidateFootprint.x + snapped.x - point.x,
@@ -4300,10 +4301,6 @@ function snapBuildPlacement(island, point, type, rotation) {
     result.rotation = footprintSnap.rotation;
     return result;
   }
-  if (type !== "table") {
-    point.x = Math.round(point.x / (BUILD_GRID_SIZE * 0.5)) * (BUILD_GRID_SIZE * 0.5);
-    point.z = Math.round(point.z / (BUILD_GRID_SIZE * 0.5)) * (BUILD_GRID_SIZE * 0.5);
-  }
   return result;
 }
 
@@ -4319,7 +4316,17 @@ function cardinalBuildLookRotation() {
 
 function buildRotationForType(type) {
   if (type === "flag") return 0;
-  return cardinalBuildLookRotation();
+  return cardinalBuildLookRotation() + state.buildRotationOffset;
+}
+
+function rotateSelectedBuildItem() {
+  if (!state.selectedBuildItem) {
+    toast("Select a building piece first.");
+    return;
+  }
+  state.buildRotationOffset = (state.buildRotationOffset + Math.PI / 2) % (Math.PI * 2);
+  updateBuildPreview();
+  toast("Building rotated.");
 }
 
 function renderInventory() {
@@ -4371,7 +4378,7 @@ function buildAimPointForIsland(island, type) {
   if (buildingAim) return buildingAim;
   const hits = raycaster
     .intersectObject(island.group, true)
-    .filter((hit) => hit.distance <= BUILD_PLACE_MAX_DISTANCE && islandSurfaceContains(island, hit.point, BUILD_EDGE_MARGIN * 0.35));
+    .filter((hit) => hit.distance <= BUILD_PLACE_MAX_DISTANCE && islandSurfaceContains(island, hit.point, 0.02));
   for (const hit of hits) {
     const groundY = islandGroundY(island, hit.point);
     if (groundY === null) continue;
@@ -4383,7 +4390,7 @@ function buildAimPointForIsland(island, type) {
   const planePoint = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(topPlane, planePoint)) {
     const groundY = islandGroundY(island, planePoint);
-    if (groundY !== null && islandSurfaceContains(island, planePoint, BUILD_EDGE_MARGIN * 0.35)) {
+    if (groundY !== null && islandSurfaceContains(island, planePoint, 0.02)) {
       return { point: new THREE.Vector3(planePoint.x, groundY, planePoint.z) };
     }
   }
@@ -4412,29 +4419,11 @@ function buildPlacementFootprints(type, point, rotation) {
 
 function buildPlacementValid(island, type, point, rotation) {
   if (!Number.isFinite(point.x) || !Number.isFinite(point.z) || !Number.isFinite(point.y)) return false;
-  if (!islandSurfaceContains(island, point, BUILD_EDGE_MARGIN * 0.25)) return false;
+  if (!islandSurfaceContains(island, point, 0.02)) return false;
   const surfaceY = buildPlacementSurfaceYAt(island, point, type, rotation);
   if (surfaceY === null || Math.abs(point.y - surfaceY) > 0.72) return false;
-  const footprints = buildPlacementFootprints(type, point, rotation);
-  return footprints.every((footprint) => {
-    const samples = [
-      { x: footprint.x, z: footprint.z },
-      { x: footprint.x + Math.cos(footprint.rot) * footprint.w * 0.42, z: footprint.z - Math.sin(footprint.rot) * footprint.w * 0.42 },
-      { x: footprint.x - Math.cos(footprint.rot) * footprint.w * 0.42, z: footprint.z + Math.sin(footprint.rot) * footprint.w * 0.42 },
-      { x: footprint.x + Math.sin(footprint.rot) * footprint.d * 0.42, z: footprint.z + Math.cos(footprint.rot) * footprint.d * 0.42 },
-      { x: footprint.x - Math.sin(footprint.rot) * footprint.d * 0.42, z: footprint.z - Math.cos(footprint.rot) * footprint.d * 0.42 },
-    ];
-    return samples.every((sample) => {
-      const samplePoint = new THREE.Vector3(sample.x, point.y, sample.z);
-      if (type !== "roof") {
-        const sampleY = buildPlacementSurfaceYAt(island, samplePoint, type, rotation);
-        if (sampleY === null || Math.abs(sampleY - point.y) > 1.15) return false;
-      }
-      if (!islandSurfaceContains(island, samplePoint, 0.55)) return false;
-      if (pointBlockedOnIsland(island, samplePoint, { ignoreSupportForType: type })) return false;
-      return true;
-    });
-  });
+  if (pointBlockedOnIsland(island, point, { ignoreSupportForType: type })) return false;
+  return true;
 }
 
 function buildPlacementForSelected() {
@@ -4448,7 +4437,7 @@ function buildPlacementForSelected() {
   const aimed = buildAimPointForIsland(island, type);
   if (!aimed) return { type, island, valid: false, reason: "aim" };
   const point = aimed.point.clone();
-  if (!islandSurfaceContains(island, point, 0.2)) return { type, island, point, valid: false, reason: "surface" };
+  if (!islandSurfaceContains(island, point, 0.02)) return { type, island, point, valid: false, reason: "surface" };
   let rotation = buildRotationForType(type);
   const snapped = snapBuildPlacement(island, point, type, rotation);
   rotation = snapped.rotation;
@@ -8913,6 +8902,11 @@ addEventListener("keydown", (event) => {
   }
   if ((key === "r" || code === "keyr") && state.mode === "land") {
     event.preventDefault();
+    const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
+    if (island?.claimable || island?.unnamed) {
+      rotateSelectedBuildItem();
+      return;
+    }
     openIslandShop();
     return;
   }
@@ -11015,6 +11009,9 @@ function updateHud() {
   const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
   ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${goodName(name)} x${count}</span>`).join("") : `<span>${t("emptyHold")}</span>`;
   const island = currentIsland();
+  const landIsland = state.mode === "land"
+    ? islands.find((item) => item.name === state.dockedAt) || island
+    : island;
   const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land");
   ui.dockPrompt.classList.toggle("hidden", !showPrompt);
   if (showPrompt) {
@@ -11022,7 +11019,9 @@ function updateHud() {
       ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
       : state.mode === "ship"
       ? t("pressDock", { island: islandName(island) })
-      : t("pressSailShop");
+      : landIsland?.claimable || landIsland?.unnamed
+        ? t("pressSailBuild")
+        : t("pressSailShop");
   }
   updateSpyPanel();
   updateAmmoHotbar();
