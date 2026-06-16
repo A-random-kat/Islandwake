@@ -95,18 +95,18 @@ const islandCenters = [
   { x: 6, z: -326, radius: 6 },
   { x: -286, z: 268, radius: 9 },
   { x: 312, z: -72, radius: 7 },
-  { name: "Unnamed Isle A", x: -116, z: -92, radius: 5.6, claimable: true },
-  { name: "Unnamed Isle B", x: 86, z: -112, radius: 5.2, claimable: true },
-  { name: "Unnamed Isle C", x: -44, z: 76, radius: 4.8, claimable: true },
-  { name: "Unnamed Isle D", x: 122, z: 84, radius: 5.4, claimable: true },
-  { name: "Unnamed Isle E", x: -156, z: 46, radius: 5.1, claimable: true },
-  { name: "Unnamed Isle F", x: 186, z: -32, radius: 4.7, claimable: true },
-  { name: "Unnamed Isle G", x: -282, z: 108, radius: 5.8, claimable: true },
-  { name: "Unnamed Isle H", x: 284, z: 150, radius: 5.5, claimable: true },
-  { name: "Unnamed Isle I", x: -196, z: -294, radius: 5.3, claimable: true },
-  { name: "Unnamed Isle J", x: 190, z: 326, radius: 5.0, claimable: true },
-  { name: "Unnamed Isle K", x: 358, z: -190, radius: 4.9, claimable: true },
-  { name: "Unnamed Isle L", x: -368, z: -150, radius: 5.4, claimable: true },
+  { name: "Amber Shoal", x: -116, z: -92, radius: 5.6 },
+  { name: "Fernhook Islet", x: 86, z: -112, radius: 5.2 },
+  { name: "Morrow Rock", x: -44, z: 76, radius: 4.8 },
+  { name: "Clearwater Key", x: 122, z: 84, radius: 5.4 },
+  { name: "Lowtide Holm", x: -156, z: 46, radius: 5.1 },
+  { name: "Cinder Spit", x: 186, z: -32, radius: 4.7 },
+  { name: "Driftmark Cay", x: -282, z: 108, radius: 5.8 },
+  { name: "Northwind Cay", x: 284, z: 150, radius: 5.5 },
+  { name: "Coralhook Isle", x: -196, z: -294, radius: 5.3 },
+  { name: "Redcap Shoal", x: 190, z: 326, radius: 5.0 },
+  { name: "Seabriar Rock", x: 358, z: -190, radius: 4.9 },
+  { name: "Starling Cay", x: -368, z: -150, radius: 5.4 },
 ].map(spreadIslandCenter).map((island) => ({ ...island, radius: island.radius * 4 }));
 
 const whaleZonePortAzure = islandCenters[0] || { z: -24 };
@@ -2084,8 +2084,8 @@ function worldSnapshot() {
     dayLengthSeconds,
     nightLengthSeconds,
     dayCycleSeconds,
-    islandClaims: [...islandClaims.values()],
-    buildings,
+    islandClaims: [],
+    buildings: [],
     leviathan: leviathanSnapshot(),
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
@@ -2567,7 +2567,6 @@ server.on("upgrade", (req, socket) => {
   socket.pending = Buffer.alloc(0);
   clients.set(socket.id, socket);
   send(socket, { type: "welcome", id: socket.id });
-  sendBuildInventory(socket);
   send(socket, worldSnapshot());
   socket.on("data", (buffer) => readFrames(socket, buffer));
   socket.on("close", () => leave(socket));
@@ -2577,25 +2576,10 @@ server.on("upgrade", (req, socket) => {
 function leave(socket) {
   if (!clients.has(socket.id)) return;
   clients.delete(socket.id);
-  buildInventories.delete(socket.id);
-  let changedWorld = false;
-  for (const [island, claim] of islandClaims) {
-    if (claim.owner === socket.id) {
-      islandClaims.delete(island);
-      changedWorld = true;
-    }
-  }
-  for (let i = buildings.length - 1; i >= 0; i--) {
-    if (buildings[i].owner === socket.id) {
-      buildings.splice(i, 1);
-      changedWorld = true;
-    }
-  }
   for (const bot of bots) {
     if (bot.targetPlayer === socket.id) bot.targetPlayer = null;
   }
   broadcast({ type: "leave", id: socket.id }, socket);
-  if (changedWorld) broadcast(worldSnapshot());
 }
 
 function readFrames(socket, chunk) {
@@ -2679,7 +2663,6 @@ function handleMessage(socket, text) {
         if (other !== socket && other.player) send(socket, { type: "state", player: other.player });
       }
       send(socket, worldSnapshot());
-      sendBuildInventory(socket);
     }
   }
   if (message.type === "shot") {
@@ -2692,6 +2675,15 @@ function handleMessage(socket, text) {
         sentAt: Date.now(),
       },
     }, socket);
+  }
+  if (
+    message.type === "buyBuild"
+    || message.type === "clearBuildInventory"
+    || message.type === "placeBuilding"
+    || message.type === "removeBuilding"
+    || message.type === "claimIsland"
+  ) {
+    return;
   }
   if (message.type === "buyBuild") {
     const itemType = message.item || message.typeId || message.buildType;

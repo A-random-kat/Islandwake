@@ -121,6 +121,8 @@ const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONB
 const BUILD_GRID_SIZE = 3.2;
 const BUILD_FLOOR_THICKNESS = 0.04;
 const BUILD_FLOOR_SURFACE_Y = BUILD_FLOOR_THICKNESS;
+const BUILD_WALL_DEPTH = 0.34;
+const BUILD_WALL_CAP_DEPTH = BUILD_WALL_DEPTH;
 const BUILD_PLACE_MAX_DISTANCE = 58;
 const BUILD_EDGE_MARGIN = 2.4;
 const BUILD_ITEMS = {
@@ -341,18 +343,18 @@ const islandData = [
   { name: "Bluecap Isle", culture: "Uncharted", x: 184, z: 388, radius: 9, color: 0x62b983, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Driftwood Cay", culture: "Uncharted", x: 442, z: -48, radius: 7, color: 0x88c478, accent: 0xb77b42, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Copper Atoll", culture: "Uncharted", x: -448, z: 178, radius: 8, color: 0x90ba68, accent: 0xd99928, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle A", culture: "Uncharted", x: -116, z: -92, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle B", culture: "Uncharted", x: 86, z: -112, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle C", culture: "Uncharted", x: -44, z: 76, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle D", culture: "Uncharted", x: 122, z: 84, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle E", culture: "Uncharted", x: -156, z: 46, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle F", culture: "Uncharted", x: 186, z: -32, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle G", culture: "Uncharted", x: -282, z: 108, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle H", culture: "Uncharted", x: 284, z: 150, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle I", culture: "Uncharted", x: -196, z: -294, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle J", culture: "Uncharted", x: 190, z: 326, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle K", culture: "Uncharted", x: 358, z: -190, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
-  { name: "Unnamed Isle L", culture: "Uncharted", x: -368, z: -150, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, unnamed: true, claimable: true, emptyIsland: true, shipMarket: [], goods: {} },
+  { name: "Amber Shoal", culture: "Uncharted", x: -116, z: -92, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Fernhook Islet", culture: "Uncharted", x: 86, z: -112, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Morrow Rock", culture: "Uncharted", x: -44, z: 76, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Clearwater Key", culture: "Uncharted", x: 122, z: 84, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Lowtide Holm", culture: "Uncharted", x: -156, z: 46, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Cinder Spit", culture: "Uncharted", x: 186, z: -32, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Driftmark Cay", culture: "Uncharted", x: -282, z: 108, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Northwind Cay", culture: "Uncharted", x: 284, z: 150, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Coralhook Isle", culture: "Uncharted", x: -196, z: -294, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Redcap Shoal", culture: "Uncharted", x: 190, z: 326, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Seabriar Rock", culture: "Uncharted", x: 358, z: -190, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
+  { name: "Starling Cay", culture: "Uncharted", x: -368, z: -150, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
 ].map(spreadIslandData);
 
 const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
@@ -3912,35 +3914,35 @@ function makeBuildingMesh(piece) {
     floor.position.y = BUILD_FLOOR_THICKNESS * 0.5;
     addBuildingMeshPart(group, floor);
   } else if (type === "wall") {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, BUILD_WALL_DEPTH), wood);
     wall.position.y = 1.18;
     addBuildingMeshPart(group, wall);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE + 0.18, 0.16, 0.48), darkWood);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_WALL_CAP_DEPTH), darkWood);
     cap.position.y = 2.42;
     addBuildingMeshPart(group, cap);
   } else if (type === "cornerWall") {
-    const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
+    const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, BUILD_WALL_DEPTH), wood);
     wallA.position.set(BUILD_GRID_SIZE * 0.25, 1.18, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, wallA);
-    const capA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE + 0.18, 0.16, 0.48), darkWood);
+    const capA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_WALL_CAP_DEPTH), darkWood);
     capA.position.set(BUILD_GRID_SIZE * 0.25, 2.42, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, capA);
-    const wallB = new THREE.Mesh(new THREE.BoxGeometry(0.34, 2.35, BUILD_GRID_SIZE), wood);
+    const wallB = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_DEPTH, 2.35, BUILD_GRID_SIZE), wood);
     wallB.position.set(-BUILD_GRID_SIZE * 0.25, 1.18, BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, wallB);
-    const capB = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.16, BUILD_GRID_SIZE + 0.18), darkWood);
+    const capB = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_CAP_DEPTH, 0.16, BUILD_GRID_SIZE), darkWood);
     capB.position.set(-BUILD_GRID_SIZE * 0.25, 2.42, BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, capB);
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.48, 2.55, 0.48), darkWood);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_CAP_DEPTH, 2.55, BUILD_WALL_CAP_DEPTH), darkWood);
     post.position.set(-BUILD_GRID_SIZE * 0.25, 1.28, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, post);
   } else if (type === "door") {
     for (const x of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, 0.34), wood);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, BUILD_WALL_DEPTH), wood);
       post.position.set(x * 1.28, 1.18, 0);
       addBuildingMeshPart(group, post);
     }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.42, 0.42), darkWood);
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.42, BUILD_WALL_CAP_DEPTH), darkWood);
     lintel.position.y = 2.28;
     addBuildingMeshPart(group, lintel);
   } else if (type === "roof") {
@@ -4076,12 +4078,12 @@ function buildingSupportRects(piece, placementType) {
     return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.06, d: BUILD_GRID_SIZE * 1.06, rot }];
   }
   if (piece.type === "wall" || piece.type === "door") {
-    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE + 0.46, d: 0.92, rot }];
+    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE, d: BUILD_WALL_CAP_DEPTH, rot }];
   }
   if (piece.type === "cornerWall") {
     return [
-      { x: piece.x + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE + 0.46, d: 0.92, rot },
-      { x: piece.x - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, w: 0.92, d: BUILD_GRID_SIZE + 0.46, rot },
+      { x: piece.x + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_CAP_DEPTH, rot },
+      { x: piece.x - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_CAP_DEPTH, d: BUILD_GRID_SIZE, rot },
     ];
   }
   return [];
@@ -4124,17 +4126,17 @@ function buildPlacementSurfaceYAt(island, point, type, rotation) {
 
 function buildingCollisionBoxes(piece) {
   const base = { x: piece.x, z: piece.z, rot: piece.rotation || 0, minY: piece.y - 0.15, maxY: piece.y + 2.7 };
-  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.34 }];
+  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH }];
   if (piece.type === "cornerWall") {
     return [
-      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.34 },
-      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.34, d: BUILD_GRID_SIZE },
+      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH },
+      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE },
     ];
   }
   if (piece.type === "door") {
     return [
-      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: 0.34 },
-      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: 0.34 },
+      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
+      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
     ];
   }
   if (piece.type === "table") return [{ ...base, w: 2.25, d: 1.25, maxY: piece.y + 1.1 }];
@@ -4255,7 +4257,7 @@ function snapBuildByFootprints(island, point, type, rotation) {
     nearestPiece = piece;
     nearestDistance = distance;
   });
-  if (!nearestPiece || nearestDistance > BUILD_GRID_SIZE * 2.4) return null;
+  if (!nearestPiece) return null;
   [nearestPiece].forEach((piece) => {
     const existingFootprints = buildPlacementFootprints(piece.type, piece, piece.rotation || 0);
     if (!existingFootprints.length) return;
@@ -4272,14 +4274,15 @@ function snapBuildByFootprints(island, point, type, rotation) {
                 z: point.z + existingPoint.z - candidatePoint.z,
               };
               const moved = Math.hypot(snapped.x - point.x, snapped.z - point.z);
-              if (moved > BUILD_GRID_SIZE * 0.32) return;
               const snappedFootprint = {
                 ...candidateFootprint,
                 x: candidateFootprint.x + snapped.x - point.x,
                 z: candidateFootprint.z + snapped.z - point.z,
               };
               if (buildFootprintsOverlap(snappedFootprint, existingFootprint)) return;
-              const kindBonus = existingPoint.kind === candidatePoint.kind ? 0 : 0.08;
+              const edgeMatch = existingPoint.kind === "edge" && candidatePoint.kind === "edge";
+              const vertexMatch = existingPoint.kind === "vertex" && candidatePoint.kind === "vertex";
+              const kindBonus = edgeMatch ? 0 : vertexMatch ? 0.42 : 0.72;
               const score = moved + kindBonus;
               if (best && score >= best.score) return;
               best = { point: snapped, rotation: candidateRotation, score };
@@ -4302,7 +4305,8 @@ function snapBuildPlacement(island, point, type, rotation) {
     point.z = stack.z;
     result.rotation = stack.rotation;
     result.stack = stack;
-    return result;
+    if (type === "roof") return result;
+    rotation = result.rotation;
   }
   const footprintSnap = snapBuildByFootprints(island, point, type, rotation);
   if (footprintSnap) {
@@ -4409,17 +4413,17 @@ function buildAimPointForIsland(island, type) {
 
 function buildPlacementFootprints(type, point, rotation) {
   const base = { x: point.x, z: point.z, rot: rotation || 0 };
-  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.42 }];
+  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH }];
   if (type === "cornerWall") {
     return [
-      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.42 },
-      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.42, d: BUILD_GRID_SIZE },
+      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH },
+      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE },
     ];
   }
   if (type === "door") {
     return [
-      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
-      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
+      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
+      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
     ];
   }
   if (type === "table") return [{ ...base, w: 2.35, d: 1.35 }];
@@ -8918,22 +8922,7 @@ addEventListener("keydown", (event) => {
   }
   if ((key === "r" || code === "keyr") && state.mode === "land") {
     event.preventDefault();
-    const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
-    if (island?.claimable || island?.unnamed) {
-      rotateSelectedBuildItem();
-      return;
-    }
     openIslandShop();
-    return;
-  }
-  if (key === "i" || code === "keyi") {
-    event.preventDefault();
-    setInventoryOpen(!state.inventoryOpen);
-    return;
-  }
-  if (key === "z" || code === "keyz") {
-    event.preventDefault();
-    placeSelectedBuildItem();
     return;
   }
   if ((key === " " || key === "spacebar") && state.mode === "land" && state.grounded) {
@@ -8976,11 +8965,6 @@ addEventListener("keydown", (event) => {
     state.fishing = null;
     state.rodCooldown = 0.35;
     toast("Line retracted.");
-    return;
-  }
-  if (key === "x") {
-    event.preventDefault();
-    removeLookedAtBuilding();
     return;
   }
   if (key === "n") {
@@ -9455,11 +9439,6 @@ function renderShop() {
       const description = ammoDescription(ammo);
       return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button></div></div>`;
     }).join("") + balloonRow;
-  } else if (state.shopTab === "build") {
-    ui.shopBody.innerHTML = `<p class="stats">${t("buildShopIntro")}</p>` + BUILD_ITEM_ORDER.map((id) => {
-      const item = BUILD_ITEMS[id];
-      return `<div class="row build-row"><div><h3>${item.name} <span class="price">${t("each", { price: item.price })}</span></h3><p>${t("itemCount", { count: buildInventoryCount(id) })}. ${item.description}</p></div><div class="actions"><button data-buy-build="${id}" data-amount="1">${t("buy")}</button><button data-buy-build="${id}" data-amount="5">${t("buyFive")}</button></div></div>`;
-    }).join("");
   } else {
     const ups = [
       ["damage", t("cannonDamage"), upgradeDescription("damage")],
@@ -9536,22 +9515,6 @@ function handleShopBodyAction(event) {
     state.gold -= BALLOON_COST;
     state.balloonStock++;
     toast("Hot air balloon purchased.");
-  }
-  if (button.dataset.buyBuild) {
-    const item = BUILD_ITEMS[button.dataset.buyBuild];
-    if (!item) return;
-    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 50);
-    const cost = item.price * amount;
-    if (state.gold < cost) return toast("Not enough gold.");
-    if (multiplayer.serverWorld) {
-      sendMultiplayer({ type: "buyBuild", item: item.id, amount });
-      return;
-    }
-    state.gold -= cost;
-    state.inventory[item.id] = buildInventoryCount(item.id) + amount;
-    state.selectedBuildItem = item.id;
-    renderInventory();
-    toast(`Bought ${amount} ${item.name}.`);
   }
   if (button.dataset.upgrade) {
     if (state.points < 1) return toast("Level up to earn upgrade points.");
@@ -11035,9 +10998,7 @@ function updateHud() {
       ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
       : state.mode === "ship"
       ? t("pressDock", { island: islandName(island) })
-      : landIsland?.claimable || landIsland?.unnamed
-        ? t("pressSailBuild")
-        : t("pressSailShop");
+      : t("pressSailShop");
   }
   updateSpyPanel();
   updateAmmoHotbar();
@@ -11784,8 +11745,8 @@ function syncServerWorld(world) {
   syncServerBotBalloons(world.botBalloons || []);
   syncServerWhales(world.whales || []);
   syncServerStorms(world.storms || []);
-  syncIslandClaims(world.islandClaims || []);
-  syncBuildingPieces(world.buildings || []);
+  syncIslandClaims([]);
+  syncBuildingPieces([]);
 }
 
 function applyCrateReward(crate) {
@@ -11916,21 +11877,17 @@ function handleMultiplayerMessage(message) {
     state.gold += Number(message.gold) || 0;
     addXP(Number(message.xp) || 0);
     toast(`Sank a level ${message.level || 1} ship. Crates overboard!`);
-  } else if (message.type === "buildInventory") {
-    applyBuildInventory(message);
-  } else if (message.type === "buildError") {
-    toast(message.reason || t("noBuildItem"));
-  } else if (message.type === "islandClaimed" || message.type === "claimIsland") {
-    applyIslandClaim(message.claim || message);
-  } else if (message.type === "buildingPlaced" || message.type === "placeBuilding") {
-    const piece = message.piece || message;
-    upsertBuildingPiece(piece);
-    if (buildingPieceIsMine(piece)) {
-      if (piece.type === "flag" && piece.claimName) toast(t("islandClaimed", { island: piece.claimName }));
-      else toast(t("buildPlaced", { item: buildItemName(piece.type) }));
-    }
-  } else if (message.type === "buildingRemoved") {
-    removeBuildingPieceById(message.id);
+  } else if (
+    message.type === "buildInventory"
+    || message.type === "buildError"
+    || message.type === "islandClaimed"
+    || message.type === "claimIsland"
+    || message.type === "buildingPlaced"
+    || message.type === "placeBuilding"
+    || message.type === "buildingRemoved"
+  ) {
+    syncIslandClaims([]);
+    syncBuildingPieces([]);
   } else if (message.x !== undefined) {
     upsertRemotePlayer(message);
   }
@@ -12099,7 +12056,6 @@ function frame() {
   animateSea();
   publishMultiplayer();
   updateHud();
-  updateBuildPreview();
   updateMinimap();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
