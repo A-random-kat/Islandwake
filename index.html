@@ -1,130 +1,164 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Raaaaft.io</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main id="game-shell">
-      <canvas id="game" width="1280" height="720" aria-label="Raaaaft.io game canvas"></canvas>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Islandwake</title>
+  <link rel="stylesheet" href="styles.css?v=175" />
+</head>
+<body>
+  <canvas id="game"></canvas>
 
-      <section id="hud" aria-label="status">
-        <div class="brand">
-          <span class="brand-mark"></span>
-          <div>
-            <h1>Raaaaft.io</h1>
-            <p>Survive, build, hunt, become the raft god.</p>
-          </div>
-        </div>
+  <div id="nameGate" class="name-gate">
+    <div id="nameForm" class="name-card">
+      <span data-i18n="captainName">Captain name</span>
+      <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
+      <span data-i18n="developerToken">Developer token</span>
+      <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Optional" data-i18n-placeholder="optional" />
+      <span data-i18n="language">Language</span>
+      <select id="languageSelect" class="language-select" aria-label="Language"></select>
+      <button id="setSailButton" type="button" data-i18n="setSail">Set sail</button>
+    </div>
+  </div>
 
-        <div class="bars">
-          <div class="meter health"><span>Health</span><b></b></div>
-          <div class="meter hunger"><span>Hunger</span><b></b></div>
-          <div class="meter thirst"><span>Thirst</span><b></b></div>
-          <div class="meter stamina"><span>Stamina</span><b></b></div>
-          <div class="meter breath"><span>Breath</span><b></b></div>
-          <div class="meter xp"><span>XP</span><b></b></div>
-        </div>
+  <div id="beginnerGuide" class="guide-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div id="guideQuestion" class="guide-card">
+      <span data-i18n="firstVoyage">First voyage</span>
+      <h2 id="guideTitle" data-i18n="newQuestion">Are you new to Islandwake?</h2>
+      <p data-i18n="newQuestionBody">A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.</p>
+      <div class="guide-actions">
+        <button id="guideYes" type="button" data-i18n="showGuide">Yes, show guide</button>
+        <button id="guideNo" type="button" data-i18n="noSetSail">No, set sail</button>
+      </div>
+    </div>
+    <div id="guideContent" class="guide-card guide-content hidden">
+      <span data-i18n="beginnerGuide">Beginner's guide</span>
+      <h2 data-i18n="guideHeadline">Survive, trade, upgrade</h2>
+      <div class="guide-grid">
+        <section>
+          <h3 data-i18n="guideSailingTitle">Sailing</h3>
+          <p data-i18n="guideSailingBody">Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.</p>
+        </section>
+        <section>
+          <h3 data-i18n="guideIslandsTitle">Islands</h3>
+          <p data-i18n="guideIslandsBody">Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.</p>
+        </section>
+        <section>
+          <h3 data-i18n="guideToolsTitle">Tools</h3>
+          <p data-i18n="guideToolsBody">Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.</p>
+        </section>
+        <section>
+          <h3 data-i18n="guideProgressTitle">Progress</h3>
+          <p data-i18n="guideProgressBody">Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.</p>
+        </section>
+      </div>
+      <div class="guide-actions">
+        <button id="guideClose" type="button" data-i18n="startPlaying">Start playing</button>
+      </div>
+    </div>
+  </div>
 
-        <div class="resources">
-          <span data-res="wood">Wood 0</span>
-          <span data-res="leaves">Leaves 0</span>
-          <span data-res="scrap">Scrap 0</span>
-          <span data-res="iron">Iron 0</span>
-          <span data-res="steel">Steel 0</span>
-          <span data-res="cloth">Cloth 0</span>
-          <span data-res="rope">Rope 0</span>
-          <span data-res="glass">Glass 0</span>
-          <span data-res="rawFish">Raw Fish 0</span>
-          <span data-res="cookedFish">Cooked Fish 0</span>
-          <span data-res="sharkMeat">Raw Shark Meat 0</span>
-          <span data-res="meat">Raw Meat 0</span>
-          <span data-res="cookedMeat">Cooked Meat 0</span>
-          <span data-res="coconut">Coconut 0</span>
-          <span data-res="tomato">Tomato 0</span>
-        </div>
-      </section>
+  <div id="hud">
+    <section class="panel captain">
+      <div>
+        <strong id="playerName">Captain</strong>
+        <select id="hudLanguageSelect" class="language-select hud-language" aria-label="Language"></select>
+        <span id="modeLabel">At sea</span>
+      </div>
+      <div class="bars">
+        <div class="bar hp"><span id="hpBar"></span></div>
+        <div class="bar xp"><span id="xpBar"></span></div>
+      </div>
+      <div class="stats" id="statsLine"></div>
+    </section>
 
-      <aside id="panel">
-        <div class="minimap-wrap">
-          <canvas id="minimap" width="168" height="168" aria-label="minimap"></canvas>
-        </div>
-        <div id="scoreboard">
-          <h2>Players</h2>
-          <div id="scoreboard-list"></div>
-        </div>
-        <div class="stats">
-          <div><span>Level</span><b id="level">1</b></div>
-          <div><span>Speed</span><b id="speed">0</b></div>
-          <div><span>Agility</span><b id="agility">0</b></div>
-          <div><span>Strength</span><b id="strength">0</b></div>
-          <div><span>Points</span><b id="points">0</b></div>
-        </div>
-        <div class="leveling">
-          <h2>Train</h2>
-          <button data-stat="speed">Speed</button>
-          <button data-stat="agility">Agility</button>
-          <button data-stat="strength">Strength</button>
-        </div>
-      </aside>
+    <section class="panel tools">
+      <button id="toolCannon" class="active" title="Cannon"><span>C</span></button>
+      <button id="toolRod" title="Fishing rod"><span>2</span></button>
+      <button id="toolGlass" title="Spyglass"><span>G</span></button>
+    </section>
 
-      <div id="hotbar" aria-label="hotbar"></div>
-      <div id="toast" role="status"></div>
-      <div id="prompt"></div>
+    <section id="ammoHotbar" class="panel ammo-hotbar"></section>
 
-      <section id="help">
-        <b>WASD</b> move · <b>A/D</b> aim cannon · <b>Shift</b> sprint · <b>Mouse</b> aim/use · <b>F</b> pickup/interact · <b>I</b> inventory · <b>C</b> recipes · <b>N</b> build item · <b>G</b> food · <b>Z</b> speed · <b>X</b> agility · <b>V</b> strength · <b>R</b> rotate
-      </section>
+    <section class="panel cargo">
+      <strong data-i18n="cargo">Cargo</strong>
+      <div id="cargoList"></div>
+    </section>
 
-      <section id="recipe-book" hidden>
-        <div class="popup-head">
-          <h2>Recipe Book</h2>
-          <button id="recipe-book-close" type="button">Close</button>
-        </div>
-        <div id="recipe-grid"></div>
-      </section>
+    <section id="spyPanel" class="panel spy hidden">
+      <strong id="spyName" data-i18n="noTarget">No target</strong>
+      <div id="spyDetails"></div>
+    </section>
+  </div>
 
-      <section id="inventory" hidden>
-        <div class="popup-head">
-          <h2 id="inventory-title">Inventory</h2>
-          <button id="inventory-close" type="button">Close</button>
-        </div>
-        <div class="inventory-layout">
-          <div class="inventory-pane">
-            <h3>Backpack</h3>
-            <div id="inventory-items" class="inventory-grid"></div>
-          </div>
-          <div class="inventory-pane">
-            <h3>Hotbar</h3>
-            <div id="inventory-hotbar" class="inventory-grid compact"></div>
-          </div>
-          <div id="chest-pane" class="inventory-pane" hidden>
-            <h3>Chest</h3>
-            <div id="chest-items" class="inventory-grid"></div>
-          </div>
-        </div>
-      </section>
+  <section id="minimapPanel" class="panel minimap">
+    <header>
+      <strong data-i18n="map">Map</strong>
+      <div>
+        <button id="toggleWindMap" title="Toggle wind markers" data-i18n="wind" data-i18n-title="toggleWindMarkers">Wind</button>
+        <button id="closeMinimap" title="Hide minimap">x</button>
+      </div>
+    </header>
+    <canvas id="minimap" width="180" height="180"></canvas>
+  </section>
+  <button id="openMinimap" class="minimap-open hidden" title="Open minimap" data-i18n="map" data-i18n-title="openMinimap">Map</button>
 
-      <section id="start-screen">
-        <div class="start-panel">
-          <span class="brand-mark"></span>
-          <h2>Raaaaft.io</h2>
-          <p>Pick a name, spawn on your raft, and try not to become shark lunch.</p>
-          <label for="username">Username</label>
-          <input id="username" name="username" maxlength="18" autocomplete="off" placeholder="RaftGod" />
-          <label for="access-token">Access Token</label>
-          <input id="access-token" name="access-token" maxlength="32" autocomplete="off" placeholder="Optional" />
-          <button id="start-button" type="button">Start Survival</button>
-        </div>
-      </section>
+  <section id="leaderboardPanel" class="panel leaderboard">
+    <header>
+      <strong data-i18n="gold">Gold</strong>
+      <button id="closeLeaderboard" title="Hide leaderboard">x</button>
+    </header>
+    <ol id="leaderboardList"></ol>
+  </section>
+  <button id="openLeaderboard" class="leaderboard-open hidden" title="Open leaderboard" data-i18n="gold" data-i18n-title="openLeaderboard">Gold</button>
 
-      <section id="game-over" hidden>
-        <h2>You washed out.</h2>
-        <p><span id="fallen-name">Captain</span>, your raft lasted <span id="survived">0</span> days. Press Enter to try again.</p>
-      </section>
-    </main>
-    <script src="./game.js"></script>
-  </body>
+  <div id="dockPrompt" class="prompt hidden">Press <b>T</b> to dock</div>
+  <div id="toast"></div>
+
+  <aside id="shop" class="shop hidden">
+    <header>
+      <div>
+        <span id="shopIsland">Island</span>
+        <strong>Harbor Market</strong>
+      </div>
+      <button id="closeShop" title="Close" data-i18n-title="close">x</button>
+    </header>
+    <nav>
+      <button class="tab active" data-tab="goods" data-i18n="goodsTab">Goods</button>
+      <button class="tab" data-tab="ships" data-i18n="shipsTab">Ships</button>
+      <button class="tab" data-tab="ammo" data-i18n="shotTab">Shot</button>
+      <button class="tab" data-tab="upgrades" data-i18n="upgradesTab">Upgrades</button>
+    </nav>
+    <div id="shopBody"></div>
+  </aside>
+
+  <script>
+    (() => {
+      function pendingJoin(event) {
+        const gate = document.querySelector("#nameGate");
+        if (!gate || gate.classList.contains("hidden")) return;
+        if (event.type === "click" && !event.target.closest("#setSailButton, #nameForm button")) return;
+        if (event.type === "keydown" && event.key !== "Enter") return;
+        const input = document.querySelector("#captainNameInput");
+        const tokenInput = document.querySelector("#developerTokenInput");
+        const name = input?.value?.trim().replace(/\s+/g, " ").slice(0, 18);
+        if (!name) return;
+        const token = tokenInput?.value?.trim() || "";
+        event.preventDefault();
+        window.ISLANDWAKE_PENDING_JOIN = name;
+        window.ISLANDWAKE_PENDING_TOKEN = token;
+        try {
+          localStorage.setItem("islandwakeName", name);
+        } catch {}
+        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(name, token);
+      }
+      document.addEventListener("click", pendingJoin, true);
+      document.addEventListener("submit", pendingJoin, true);
+      document.addEventListener("keydown", (event) => {
+        if (event.target?.id === "captainNameInput" || event.target?.id === "developerTokenInput") pendingJoin(event);
+      }, true);
+    })();
+  </script>
+  <script type="module" src="game.js?v=175"></script>
+</body>
 </html>
