@@ -184,8 +184,31 @@ function claimableIslandByName(name) {
   return islandCenters.find((island) => island.claimable && island.name === name) || null;
 }
 
+function claimIslandLobes(radius) {
+  return [
+    { x: -radius * 0.18, z: -radius * 0.08, rx: radius * 0.58, rz: radius * 0.42, rot: 0.25 },
+    { x: radius * 0.22, z: radius * 0.1, rx: radius * 0.42, rz: radius * 0.56, rot: -0.42 },
+    { x: -radius * 0.02, z: radius * 0.3, rx: radius * 0.34, rz: radius * 0.26, rot: 0.72 },
+  ];
+}
+
+function pointInsideLobedIsland(island, x, z, margin = 0) {
+  return claimIslandLobes(island.radius).some((lobe) => {
+    const rx = Math.max(0.2, lobe.rx - margin);
+    const rz = Math.max(0.2, lobe.rz - margin);
+    const dx = x - island.x - lobe.x;
+    const dz = z - island.z - lobe.z;
+    const cos = Math.cos(-lobe.rot);
+    const sin = Math.sin(-lobe.rot);
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    return (localX * localX) / (rx * rx) + (localZ * localZ) / (rz * rz) <= 1;
+  });
+}
+
 function pointInsideIsland(island, x, z, margin = 3) {
   if (!island || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+  if (island.claimable) return pointInsideLobedIsland(island, x, z, margin * 0.55);
   return Math.hypot(x - island.x, z - island.z) <= island.radius - margin;
 }
 
