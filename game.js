@@ -1,12070 +1,4837 @@
-import * as THREE from "./three.module.js";
+(() => {
+  "use strict";
 
-const canvas = document.querySelector("#game");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const mini = document.getElementById("minimap");
+  const mctx = mini.getContext("2d");
+  const hotbarEl = document.getElementById("hotbar");
+  const toastEl = document.getElementById("toast");
+  const promptEl = document.getElementById("prompt");
+  const recipeBookEl = document.getElementById("recipe-book");
+  const recipeGridEl = document.getElementById("recipe-grid");
+  const recipeBookOpenEl = document.getElementById("recipe-book-open");
+  const recipeBookCloseEl = document.getElementById("recipe-book-close");
+  const inventoryEl = document.getElementById("inventory");
+  const inventoryTitleEl = document.getElementById("inventory-title");
+  const inventoryCloseEl = document.getElementById("inventory-close");
+  const inventoryItemsEl = document.getElementById("inventory-items");
+  const inventoryHotbarEl = document.getElementById("inventory-hotbar");
+  const chestPaneEl = document.getElementById("chest-pane");
+  const chestItemsEl = document.getElementById("chest-items");
+  const scoreboardListEl = document.getElementById("scoreboard-list");
+  const startScreenEl = document.getElementById("start-screen");
+  const usernameEl = document.getElementById("username");
+  const accessTokenEl = document.getElementById("access-token");
+  const startButtonEl = document.getElementById("start-button");
+  const gameOverEl = document.getElementById("game-over");
+  const fallenNameEl = document.getElementById("fallen-name");
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8edff0);
-scene.fog = new THREE.Fog(0x8edff0, 240, 980);
-
-const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 4200);
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const aimPoint = new THREE.Vector3();
-const clock = new THREE.Clock();
-
-const ui = {
-  playerName: document.querySelector("#playerName"),
-  modeLabel: document.querySelector("#modeLabel"),
-  hpBar: document.querySelector("#hpBar"),
-  xpBar: document.querySelector("#xpBar"),
-  statsLine: document.querySelector("#statsLine"),
-  cargoList: document.querySelector("#cargoList"),
-  dockPrompt: document.querySelector("#dockPrompt"),
-  toast: document.querySelector("#toast"),
-  shop: document.querySelector("#shop"),
-  shopIsland: document.querySelector("#shopIsland"),
-  shopBody: document.querySelector("#shopBody"),
-  closeShop: document.querySelector("#closeShop"),
-  spyPanel: document.querySelector("#spyPanel"),
-  spyName: document.querySelector("#spyName"),
-  spyDetails: document.querySelector("#spyDetails"),
-  minimapPanel: document.querySelector("#minimapPanel"),
-  minimap: document.querySelector("#minimap"),
-  closeMinimap: document.querySelector("#closeMinimap"),
-  openMinimap: document.querySelector("#openMinimap"),
-  toggleWindMap: document.querySelector("#toggleWindMap"),
-  leaderboardPanel: document.querySelector("#leaderboardPanel"),
-  leaderboardList: document.querySelector("#leaderboardList"),
-  closeLeaderboard: document.querySelector("#closeLeaderboard"),
-  openLeaderboard: document.querySelector("#openLeaderboard"),
-  ammoHotbar: document.querySelector("#ammoHotbar"),
-  inventoryPanel: document.querySelector("#inventoryPanel"),
-  inventoryBody: document.querySelector("#inventoryBody"),
-  closeInventory: document.querySelector("#closeInventory"),
-  snapBuild: document.querySelector("#snapBuild"),
-  nameGate: document.querySelector("#nameGate"),
-  nameForm: document.querySelector("#nameForm"),
-  nameInput: document.querySelector("#captainNameInput"),
-  developerTokenInput: document.querySelector("#developerTokenInput"),
-  nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
-  languageSelect: document.querySelector("#languageSelect"),
-  hudLanguageSelect: document.querySelector("#hudLanguageSelect"),
-  beginnerGuide: document.querySelector("#beginnerGuide"),
-  guideQuestion: document.querySelector("#guideQuestion"),
-  guideContent: document.querySelector("#guideContent"),
-  guideYes: document.querySelector("#guideYes"),
-  guideNo: document.querySelector("#guideNo"),
-  guideClose: document.querySelector("#guideClose"),
-  tabs: [...document.querySelectorAll(".tab")],
-  toolButtons: {
-    cannon: document.querySelector("#toolCannon"),
-    rod: document.querySelector("#toolRod"),
-    glass: document.querySelector("#toolGlass"),
-  },
-};
-
-const keys = new Set();
-const goods = ["Silk", "Spice", "Iron", "Tea", "Pearls"];
-const STARTER_SHIP = "skiff";
-const MAX_PLAYER_LEVEL = 100;
-const MAX_RELOAD_UPGRADES = 20;
-const TRADE_SELL_RATE = 0.85;
-const CRATE_DROP_MULTIPLIER = 1.2;
-const KRAKEN_ATTACK_LIFE = 3.8;
-const KRAKEN_SLAM_DELAY_MS = 2900;
-const KRAKEN_SLAM_T = KRAKEN_SLAM_DELAY_MS / (KRAKEN_ATTACK_LIFE * 1000);
-const MAP_LIMIT = 880;
-const MINIMAP_VISIBLE_LIMIT = MAP_LIMIT * 1.12;
-const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 720;
-const ISLAND_RADIUS_SCALE = 4;
-const ISLAND_SPACING_SCALE = 2.45;
-const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
-const CHARACTER_SCALE = 0.187;
-const CHARACTER_EYE_HEIGHT = 0.7;
-const CHARACTER_MAX_HP = 1;
-const WILDLIFE_SPAWN_MULTIPLIER = 5;
-const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER;
-const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER;
-const MAST_SIZE_SCALE = 1.2;
-const MAST_SPACING_SCALE = 1.2;
-const SEA_SIZE = WATERFALL_LIMIT * 2;
-const DAY_LENGTH_SECONDS = 600;
-const NIGHT_LENGTH_SECONDS = 600;
-const DAY_CYCLE_SECONDS = DAY_LENGTH_SECONDS + NIGHT_LENGTH_SECONDS;
-const SUNRISE_SECONDS = 80;
-const SUNSET_SECONDS = 95;
-const WIND_MARKER_COUNT = 18;
-const BALLOON_BOMB_GRAVITY = 18;
-const BALLOON_BOMB_DAMAGE = 500;
-const BALLOON_BOMB_BLAST_RADIUS = 12;
-const BALLOON_BOMB_KNOCKBACK = 22;
-const AIRBURST_DAMAGE = 60;
-const AIRBURST_RADIUS = BALLOON_BOMB_BLAST_RADIUS * (2 / 3);
-const BALLOON_COST = 600;
-const CANNONBALL_TYPES = {
-  basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
-  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
-  hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 23, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
-  harpoon: { id: "harpoon", name: "Harpoon", short: "Harpoon", price: 20, pellets: 1, fixedDamage: 20, whaleDamage: 100, rangeScale: 0.86, spread: 0, radius: 0.16, color: 0xd8d0bd, trail: 0xf8f4e5, noRangeDamage: true },
-  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: 0.46, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
-};
-const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
-const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
-const BUILD_GRID_SIZE = 3.2;
-const BUILD_FLOOR_THICKNESS = 0.04;
-const BUILD_FLOOR_SURFACE_Y = BUILD_FLOOR_THICKNESS;
-const BUILD_WALL_DEPTH = 0.34;
-const BUILD_WALL_CAP_DEPTH = BUILD_WALL_DEPTH;
-const BUILD_PLACE_MAX_DISTANCE = 58;
-const BUILD_EDGE_MARGIN = 2.4;
-const BUILD_ITEMS = {
-  flag: { id: "flag", name: "Claim Flag", price: 200, short: "Flag", description: "Claim an unnamed island and give it a name." },
-  floor: { id: "floor", name: "Floor", price: 20, short: "Floor", description: "Flat deck-like flooring that snaps beside other floors." },
-  wall: { id: "wall", name: "Wall", price: 20, short: "Wall", description: "A solid wall with a player collision hitbox." },
-  cornerWall: { id: "cornerWall", name: "Corner Wall", price: 20, short: "Corner", description: "An L-shaped wall corner for house outlines." },
-  door: { id: "door", name: "Door Wall", price: 20, short: "Door", description: "A wall piece with a doorway you can walk through." },
-  roof: { id: "roof", name: "Roof", price: 20, short: "Roof", description: "A raised roof cap with a walkable top hitbox." },
-  table: { id: "table", name: "Table", price: 20, short: "Table", description: "A small table with a solid collision hitbox." },
-};
-const BUILD_ITEM_ORDER = Object.keys(BUILD_ITEMS);
-const LANGUAGE_OPTIONS = {
-  en: "English",
-  zh: "中文",
-  fr: "Français",
-  de: "Deutsch",
-  es: "Español",
-};
-const DEFAULT_LANGUAGE = "en";
-const I18N = {
-  en: {
-    ui: {
-      captainName: "Captain name", enterName: "Enter your name", developerToken: "Developer token", optional: "Optional", language: "Language", setSail: "Set sail",
-      firstVoyage: "First voyage", newQuestion: "Are you new to Islandwake?", newQuestionBody: "A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.", showGuide: "Yes, show guide", noSetSail: "No, set sail",
-      beginnerGuide: "Beginner's guide", guideHeadline: "Survive, trade, upgrade", guideSailingTitle: "Sailing", guideSailingBody: "Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.",
-      guideIslandsTitle: "Islands", guideIslandsBody: "Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.",
-      guideToolsTitle: "Tools", guideToolsBody: "Use 1 for cannon, 2 for fishing rod, and 3 or G for spyglass. Fish and squid bite your bait, crates and treasure can be collected, and spyglass clicks identify ships.",
-      guideProgressTitle: "Progress", guideProgressBody: "Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.", startPlaying: "Start playing",
-      cargo: "Cargo", noTarget: "No target", map: "Map", wind: "Wind", toggleWindMarkers: "Toggle wind markers", openMinimap: "Open minimap", gold: "Gold", openLeaderboard: "Open leaderboard", close: "Close", harborMarket: "Harbor Market",
-      goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", buildTab: "Build", upgradesTab: "Upgrades", inventory: "Inventory", snapBuild: "Snap building pieces", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
-      lvlInfinite: "Lvl. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
-      dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop", pressSailBuild: "Press <b>C</b> to set sail or <b>R</b> to rotate buildings",
-      unchartedShop: "{island} is uncharted. There are no shops, shipwrights, or trade goods here.", marketIntro: "{culture} market | Hold {hold}/{capacity}{blubber}. Buy low, then sell where demand is higher.", blubberInHold: " | Blubber {count} in hold",
-      buy: "Buy", sell: "Sell", buyPrice: "Buy {price}g", sellPrice: "Sell {price}g", owned: "Owned {count}.", blubberTrade: "Owned {owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.",
-      sellHere: "Sell here for {price}g.", bestKnownResale: "Best known resale is {price}g at {island}.", betterSellHere: "This is one of the better places to sell it.", possibleProfit: "{profit}g possible profit if you haul it there.", weakTradeRoute: "Buying here is not a strong trade route right now.",
-      shipwrightIntro: "{island} shipwrights sell {culture} hulls. Faster ships usually have less armor; larger ships carry and push more.", price: "{price}g", sailing: "Sailing", shipStats: "HP {hp} / Armor {armor}% / Speed {speed} / Regen {regen}/s / Hold {hold}", vsYourShip: "Vs your {ship}: {stats}",
-      emptySlot: "Empty", emptySlotTitle: "Empty slot", hotbarFull: "Hotbar Full", replaceAmmoPrompt: "Replace one non-basic slot with {ammo}.", slot: "Slot {slot}", basic: "Basic", hotAirBalloon: "Hot Air Balloon", balloonShopDesc: "Owned {owned}/{max}. Ballooners can launch them for scouting and bombing.", each: "{price}g each", buyFive: "Buy 5",
-      buildingSupplies: "Building supplies", buildShopIntro: "Buy supplies here, then press I to open inventory. Flags claim unnamed islands; other pieces can be built on islands you own.", selected: "Selected", select: "Select", noneSelected: "No build item selected.", placeHint: "Select a piece, look at your claimed island, then press Z to place it.", claimedBy: "Claimed by {name}", unclaimedIsland: "Unnamed Island", claimNamePrompt: "Name your island", claimFirst: "Place a flag on an unnamed island first.", ownedIslandOnly: "You can only build on islands you claimed.", tooFarBuild: "Look at a spot on your docked island.", alreadyClaimed: "That island is already claimed.", buildPlaced: "{item} placed.", islandClaimed: "{island} claimed.", noBuildItem: "You do not have that building piece.", itemCount: "Owned {count}",
-      upgradePoints: "Upgrade points: <b>{points}</b>", spend: "Spend", max: "Max", cannonDamage: "Cannon Damage", fireRate: "Fire Rate", cannonRange: "Cannon Range",
-      speedVeryFast: "very fast", speedQuick: "quick", speedSlow: "slow", speedSteady: "steady", noArmor: "no armor", heavyArmor: "heavy armor", solidArmor: "solid armor", lightArmor: "light armor", hugeHold: "huge cargo hold", largeHold: "large cargo hold", smallHold: "small cargo hold", usefulHold: "useful cargo hold", massiveHp: "massive hull HP", highHp: "high hull HP", lightHp: "light hull HP", goodHp: "good hull HP",
-      speedBuild: "Built for speed, not soaking hits.", heavyBuild: "Heavy and hard to push, but slow to reposition.", balancedBuild: "Balanced enough for trading and fights.", shipRole: "{speed} ship with {durability}, {defense}, and a {hold}. {handling}",
-      hotshotDesc: "Same direct hit as Basic Shell, then burns for {dps}/s for {duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.", grapeshotDesc: "{pellets} pellets in a wide spread. Each pellet does {damage}% direct damage and reaches {range}% of cannon range. Best up close.", harpoonDesc: "Fixed 20 damage to ships. Whales take 100 damage, or 150 from a Whaler, and cannon damage upgrades do not boost it.", airburstDesc: "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.", basicDesc: "Reliable single cannonball with infinite ammo.",
-      damageUpgradeDesc: "Current {damage} direct damage. Each point adds +2 direct damage; Hotshot fire stays separate.", reloadUpgradeDesc: "Current {reload}s reload. Each point lowers reload by 0.02s, up to Lv.{max}.", rangeUpgradeDesc: "Current {range}m range. Each point adds +4m. Farther hits also deal up to +50% direct damage.",
-      dangerous: "Dangerous", wounded: "Wounded", manageable: "Manageable", hostile: "Hostile", crates: "Crates", distanceMeter: "{distance}m",
-      spyDetails: "Lv.{level} | {distance} | {threat}<br>HP {hp}/{max} ({pct}%) | Armor {armor}%<br>Speed {speed} | Regen {regen}/s | Crates {crates}",
-      toastStopShip: "Stop your ship before walking around.", toastDeckView: "Deck view. Press C for sailing controls.", toastReturnedDeck: "Returned to the deck.", toastSailingControls: "Sailing controls restored.", toastAmmoSlotEmpty: "That ammo slot is empty.", toastPutShotHotbar: "Put that shot in a hotbar slot first.", toastBasicSlot: "Basic Shell stays in slot 1.", toastWindShown: "Wind markers shown.", toastWindHidden: "Wind markers hidden.", toastGetCloser: "Get closer to an island to dock.", toastLineRetracted: "Line retracted.", toastWhalerOnly: "Only the Whaler can use side nets at sea.", toastNetsOut: "Whaler nets extended. Speed reduced.", toastNetsIn: "Whaler nets retracted.", toastDockCancel: "Docking cancelled. Stay close to the island.", toastSailsRaised: "Sails raised.", toastDockBeforeShop: "Dock at an island before shopping.", toastHoldFull: "Your hold is full.", toastBlubberFull: "Your blubber hold is full.", toastRecoveredBlubber: "Recovered whale blubber.", toastSpyShip: "Use the spyglass from your ship.", toastSpyNone: "Spyglass found no ships. Aim toward a sail.", toastNotEnoughGold: "Not enough gold.", toastNoCargoSell: "No cargo to sell.", toastBalloonMax: "You already have the maximum number of balloons.", toastBalloonBought: "Hot air balloon purchased.", toastNeedPoints: "Level up to earn upgrade points.", toastReloadMax: "Reload upgrade is maxed.", toastUpgradeInstalled: "Upgrade installed.", toastBalloonerOnly: "Only a Ballooner can launch hot air balloons.", toastThreeBalloons: "Only 3 balloons can be launched at once.", toastNoBalloons: "No spare hot air balloons.", toastBalloonLaunched: "Balloon launched. Press V to switch view.", toastShipView: "Ship view.", toastBalloonView: "Balloon view.", toastNextBalloon: "Next balloon view.", toastBalloonDescending: "Balloon descending. Keep it above the Ballooner.", toastBombUsed: "This balloon has already dropped its bomb.", toastBombAway: "Bomb away.", toastBalloonRecovered: "Balloon recovered.", toastBalloonSplash: "Balloon splashed down.", toastWaterfall: "You crossed the waterfall at the edge of the world.", toastJumpWater: "You jumped into the water. Press F to return to your ship.", toastSwimming: "You are swimming. Press F to return to your ship.", toastGoldDiggerBlock: "GoldDigger teleport blocked: island.", toastGoldDiggerMinimap: "GoldDigger minimap teleport.", toastConnected: "Connected to multiplayer waters.", toastReconnected: "Reconnected to multiplayer waters.", toastDisconnected: "Multiplayer disconnected. Reconnecting..."
-    },
-    goods: { Silk: "Silk", Spice: "Spice", Iron: "Iron", Tea: "Tea", Pearls: "Pearls", "Whale Blubber": "Whale Blubber" },
-    ammo: { basic: "Basic Shell", grapeshot: "Grapeshot", hotshot: "Hotshot", harpoon: "Harpoon", airburst: "Airburst Shell" },
-    ammoShort: { basic: "Shell", grapeshot: "Grape", hotshot: "Hot", harpoon: "Harpoon", airburst: "Air" },
-    entities: { Fish: "Fish", Squid: "Squid", Crate: "Crate", Treasure: "Treasure", "Kraken tentacle": "Kraken tentacle" },
-    islands: { "Port Azure": "Port Azure", Vikholm: "Vikholm", Seville: "Seville", Venice: "Venice", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzibar", Canton: "Canton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisbon", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Crown Harbor", Blackreef: "Blackreef", "New Albion": "New Albion", "Gull Keys": "Gull Keys", "Twin Shoals": "Twin Shoals", "Mistfall Cay": "Mistfall Cay", "Broken Tooth": "Broken Tooth", Greenneedle: "Greenneedle" },
-    cultures: { Freeport: "Freeport", Viking: "Viking", Spanish: "Spanish", Venetian: "Venetian", Dutch: "Dutch", "Royal Navy": "Royal Navy", "Swahili-Arab": "Swahili-Arab", Chinese: "Chinese", American: "American", French: "French", Portuguese: "Portuguese", "Indian Ocean": "Indian Ocean", Polynesian: "Polynesian", "Crown Colony": "Crown Colony", Privateer: "Privateer", Merchant: "Merchant", Uncharted: "Uncharted" },
-    ships: {}
-  },
-  zh: {
-    ui: {
-      captainName: "船长姓名", enterName: "输入你的名字", developerToken: "开发者口令", optional: "可选", language: "语言", setSail: "扬帆出航",
-      firstVoyage: "首次航行", newQuestion: "你是 Islandwake 的新玩家吗？", newQuestionBody: "一份简短船长指南会介绍航行、岛屿、商店、钓鱼、战斗和战利品。", showGuide: "是，显示指南", noSetSail: "否，直接出航",
-      beginnerGuide: "新手指南", guideHeadline: "生存、贸易、升级", guideSailingTitle: "航行", guideSailingBody: "用 WASD 驾驶船只。用鼠标瞄准并点击发射当前炮弹。小地图会显示岛屿、首领、风暴、气球和风向。",
-      guideIslandsTitle: "岛屿", guideIslandsBody: "靠近岛屿后按 T 停靠。上岸后按 R 购物，按 C 重新出海。商店出售船只、货物、炮弹、气球和升级。",
-      guideToolsTitle: "工具", guideToolsBody: "按 1 使用火炮，按 2 使用鱼竿，按 3 或 G 使用望远镜。鱼和鱿鱼会咬饵，木箱和宝藏可收集，望远镜点击船只可识别目标。",
-      guideProgressTitle: "进度", guideProgressBody: "把货物卖到价格更高的地方，击沉船只获得木箱，购买更强的船，并用升级点提升伤害、装填和射程。前期远离海怪和地图边缘。", startPlaying: "开始游戏",
-      cargo: "货舱", noTarget: "无目标", map: "地图", wind: "风", toggleWindMarkers: "切换风向标记", openMinimap: "打开地图", gold: "金币", openLeaderboard: "打开排行榜", close: "关闭", harborMarket: "港口市场",
-      goodsTab: "货物", shipsTab: "船只", shotTab: "炮弹", upgradesTab: "升级", captain: "船长", atSea: "海上", swimming: "游泳中", onDeck: "甲板上", docked: "停靠：{island}",
-      lvlInfinite: "等级：无限", lvlMax: "{level}级 满级", lvl: "{level}级", hp: "耐久", armor: "护甲", speed: "速度", regen: "回复", hold: "货舱", blubber: "鲸脂", nets: "渔网", out: "展开", in: "收回", burning: "燃烧 {seconds}秒", emptyHold: "货舱为空",
-      dockingPrompt: "正在停靠 {island}：<b>{seconds}秒</b>", pressDock: "按 <b>T</b> 停靠在 {island}", pressSailShop: "按 <b>C</b> 出航，或按 <b>R</b> 打开商店",
-      buy: "购买", sell: "出售", buyPrice: "买 {price}金", sellPrice: "卖 {price}金", owned: "拥有 {count}。", unchartedShop: "{island} 是未知岛屿。这里没有商店、船厂或贸易货物。", marketIntro: "{culture} 市场 | 货舱 {hold}/{capacity}{blubber}。低买高卖。", blubberInHold: " | 货舱中鲸脂 {count}",
-      blubberTrade: "拥有 {owned}。朴茨茅斯每个出价 200金；其他港口不收。它占普通货舱，除非你驾驶捕鲸船，可携带 50 个鲸脂。", sellHere: "此地售价 {price}金。", bestKnownResale: "已知最佳转卖价为 {price}金，地点：{island}。", betterSellHere: "这里是比较好的出售地点。", possibleProfit: "运到那里可赚 {profit}金。", weakTradeRoute: "现在在这里买入不是好路线。",
-      shipwrightIntro: "{island} 的船匠出售 {culture} 船体。更快的船通常护甲更低；更大的船能载更多也更能推动别人。", price: "{price}金", sailing: "正在使用", shipStats: "耐久 {hp} / 护甲 {armor}% / 速度 {speed} / 回复 {regen}/秒 / 货舱 {hold}", vsYourShip: "对比你的 {ship}：{stats}",
-      emptySlot: "空", emptySlotTitle: "空槽位", hotbarFull: "快捷栏已满", replaceAmmoPrompt: "用 {ammo} 替换一个非基础槽位。", slot: "槽位 {slot}", basic: "基础", hotAirBalloon: "热气球", balloonShopDesc: "拥有 {owned}/{max}。气球船可放出气球侦察和投弹。", each: "每个 {price}金", buyFive: "买 5 个",
-      upgradePoints: "升级点：<b>{points}</b>", spend: "花费", max: "最高", cannonDamage: "火炮伤害", fireRate: "射速", cannonRange: "火炮射程",
-      speedVeryFast: "极快", speedQuick: "快速", speedSlow: "缓慢", speedSteady: "稳定", noArmor: "无护甲", heavyArmor: "重护甲", solidArmor: "坚实护甲", lightArmor: "轻护甲", hugeHold: "巨大货舱", largeHold: "大货舱", smallHold: "小货舱", usefulHold: "实用货舱", massiveHp: "超高船体耐久", highHp: "高船体耐久", lightHp: "轻型船体耐久", goodHp: "不错的船体耐久",
-      speedBuild: "为速度而造，不适合硬扛伤害。", heavyBuild: "沉重且难以推动，但转移很慢。", balancedBuild: "适合贸易和战斗的均衡船。", shipRole: "{speed}船只，拥有{durability}、{defense}和{hold}。{handling}",
-      hotshotDesc: "直接命中伤害与基础炮弹相同，然后造成 {dps}/秒，持续 {duration}秒。燃烧不受火炮伤害升级影响，移动中的船会更快熄灭。", grapeshotDesc: "{pellets} 发散弹。每发造成 {damage}% 直接伤害，射程为火炮射程的 {range}%。近距离最佳。", harpoonDesc: "对船固定造成 20 伤害。鲸鱼受到 100 伤害，捕鲸船发射时为 150；火炮伤害升级不会增强。", airburstDesc: "在瞄准点上方爆炸，像霰弹一样不太精确。对气球最多造成 60 爆炸伤害，边缘更低。", basicDesc: "可靠的单发炮弹，弹药无限。",
-      damageUpgradeDesc: "当前直接伤害 {damage}。每点 +2 直接伤害；炽热弹燃烧单独计算。", reloadUpgradeDesc: "当前装填 {reload}秒。每点减少 0.02秒，最高 Lv.{max}。", rangeUpgradeDesc: "当前射程 {range}米。每点 +4米。远距离命中最多额外 +50% 直接伤害。",
-      dangerous: "危险", wounded: "受创", manageable: "可应对", hostile: "敌对", crates: "木箱", distanceMeter: "{distance}米", spyDetails: "{level}级 | {distance} | {threat}<br>耐久 {hp}/{max} ({pct}%) | 护甲 {armor}%<br>速度 {speed} | 回复 {regen}/秒 | 木箱 {crates}",
-      toastStopShip: "先让船停稳，才能四处走动。", toastDeckView: "甲板视角。按 C 回到航行控制。", toastReturnedDeck: "已回到甲板。", toastSailingControls: "航行控制已恢复。", toastAmmoSlotEmpty: "这个弹药槽是空的。", toastPutShotHotbar: "先把这种炮弹放进快捷栏。", toastBasicSlot: "基础炮弹固定在 1 号槽。", toastWindShown: "已显示风向标记。", toastWindHidden: "已隐藏风向标记。", toastGetCloser: "靠近岛屿才能停靠。", toastLineRetracted: "鱼线已收回。", toastWhalerOnly: "只有捕鲸船能使用侧网。", toastNetsOut: "捕鲸船侧网已展开，速度降低。", toastNetsIn: "捕鲸船侧网已收回。", toastDockCancel: "停靠取消。请保持靠近岛屿。", toastSailsRaised: "船帆升起。", toastDockBeforeShop: "先停靠岛屿才能购物。", toastHoldFull: "货舱已满。", toastBlubberFull: "鲸脂货舱已满。", toastRecoveredBlubber: "获得鲸脂。", toastSpyShip: "望远镜只能在船上使用。", toastSpyNone: "望远镜没有发现船只。请瞄准船帆。", toastNotEnoughGold: "金币不足。", toastNoCargoSell: "没有可出售的货物。", toastBalloonMax: "你已经拥有最多数量的气球。", toastBalloonBought: "已购买热气球。", toastNeedPoints: "升级可获得升级点。", toastReloadMax: "装填升级已满。", toastUpgradeInstalled: "升级已安装。", toastBalloonerOnly: "只有气球船能放出热气球。", toastThreeBalloons: "最多只能同时放出 3 个气球。", toastNoBalloons: "没有备用热气球。", toastBalloonLaunched: "气球已发射。按 V 切换视角。", toastShipView: "船只视角。", toastBalloonView: "气球视角。", toastNextBalloon: "下一个气球视角。", toastBalloonDescending: "气球正在下降。保持在气球船上方。", toastBombUsed: "这个气球已经投过炸弹。", toastBombAway: "炸弹投下。", toastBalloonRecovered: "气球已回收。", toastBalloonSplash: "气球落水。", toastWaterfall: "你越过了世界边缘的瀑布。", toastJumpWater: "你跳进了水里。按 F 返回船上。", toastSwimming: "你正在游泳。按 F 返回船上。", toastGoldDiggerBlock: "GoldDigger 传送被岛屿阻挡。", toastGoldDiggerMinimap: "GoldDigger 小地图传送。", toastConnected: "已连接多人海域。", toastReconnected: "已重新连接多人海域。", toastDisconnected: "多人连接断开，正在重连..."
-    },
-    goods: { Silk: "丝绸", Spice: "香料", Iron: "铁", Tea: "茶叶", Pearls: "珍珠", "Whale Blubber": "鲸脂" },
-    ammo: { basic: "基础炮弹", grapeshot: "霰弹", hotshot: "炽热弹", harpoon: "鱼叉", airburst: "空爆弹" },
-    ammoShort: { basic: "炮弹", grapeshot: "霰弹", hotshot: "热弹", harpoon: "鱼叉", airburst: "空爆" },
-    entities: { Fish: "鱼", Squid: "鱿鱼", Crate: "木箱", Treasure: "宝藏", "Kraken tentacle": "海怪触手" },
-    islands: { "Port Azure": "蔚蓝港", Vikholm: "维克霍姆", Seville: "塞维利亚", Venice: "威尼斯", Amsterdam: "阿姆斯特丹", Portsmouth: "朴茨茅斯", Zanzibar: "桑给巴尔", Canton: "广州", Baltimore: "巴尔的摩", Brest: "布雷斯特", Lisbon: "里斯本", Calicut: "卡利卡特", Tonga: "汤加", "Crown Harbor": "王冠港", Blackreef: "黑礁", "New Albion": "新阿尔比恩", "Gull Keys": "鸥群礁", "Twin Shoals": "双浅滩", "Mistfall Cay": "雾瀑岛", "Broken Tooth": "断齿岛", Greenneedle: "绿针岛" },
-    cultures: { Freeport: "自由港", Viking: "维京", Spanish: "西班牙", Venetian: "威尼斯", Dutch: "荷兰", "Royal Navy": "皇家海军", "Swahili-Arab": "斯瓦希里-阿拉伯", Chinese: "中国", American: "美洲", French: "法国", Portuguese: "葡萄牙", "Indian Ocean": "印度洋", Polynesian: "波利尼西亚", "Crown Colony": "王冠殖民地", Privateer: "私掠者", Merchant: "商人", Uncharted: "未知" },
-    ships: {}
-  },
-  fr: {
-    ui: {
-      captainName: "Nom du capitaine", enterName: "Entrez votre nom", developerToken: "Jeton développeur", optional: "Facultatif", language: "Langue", setSail: "Prendre la mer",
-      firstVoyage: "Premier voyage", newQuestion: "Découvres-tu Islandwake ?", newQuestionBody: "Un bref guide de capitaine peut expliquer la navigation, les îles, les boutiques, la pêche, le combat et le butin.", showGuide: "Oui, afficher le guide", noSetSail: "Non, partir",
-      beginnerGuide: "Guide débutant", guideHeadline: "Survivre, commercer, améliorer", guideSailingTitle: "Navigation", guideSailingBody: "Utilise WASD pour diriger ton navire. Vise avec la souris et clique pour tirer le boulet sélectionné. La mini-carte affiche les îles, boss, orages, ballons et vents.",
-      guideIslandsTitle: "Îles", guideIslandsBody: "Approche-toi d'une île et appuie sur T pour accoster. À terre, appuie sur R pour le marché et C pour repartir. Les boutiques vendent navires, marchandises, boulets, ballons et améliorations.",
-      guideToolsTitle: "Outils", guideToolsBody: "Utilise 1 pour le canon, 2 pour la canne à pêche, et 3 ou G pour la longue-vue. Les poissons et calmars mordent à l'appât, les caisses et trésors se ramassent, et la longue-vue identifie les navires.",
-      guideProgressTitle: "Progression", guideProgressBody: "Vends les marchandises où elles valent plus cher, coule des navires pour obtenir des caisses, achète de meilleurs navires et dépense tes points en dégâts, rechargement et portée. Évite le Kraken et le bord de carte au début.", startPlaying: "Commencer",
-      cargo: "Cargaison", noTarget: "Aucune cible", map: "Carte", wind: "Vent", toggleWindMarkers: "Afficher/masquer les vents", openMinimap: "Ouvrir la carte", gold: "Or", openLeaderboard: "Ouvrir le classement", close: "Fermer", harborMarket: "Marché du port",
-      goodsTab: "Marchandises", shipsTab: "Navires", shotTab: "Munitions", upgradesTab: "Améliorations", captain: "Capitaine", atSea: "En mer", swimming: "À la nage", onDeck: "Sur le pont", docked: "Accosté : {island}",
-      lvlInfinite: "Niv. infini", lvlMax: "Niv.{level} MAX", lvl: "Niv.{level}", hp: "PV", armor: "Armure", speed: "Vitesse", regen: "Régén.", hold: "Cale", blubber: "Graisse", nets: "Filets", out: "sortis", in: "rentrés", burning: "En feu {seconds}s", emptyHold: "Cale vide",
-      dockingPrompt: "Accostage à {island} : <b>{seconds}s</b>", pressDock: "Appuie sur <b>T</b> pour accoster à {island}", pressSailShop: "Appuie sur <b>C</b> pour partir ou <b>R</b> pour le marché",
-      buy: "Acheter", sell: "Vendre", buyPrice: "Achat {price}o", sellPrice: "Vente {price}o", owned: "Possédé {count}.", unchartedShop: "{island} est inexplorée. Il n'y a ni boutiques, ni chantiers navals, ni marchandises.", marketIntro: "Marché {culture} | Cale {hold}/{capacity}{blubber}. Achète bas, vends haut.", blubberInHold: " | Graisse {count} en cale",
-      blubberTrade: "Possédé {owned}. Portsmouth paie 200o pièce ; les autres ports n'en achètent pas. Elle occupe la cale normale sauf sur un baleinier, qui peut en porter 50.", sellHere: "Vente ici pour {price}o.", bestKnownResale: "Meilleure revente connue : {price}o à {island}.", betterSellHere: "C'est l'un des meilleurs endroits pour vendre.", possibleProfit: "{profit}o de profit possible si tu l'y transportes.", weakTradeRoute: "Acheter ici n'est pas une bonne route commerciale pour l'instant.",
-      shipwrightIntro: "Les chantiers de {island} vendent des coques {culture}. Les navires rapides ont souvent moins d'armure ; les grands navires portent plus et poussent mieux.", price: "{price}o", sailing: "En mer", shipStats: "PV {hp} / Armure {armor}% / Vitesse {speed} / Régén. {regen}/s / Cale {hold}", vsYourShip: "Vs ton {ship} : {stats}",
-      emptySlot: "Vide", emptySlotTitle: "Emplacement vide", hotbarFull: "Barre pleine", replaceAmmoPrompt: "Remplace un emplacement non basique par {ammo}.", slot: "Empl. {slot}", basic: "Basique", hotAirBalloon: "Montgolfière", balloonShopDesc: "Possédées {owned}/{max}. Les Ballooners peuvent les lancer pour explorer et bombarder.", each: "{price}o chacune", buyFive: "Acheter 5",
-      upgradePoints: "Points d'amélioration : <b>{points}</b>", spend: "Dépenser", max: "Max", cannonDamage: "Dégâts du canon", fireRate: "Cadence", cannonRange: "Portée du canon",
-      speedVeryFast: "très rapide", speedQuick: "rapide", speedSlow: "lent", speedSteady: "stable", noArmor: "sans armure", heavyArmor: "armure lourde", solidArmor: "bonne armure", lightArmor: "armure légère", hugeHold: "cale immense", largeHold: "grande cale", smallHold: "petite cale", usefulHold: "cale utile", massiveHp: "PV de coque énormes", highHp: "PV de coque élevés", lightHp: "coque légère", goodHp: "bons PV de coque",
-      speedBuild: "Construit pour la vitesse, pas pour encaisser.", heavyBuild: "Lourd et difficile à pousser, mais lent à repositionner.", balancedBuild: "Assez équilibré pour le commerce et le combat.", shipRole: "Navire {speed} avec {durability}, {defense} et une {hold}. {handling}",
-      hotshotDesc: "Même impact direct que le boulet basique, puis brûle à {dps}/s pendant {duration}s. Le feu ignore les améliorations de dégâts et s'éteint plus vite sur les navires en mouvement.", grapeshotDesc: "{pellets} projectiles en large dispersion. Chaque projectile inflige {damage}% de dégâts directs et atteint {range}% de la portée du canon. Idéal de près.", harpoonDesc: "20 dégâts fixes aux navires. Les baleines subissent 100 dégâts, ou 150 depuis un baleinier ; les améliorations de dégâts ne l'augmentent pas.", airburstDesc: "Explose au-dessus du point visé avec une imprécision de mitraille. Inflige jusqu'à 60 dégâts aux ballons dans un petit rayon.", basicDesc: "Boulet fiable, tir unique, munitions infinies.",
-      damageUpgradeDesc: "Dégâts directs actuels : {damage}. Chaque point ajoute +2 ; le feu du boulet rouge est séparé.", reloadUpgradeDesc: "Rechargement actuel : {reload}s. Chaque point baisse de 0,02s, jusqu'au niv.{max}.", rangeUpgradeDesc: "Portée actuelle : {range}m. Chaque point ajoute +4m. Les tirs lointains gagnent jusqu'à +50% de dégâts directs.",
-      dangerous: "Dangereux", wounded: "Blessé", manageable: "Gérable", hostile: "Hostile", crates: "Caisses", distanceMeter: "{distance}m", spyDetails: "Niv.{level} | {distance} | {threat}<br>PV {hp}/{max} ({pct}%) | Armure {armor}%<br>Vitesse {speed} | Régén. {regen}/s | Caisses {crates}"
-    },
-    goods: { Silk: "Soie", Spice: "Épices", Iron: "Fer", Tea: "Thé", Pearls: "Perles", "Whale Blubber": "Graisse de baleine" },
-    ammo: { basic: "Boulet basique", grapeshot: "Mitraille", hotshot: "Boulet rouge", harpoon: "Harpon", airburst: "Obus airburst" },
-    ammoShort: { basic: "Boulet", grapeshot: "Mitr.", hotshot: "Rouge", harpoon: "Harpon", airburst: "Air" },
-    entities: { Fish: "Poisson", Squid: "Calmar", Crate: "Caisse", Treasure: "Trésor", "Kraken tentacle": "Tentacule du Kraken" },
-    islands: { "Port Azure": "Port Azur", Vikholm: "Vikholm", Seville: "Séville", Venice: "Venise", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzibar", Canton: "Canton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisbonne", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Port de la Couronne", Blackreef: "Récif Noir", "New Albion": "Nouvelle Albion", "Gull Keys": "Îlots des Mouettes", "Twin Shoals": "Doubles Hauts-fonds", "Mistfall Cay": "Caye Brumechute", "Broken Tooth": "Dent Brisée", Greenneedle: "Aiguille Verte" },
-    cultures: { Freeport: "port libre", Viking: "viking", Spanish: "espagnoles", Venetian: "vénitiennes", Dutch: "néerlandaises", "Royal Navy": "de la Royal Navy", "Swahili-Arab": "swahili-arabes", Chinese: "chinoises", American: "américaines", French: "françaises", Portuguese: "portugaises", "Indian Ocean": "de l'océan Indien", Polynesian: "polynésiennes", "Crown Colony": "coloniales", Privateer: "corsaires", Merchant: "marchandes", Uncharted: "inexplorées" },
-    ships: {}
-  },
-  de: {
-    ui: {
-      captainName: "Kapitänsname", enterName: "Namen eingeben", developerToken: "Entwickler-Token", optional: "Optional", language: "Sprache", setSail: "Segel setzen",
-      firstVoyage: "Erste Reise", newQuestion: "Bist du neu in Islandwake?", newQuestionBody: "Ein kurzer Kapitänsführer erklärt Segeln, Inseln, Läden, Angeln, Kampf und Beute.", showGuide: "Ja, Anleitung zeigen", noSetSail: "Nein, losfahren",
-      beginnerGuide: "Anfängerführer", guideHeadline: "Überleben, handeln, aufrüsten", guideSailingTitle: "Segeln", guideSailingBody: "Steuere dein Schiff mit WASD. Ziele mit der Maus und klicke, um die gewählte Kugel abzufeuern. Die Minikarte zeigt Inseln, Bosse, Stürme, Ballons und Wind.",
-      guideIslandsTitle: "Inseln", guideIslandsBody: "Fahre nah an eine Insel und drücke T zum Anlegen. An Land öffnet R den Markt und C setzt wieder Segel. Läden verkaufen Schiffe, Waren, Kugeln, Ballons und Upgrades.",
-      guideToolsTitle: "Werkzeuge", guideToolsBody: "1 nutzt die Kanone, 2 die Angel, 3 oder G das Fernrohr. Fische und Kalmare beißen den Köder, Kisten und Schätze können gesammelt werden, und das Fernrohr identifiziert Schiffe.",
-      guideProgressTitle: "Fortschritt", guideProgressBody: "Verkaufe Waren dort, wo sie mehr wert sind, versenke Schiffe für Kisten, kaufe stärkere Schiffe und investiere Punkte in Schaden, Nachladen und Reichweite. Meide Kraken und Kartenrand am Anfang.", startPlaying: "Spielen",
-      cargo: "Ladung", noTarget: "Kein Ziel", map: "Karte", wind: "Wind", toggleWindMarkers: "Windmarkierungen umschalten", openMinimap: "Karte öffnen", gold: "Gold", openLeaderboard: "Bestenliste öffnen", close: "Schließen", harborMarket: "Hafenmarkt",
-      goodsTab: "Waren", shipsTab: "Schiffe", shotTab: "Munition", upgradesTab: "Upgrades", captain: "Kapitän", atSea: "Auf See", swimming: "Schwimmen", onDeck: "An Deck", docked: "Angelegt: {island}",
-      lvlInfinite: "Stufe unendlich", lvlMax: "Stufe {level} MAX", lvl: "Stufe {level}", hp: "TP", armor: "Panzerung", speed: "Tempo", regen: "Reg.", hold: "Laderaum", blubber: "Waltran", nets: "Netze", out: "aus", in: "ein", burning: "Brennt {seconds}s", emptyHold: "Laderaum leer",
-      dockingPrompt: "Anlegen bei {island}: <b>{seconds}s</b>", pressDock: "Drücke <b>T</b>, um bei {island} anzulegen", pressSailShop: "Drücke <b>C</b> zum Auslaufen oder <b>R</b> für den Laden",
-      buy: "Kaufen", sell: "Verkaufen", buyPrice: "Kauf {price}g", sellPrice: "Verkauf {price}g", owned: "Besitz {count}.", unchartedShop: "{island} ist unerforscht. Hier gibt es keine Läden, Werften oder Handelswaren.", marketIntro: "{culture}-Markt | Laderaum {hold}/{capacity}{blubber}. Billig kaufen, teuer verkaufen.", blubberInHold: " | Waltran {count} im Laderaum",
-      blubberTrade: "Besitz {owned}. Portsmouth zahlt 200g pro Stück; andere Häfen kaufen es nicht. Es nutzt normalen Laderaum, außer auf einem Walfänger, der 50 tragen kann.", sellHere: "Hier für {price}g verkaufen.", bestKnownResale: "Bester bekannter Wiederverkauf: {price}g in {island}.", betterSellHere: "Dies ist einer der besseren Verkaufsorte.", possibleProfit: "{profit}g möglicher Gewinn, wenn du es dorthin bringst.", weakTradeRoute: "Hier zu kaufen ist derzeit keine gute Handelsroute.",
-      shipwrightIntro: "Die Werften von {island} verkaufen {culture}e Rümpfe. Schnellere Schiffe haben meist weniger Panzerung; größere tragen mehr und schieben stärker.", price: "{price}g", sailing: "Aktiv", shipStats: "TP {hp} / Panzerung {armor}% / Tempo {speed} / Reg. {regen}/s / Laderaum {hold}", vsYourShip: "Gegen dein {ship}: {stats}",
-      emptySlot: "Leer", emptySlotTitle: "Leerer Platz", hotbarFull: "Leiste voll", replaceAmmoPrompt: "Ersetze einen Nicht-Basis-Platz mit {ammo}.", slot: "Platz {slot}", basic: "Basis", hotAirBalloon: "Heißluftballon", balloonShopDesc: "Besitz {owned}/{max}. Ballooner können sie zum Erkunden und Bombardieren starten.", each: "{price}g pro Stück", buyFive: "5 kaufen",
-      upgradePoints: "Upgradepunkte: <b>{points}</b>", spend: "Ausgeben", max: "Max", cannonDamage: "Kanonenschaden", fireRate: "Feuerrate", cannonRange: "Kanonereichweite",
-      speedVeryFast: "sehr schnelles", speedQuick: "schnelles", speedSlow: "langsames", speedSteady: "stabiles", noArmor: "keine Panzerung", heavyArmor: "schwere Panzerung", solidArmor: "solide Panzerung", lightArmor: "leichte Panzerung", hugeHold: "riesiger Laderaum", largeHold: "großer Laderaum", smallHold: "kleiner Laderaum", usefulHold: "nützlicher Laderaum", massiveHp: "massive Rumpf-TP", highHp: "hohe Rumpf-TP", lightHp: "leichte Rumpf-TP", goodHp: "gute Rumpf-TP",
-      speedBuild: "Für Tempo gebaut, nicht zum Einstecken.", heavyBuild: "Schwer und kaum zu schieben, aber langsam beim Umsetzen.", balancedBuild: "Ausgewogen genug für Handel und Kämpfe.", shipRole: "{speed} Schiff mit {durability}, {defense} und {hold}. {handling}",
-      hotshotDesc: "Gleicher Direkttreffer wie Basis-Kugel, danach {dps}/s Feuer für {duration}s. Feuer ignoriert Schadens-Upgrades und erlischt bei bewegten Schiffen schneller.", grapeshotDesc: "{pellets} Projektile in breiter Streuung. Jedes verursacht {damage}% Direktschaden und erreicht {range}% Reichweite. Am besten nah.", harpoonDesc: "20 fester Schaden gegen Schiffe. Wale nehmen 100 Schaden, oder 150 vom Walfänger; Schadens-Upgrades erhöhen es nicht.", airburstDesc: "Explodiert hoch über dem Zielpunkt mit Kartätschen-Ungenauigkeit. Bis zu 60 Ballonschaden in kleinem Radius.", basicDesc: "Zuverlässige Einzelkugel mit unendlicher Munition.",
-      damageUpgradeDesc: "Aktueller Direktschaden {damage}. Jeder Punkt gibt +2; Hotshot-Feuer bleibt separat.", reloadUpgradeDesc: "Aktuelles Nachladen {reload}s. Jeder Punkt senkt um 0,02s, bis Stufe {max}.", rangeUpgradeDesc: "Aktuelle Reichweite {range}m. Jeder Punkt gibt +4m. Weite Treffer verursachen bis zu +50% Direktschaden.",
-      dangerous: "Gefährlich", wounded: "Verwundet", manageable: "Machbar", hostile: "Feindlich", crates: "Kisten", distanceMeter: "{distance}m", spyDetails: "Stufe {level} | {distance} | {threat}<br>TP {hp}/{max} ({pct}%) | Panzerung {armor}%<br>Tempo {speed} | Reg. {regen}/s | Kisten {crates}"
-    },
-    goods: { Silk: "Seide", Spice: "Gewürze", Iron: "Eisen", Tea: "Tee", Pearls: "Perlen", "Whale Blubber": "Waltran" },
-    ammo: { basic: "Basis-Kugel", grapeshot: "Kartätsche", hotshot: "Glühkugel", harpoon: "Harpune", airburst: "Luftdetonation" },
-    ammoShort: { basic: "Kugel", grapeshot: "Kart.", hotshot: "Glüh", harpoon: "Harp.", airburst: "Luft" },
-    entities: { Fish: "Fisch", Squid: "Kalmar", Crate: "Kiste", Treasure: "Schatz", "Kraken tentacle": "Kraken-Tentakel" },
-    islands: { "Port Azure": "Azurhafen", Vikholm: "Vikholm", Seville: "Sevilla", Venice: "Venedig", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Sansibar", Canton: "Kanton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lissabon", Calicut: "Kalikut", Tonga: "Tonga", "Crown Harbor": "Kronenhafen", Blackreef: "Schwarzriff", "New Albion": "Neu-Albion", "Gull Keys": "Möweninseln", "Twin Shoals": "Zwillingsbänke", "Mistfall Cay": "Nebelfall-Cay", "Broken Tooth": "Gebrochener Zahn", Greenneedle: "Grüne Nadel" },
-    cultures: { Freeport: "Freihafen", Viking: "Wikinger", Spanish: "spanisch", Venetian: "venezianisch", Dutch: "niederländisch", "Royal Navy": "Royal-Navy", "Swahili-Arab": "swahili-arabisch", Chinese: "chinesisch", American: "amerikanisch", French: "französisch", Portuguese: "portugiesisch", "Indian Ocean": "Indischer-Ozean", Polynesian: "polynesisch", "Crown Colony": "Kronkolonie", Privateer: "Freibeuter", Merchant: "Händler", Uncharted: "unerforscht" },
-    ships: {}
-  },
-  es: {
-    ui: {
-      captainName: "Nombre del capitán", enterName: "Escribe tu nombre", developerToken: "Token de desarrollador", optional: "Opcional", language: "Idioma", setSail: "Zarpar",
-      firstVoyage: "Primer viaje", newQuestion: "¿Eres nuevo en Islandwake?", newQuestionBody: "Una guía breve puede enseñarte navegación, islas, tiendas, pesca, combate y botín.", showGuide: "Sí, mostrar guía", noSetSail: "No, zarpar",
-      beginnerGuide: "Guía para principiantes", guideHeadline: "Sobrevive, comercia, mejora", guideSailingTitle: "Navegación", guideSailingBody: "Usa WASD para mover tu barco. Apunta con el ratón y haz clic para disparar la munición seleccionada. El minimapa muestra islas, jefes, tormentas, globos y viento.",
-      guideIslandsTitle: "Islas", guideIslandsBody: "Acércate a una isla y pulsa T para atracar. En tierra, pulsa R para comprar y C para volver a zarpar. Las tiendas venden barcos, mercancías, munición, globos y mejoras.",
-      guideToolsTitle: "Herramientas", guideToolsBody: "Usa 1 para cañón, 2 para caña de pescar, y 3 o G para catalejo. Peces y calamares muerden el cebo, cajas y tesoros se recogen, y el catalejo identifica barcos.",
-      guideProgressTitle: "Progreso", guideProgressBody: "Vende mercancías donde valgan más, hunde barcos para obtener cajas, compra barcos mejores y usa puntos en daño, recarga y alcance. Al principio evita el Kraken y el borde del mapa.", startPlaying: "Empezar",
-      cargo: "Carga", noTarget: "Sin objetivo", map: "Mapa", wind: "Viento", toggleWindMarkers: "Alternar viento", openMinimap: "Abrir mapa", gold: "Oro", openLeaderboard: "Abrir clasificación", close: "Cerrar", harborMarket: "Mercado del puerto",
-      goodsTab: "Mercancías", shipsTab: "Barcos", shotTab: "Munición", upgradesTab: "Mejoras", captain: "Capitán", atSea: "En el mar", swimming: "Nadando", onDeck: "En cubierta", docked: "Atracado: {island}",
-      lvlInfinite: "Niv. infinito", lvlMax: "Niv.{level} MAX", lvl: "Niv.{level}", hp: "PV", armor: "Blindaje", speed: "Velocidad", regen: "Reg.", hold: "Bodega", blubber: "Grasa", nets: "Redes", out: "fuera", in: "dentro", burning: "Ardiendo {seconds}s", emptyHold: "Bodega vacía",
-      dockingPrompt: "Atracando en {island}: <b>{seconds}s</b>", pressDock: "Pulsa <b>T</b> para atracar en {island}", pressSailShop: "Pulsa <b>C</b> para zarpar o <b>R</b> para la tienda",
-      buy: "Comprar", sell: "Vender", buyPrice: "Comprar {price}o", sellPrice: "Vender {price}o", owned: "Tienes {count}.", unchartedShop: "{island} está sin cartografiar. No hay tiendas, astilleros ni mercancías.", marketIntro: "Mercado {culture} | Bodega {hold}/{capacity}{blubber}. Compra barato y vende caro.", blubberInHold: " | Grasa {count} en bodega",
-      blubberTrade: "Tienes {owned}. Portsmouth paga 200o cada una; otros puertos no la compran. Usa bodega normal salvo en un ballenero, que puede llevar 50.", sellHere: "Vender aquí por {price}o.", bestKnownResale: "Mejor reventa conocida: {price}o en {island}.", betterSellHere: "Este es uno de los mejores sitios para venderlo.", possibleProfit: "{profit}o de ganancia posible si lo llevas allí.", weakTradeRoute: "Comprar aquí no es una buena ruta ahora.",
-      shipwrightIntro: "Los astilleros de {island} venden cascos {culture}. Los barcos rápidos suelen tener menos blindaje; los grandes cargan y empujan más.", price: "{price}o", sailing: "Navegando", shipStats: "PV {hp} / Blindaje {armor}% / Vel. {speed} / Reg. {regen}/s / Bodega {hold}", vsYourShip: "Vs tu {ship}: {stats}",
-      emptySlot: "Vacío", emptySlotTitle: "Ranura vacía", hotbarFull: "Barra llena", replaceAmmoPrompt: "Reemplaza una ranura no básica con {ammo}.", slot: "Ranura {slot}", basic: "Básica", hotAirBalloon: "Globo aerostático", balloonShopDesc: "Tienes {owned}/{max}. Los Ballooner pueden lanzarlos para explorar y bombardear.", each: "{price}o cada uno", buyFive: "Comprar 5",
-      upgradePoints: "Puntos de mejora: <b>{points}</b>", spend: "Gastar", max: "Máx", cannonDamage: "Daño de cañón", fireRate: "Cadencia", cannonRange: "Alcance de cañón",
-      speedVeryFast: "muy rápido", speedQuick: "rápido", speedSlow: "lento", speedSteady: "estable", noArmor: "sin blindaje", heavyArmor: "blindaje pesado", solidArmor: "blindaje sólido", lightArmor: "blindaje ligero", hugeHold: "bodega enorme", largeHold: "bodega grande", smallHold: "bodega pequeña", usefulHold: "bodega útil", massiveHp: "PV de casco enormes", highHp: "PV de casco altos", lightHp: "PV de casco ligeros", goodHp: "buenos PV de casco",
-      speedBuild: "Hecho para velocidad, no para aguantar golpes.", heavyBuild: "Pesado y difícil de empujar, pero lento para reposicionarse.", balancedBuild: "Equilibrado para comercio y combates.", shipRole: "Barco {speed} con {durability}, {defense} y {hold}. {handling}",
-      hotshotDesc: "Mismo impacto directo que la munición básica, luego quema {dps}/s durante {duration}s. El fuego ignora mejoras de daño y se apaga antes si el barco se mueve.", grapeshotDesc: "{pellets} proyectiles con dispersión amplia. Cada uno hace {damage}% de daño directo y llega al {range}% del alcance. Mejor de cerca.", harpoonDesc: "20 de daño fijo a barcos. Las ballenas reciben 100, o 150 desde un ballenero; las mejoras de daño no lo aumentan.", airburstDesc: "Explota sobre el punto apuntado con imprecisión similar a metralla. Hace hasta 60 de daño a globos en un radio pequeño.", basicDesc: "Munición simple y fiable con disparos infinitos.",
-      damageUpgradeDesc: "Daño directo actual {damage}. Cada punto añade +2; el fuego de Hotshot va aparte.", reloadUpgradeDesc: "Recarga actual {reload}s. Cada punto reduce 0.02s, hasta niv.{max}.", rangeUpgradeDesc: "Alcance actual {range}m. Cada punto añade +4m. Los impactos lejanos hacen hasta +50% de daño directo.",
-      dangerous: "Peligroso", wounded: "Herido", manageable: "Manejable", hostile: "Hostil", crates: "Cajas", distanceMeter: "{distance}m", spyDetails: "Niv.{level} | {distance} | {threat}<br>PV {hp}/{max} ({pct}%) | Blindaje {armor}%<br>Vel. {speed} | Reg. {regen}/s | Cajas {crates}"
-    },
-    goods: { Silk: "Seda", Spice: "Especias", Iron: "Hierro", Tea: "Té", Pearls: "Perlas", "Whale Blubber": "Grasa de ballena" },
-    ammo: { basic: "Bala básica", grapeshot: "Metralla", hotshot: "Bala incendiaria", harpoon: "Arpón", airburst: "Bala airburst" },
-    ammoShort: { basic: "Bala", grapeshot: "Metr.", hotshot: "Fuego", harpoon: "Arpón", airburst: "Aire" },
-    entities: { Fish: "Pez", Squid: "Calamar", Crate: "Caja", Treasure: "Tesoro", "Kraken tentacle": "Tentáculo del Kraken" },
-    islands: { "Port Azure": "Puerto Azur", Vikholm: "Vikholm", Seville: "Sevilla", Venice: "Venecia", Amsterdam: "Ámsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzíbar", Canton: "Cantón", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisboa", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Puerto Corona", Blackreef: "Arrecife Negro", "New Albion": "Nueva Albión", "Gull Keys": "Cayos Gaviota", "Twin Shoals": "Bajos Gemelos", "Mistfall Cay": "Cayo Brumacaída", "Broken Tooth": "Diente Roto", Greenneedle: "Aguja Verde" },
-    cultures: { Freeport: "puerto libre", Viking: "vikingos", Spanish: "españoles", Venetian: "venecianos", Dutch: "neerlandeses", "Royal Navy": "de la Marina Real", "Swahili-Arab": "suajili-árabes", Chinese: "chinos", American: "americanos", French: "franceses", Portuguese: "portugueses", "Indian Ocean": "del Índico", Polynesian: "polinesios", "Crown Colony": "coloniales", Privateer: "corsarios", Merchant: "mercantes", Uncharted: "sin cartografiar" },
-    ships: {}
-  },
-};
-function spreadIslandData(data) {
-  return {
-    ...data,
-    x: ISLAND_SPACING_ANCHOR.x + (data.x - ISLAND_SPACING_ANCHOR.x) * ISLAND_SPACING_SCALE,
-    z: ISLAND_SPACING_ANCHOR.z + (data.z - ISLAND_SPACING_ANCHOR.z) * ISLAND_SPACING_SCALE,
+  const TAU = Math.PI * 2;
+  const TILE = 72;
+  const WORLD = 9600;
+  const STRUCTURE_RADIUS = 21;
+  const PLACEMENT_FOOTPRINT_SCALE = 0.25;
+  const ISLAND_WALK_SCALE = 1;
+  const SHIPWRECK_SCALE = 2;
+  const SHIPWRECK_INTERACT_RADIUS = 270;
+  const SHIPWRECK_CLEAR_RADIUS = 152;
+  const SERVER_API_ROOT = location.protocol === "file:" ? "http://127.0.0.1:4173" : "";
+  const GRILL_TIME = 60;
+  const WATER_TIME = 60;
+  const TOMATO_GROW_TIME = 300;
+  const DROWN_TIME = 20;
+  const SHARK_HP = 120;
+  const SHARK_BITE_DAMAGE = 36;
+  const SHARK_RAFT_DAMAGE = 30;
+  const SHARK_AGGRESSION_CHANCE = 0.1;
+  const CROCODILE_DAMAGE = 27;
+  const PLAYER_INV_CAP = 20;
+  const CHEST_INV_CAP = 40;
+  const DEV_TOKEN = "GoldDigger";
+  const DEV_RESOURCE_AMOUNT = 9999;
+  const FOOD_ITEMS = ["cookedFish", "cookedMeat", "rawFish", "tomato", "coconut"];
+  const TIER_ORDER = ["wood", "scrap", "iron", "steel"];
+  const TOOL_BASES = ["axe", "spear", "hammer"];
+  const TOOL_TIERS = {
+    wood: { name: "Wood", durability: 100, power: 1, color: "#d4bd82" },
+    scrap: { name: "Scrap", durability: 200, power: 1.25, color: "#a8b5ba" },
+    iron: { name: "Iron", durability: 350, power: 1.6, color: "#d6dde0" },
+    steel: { name: "Steel", durability: 500, power: 2, color: "#e7f3f5" }
   };
-}
-
-const islandData = [
-  { name: "Port Azure", culture: "Freeport", x: -34, z: -24, radius: 20, color: 0x7dcf7a, accent: 0x2f87a5, theme: "starter", shipMarket: ["shallop", "pinnace", "hoy", "yawl", "balinger", "cog", "ketch"], goods: { Silk: 32, Spice: 57, Iron: 38, Tea: 24, Pearls: 88 } },
-  { name: "Vikholm", culture: "Viking", x: -184, z: -122, radius: 23, color: 0x86ba73, accent: 0xbd463b, theme: "norse", shipMarket: ["longship", "knarr", "dogger", "balinger"], goods: { Silk: 38, Spice: 83, Iron: 80, Tea: 46, Pearls: 76 } },
-  { name: "Seville", culture: "Spanish", x: 182, z: -138, radius: 24, color: 0xd4ad65, accent: 0xc94f3f, theme: "iberian", shipMarket: ["caravel", "carrack", "galleon", "merchantman"], goods: { Silk: 64, Spice: 38, Iron: 48, Tea: 68, Pearls: 112 } },
-  { name: "Venice", culture: "Venetian", x: 116, z: 142, radius: 21, color: 0x82bd72, accent: 0xd7b44a, theme: "lagoon", shipMarket: ["galley", "tartane", "polacre", "xebec", "brigantine"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
-  { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "chassemaree", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
-  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
-  { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "polacre", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
-  { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
-  { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop", "ballooner", "windrunner"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
-  { name: "Brest", culture: "French", x: 104, z: -224, radius: 21, color: 0x91c96d, accent: 0x4c64a6, theme: "fort", shipMarket: ["brig", "brigantine", "snow", "chassemaree", "barquentine", "sixthrate", "corvette"], goods: { Silk: 69, Spice: 42, Iron: 62, Tea: 66, Pearls: 130 } },
-  { name: "Lisbon", culture: "Portuguese", x: -232, z: -204, radius: 22, color: 0xbac96d, accent: 0xd2a94b, theme: "iberian", shipMarket: ["caravel", "pink", "polacre", "carrack"], goods: { Silk: 52, Spice: 34, Iron: 60, Tea: 58, Pearls: 118 } },
-  { name: "Calicut", culture: "Indian Ocean", x: 214, z: 210, radius: 22, color: 0x92d37e, accent: 0xda9c5c, theme: "market", shipMarket: ["dhow", "ketch", "merchantman", "eastindiaman"], goods: { Silk: 82, Spice: 44, Iron: 72, Tea: 36, Pearls: 120 } },
-  { name: "Tonga", culture: "Polynesian", x: 4, z: 84, radius: 18, color: 0x5fa66a, accent: 0xef6f4f, theme: "atoll", shipMarket: ["cat", "sloop", "lugger"], goods: { Silk: 61, Spice: 64, Iron: 46, Tea: 75, Pearls: 94 } },
-  { name: "Crown Harbor", culture: "Crown Colony", x: 164, z: -22, radius: 21, color: 0x82bd72, accent: 0xd99928, theme: "fort", shipMarket: ["dart", "storm", "brig", "bombketch", "sixthrate", "frigate"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
-  { name: "Blackreef", culture: "Privateer", x: -96, z: 216, radius: 20, color: 0x5fa66a, accent: 0x3f87a6, theme: "rocky", shipMarket: ["dart", "lugger", "brigantine", "xebec"], goods: { Silk: 78, Spice: 52, Iron: 101, Tea: 55, Pearls: 86 } },
-  { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "chassemaree", "barque", "postship", "merchantman", "whaler", "eastindiaman", "grandfrigate"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
-  { name: "Gull Keys", culture: "Uncharted", x: -308, z: 14, radius: 7, color: 0x6aa86a, accent: 0xd7b44a, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Twin Shoals", culture: "Uncharted", x: 298, z: 88, radius: 8, color: 0x82bd72, accent: 0xefc27c, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Mistfall Cay", culture: "Uncharted", x: 6, z: -326, radius: 6, color: 0x75caa5, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Broken Tooth", culture: "Uncharted", x: -286, z: 268, radius: 9, color: 0x6f9b68, accent: 0x4f5963, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Greenneedle", culture: "Uncharted", x: 312, z: -72, radius: 7, color: 0x68b779, accent: 0x2f6b48, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Shellhook Isle", culture: "Uncharted", x: -418, z: -62, radius: 8, color: 0x71b875, accent: 0xf0d05a, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Far Lantern", culture: "Uncharted", x: 424, z: 228, radius: 7, color: 0x83c16d, accent: 0xfff1a6, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Saltglass Cay", culture: "Uncharted", x: -392, z: -328, radius: 6, color: 0x75caa5, accent: 0xbdefff, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Needle Shoal", culture: "Uncharted", x: 374, z: -354, radius: 8, color: 0x6f9b68, accent: 0x4f5963, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Moonjaw Rocks", culture: "Uncharted", x: -108, z: 386, radius: 7, color: 0x5f9467, accent: 0xa4c9e8, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Bluecap Isle", culture: "Uncharted", x: 184, z: 388, radius: 9, color: 0x62b983, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Driftwood Cay", culture: "Uncharted", x: 442, z: -48, radius: 7, color: 0x88c478, accent: 0xb77b42, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Copper Atoll", culture: "Uncharted", x: -448, z: 178, radius: 8, color: 0x90ba68, accent: 0xd99928, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Amber Shoal", culture: "Uncharted", x: -116, z: -92, radius: 5.6, color: 0x74bd72, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Fernhook Islet", culture: "Uncharted", x: 86, z: -112, radius: 5.2, color: 0x6fbf8a, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Morrow Rock", culture: "Uncharted", x: -44, z: 76, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Clearwater Key", culture: "Uncharted", x: 122, z: 84, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Lowtide Holm", culture: "Uncharted", x: -156, z: 46, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Cinder Spit", culture: "Uncharted", x: 186, z: -32, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Driftmark Cay", culture: "Uncharted", x: -282, z: 108, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Northwind Cay", culture: "Uncharted", x: 284, z: 150, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Coralhook Isle", culture: "Uncharted", x: -196, z: -294, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Redcap Shoal", culture: "Uncharted", x: 190, z: 326, radius: 5.0, color: 0x69bd80, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Seabriar Rock", culture: "Uncharted", x: 358, z: -190, radius: 4.9, color: 0x91c96d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Starling Cay", culture: "Uncharted", x: -368, z: -150, radius: 5.4, color: 0x6bbd83, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-].map(spreadIslandData);
-
-const whaleZonePortAzure = islandData.find((island) => island.name === "Port Azure") || { z: -24 };
-const whaleZoneBaltimore = islandData.find((island) => island.name === "Baltimore") || { z: -280 };
-const WHALE_NORTH_MIN_Z = Math.min(whaleZonePortAzure.z, whaleZoneBaltimore.z) - 42;
-const WHALE_NORTH_MAX_Z = Math.max(whaleZonePortAzure.z, whaleZoneBaltimore.z) + 10;
-const WHALE_NORTH_CENTER_Z = (WHALE_NORTH_MIN_Z + WHALE_NORTH_MAX_Z) * 0.5;
-
-const shipCatalog = [
-  { id: "skiff", name: "Skiff", price: 0, hp: 145, armor: 0.02, speed: 15, regen: 1.6, color: 0xcc4e3f, model: "skiff" },
-  { id: "shallop", name: "Shallop", price: 380, hp: 165, armor: 0.02, speed: 17, regen: 1.7, color: 0xb86d3d, model: "skiff" },
-  { id: "pinnace", name: "Pinnace", price: 520, hp: 185, armor: 0.03, speed: 20, regen: 1.8, color: 0x5b9eb5, model: "dart" },
-  { id: "hoy", name: "Hoy", price: 680, hp: 220, armor: 0.04, speed: 11, regen: 1.9, color: 0xb0824a, model: "cog" },
-  { id: "yawl", name: "Yawl", price: 950, hp: 195, armor: 0.02, speed: 18, regen: 1.6, color: 0x7db0a6, model: "skiff" },
-  { id: "balinger", name: "Balinger", price: 1250, hp: 240, armor: 0.04, speed: 14, regen: 1.9, color: 0xb5894e, model: "cog" },
-  { id: "felucca", name: "Felucca", price: 1850, hp: 215, armor: 0.02, speed: 25, regen: 1.7, color: 0xe2bc55, model: "dhow" },
-  { id: "bilander", name: "Bilander", price: 2150, hp: 280, armor: 0.05, speed: 16, regen: 2.1, color: 0x84a76c, model: "snow" },
-  { id: "cog", name: "Cog", price: 880, hp: 260, armor: 0.06, speed: 10, regen: 2.0, color: 0xa86e3a, model: "cog" },
-  { id: "longship", name: "Longship", price: 980, hp: 205, armor: 0.03, speed: 24, regen: 1.8, color: 0xc84f3f, model: "longship" },
-  { id: "dogger", name: "Dogger", price: 1120, hp: 230, armor: 0.04, speed: 18, regen: 1.9, color: 0x7c9a7e, model: "lugger" },
-  { id: "dhow", name: "Dhow", price: 1250, hp: 235, armor: 0.03, speed: 19, regen: 2.2, color: 0xf0d05a, model: "dhow" },
-  { id: "sloop", name: "Sloop", price: 1420, hp: 225, armor: 0.04, speed: 27, regen: 1.8, color: 0x4aa5c6, model: "storm" },
-  { id: "knarr", name: "Knarr", price: 1580, hp: 290, armor: 0.06, speed: 12, regen: 2.2, color: 0x9b6b35, model: "knarr" },
-  { id: "lugger", name: "Lugger", price: 1720, hp: 245, armor: 0.04, speed: 22, regen: 2.0, color: 0x4f9a9a, model: "lugger" },
-  { id: "tartane", name: "Tartane", price: 1880, hp: 250, armor: 0.04, speed: 24, regen: 2.0, color: 0xc96446, model: "xebec" },
-  { id: "pink", name: "Pink", price: 2050, hp: 300, armor: 0.06, speed: 15, regen: 2.3, color: 0xc88b58, model: "caravel" },
-  { id: "cat", name: "Catamaran", price: 2180, hp: 210, armor: 0.02, speed: 28, regen: 1.8, color: 0xef6f4f, model: "cat" },
-  { id: "dart", name: "Cutter", price: 2350, hp: 230, armor: 0.04, speed: 30, regen: 1.7, color: 0x35a9b5, model: "dart" },
-  { id: "junk", name: "Junk", price: 2520, hp: 330, armor: 0.07, speed: 15, regen: 2.8, color: 0x4aa66b, model: "junk" },
-  { id: "ketch", name: "Ketch", price: 2720, hp: 340, armor: 0.06, speed: 16, regen: 2.5, color: 0xc58e45, model: "caravel" },
-  { id: "schooner", name: "Schooner", price: 2920, hp: 300, armor: 0.05, speed: 26, regen: 2.1, color: 0x58c6f2, model: "schooner" },
-  { id: "galley", name: "Galley", price: 3150, hp: 310, armor: 0.04, speed: 23, regen: 2.2, color: 0xd7b44a, model: "galley" },
-  { id: "xebec", name: "Xebec", price: 3380, hp: 320, armor: 0.05, speed: 29, regen: 2.1, color: 0xd45f3f, model: "xebec" },
-  { id: "brigantine", name: "Brigantine", price: 3650, hp: 360, armor: 0.07, speed: 22, regen: 2.3, color: 0x3f87a6, model: "brig" },
-  { id: "caravel", name: "Caravel", price: 3920, hp: 390, armor: 0.08, speed: 16, regen: 2.6, color: 0xd2a94b, model: "caravel" },
-  { id: "snow", name: "Snow", price: 4250, hp: 430, armor: 0.09, speed: 19, regen: 2.5, color: 0xa4c9e8, model: "snow" },
-  { id: "packet", name: "Packet Ship", price: 4550, hp: 350, armor: 0.05, speed: 27, regen: 2.0, color: 0x67bdd8, model: "schooner" },
-  { id: "chassemaree", name: "Chasse-Maree", price: 4720, hp: 330, armor: 0.04, speed: 28, regen: 2.0, color: 0x6fc8c3, model: "schooner" },
-  { id: "barquentine", name: "Barquentine", price: 4850, hp: 400, armor: 0.07, speed: 24, regen: 2.2, color: 0x82b26a, model: "snow" },
-  { id: "clipper", name: "Clipper", price: 5050, hp: 360, armor: 0.04, speed: 33, regen: 1.9, color: 0xe2aa32, model: "clipper" },
-  { id: "fluyt", name: "Fluyt", price: 5200, hp: 500, armor: 0.08, speed: 13, regen: 2.8, color: 0xd18b45, model: "fluyt" },
-  { id: "polacre", name: "Polacre", price: 5350, hp: 430, armor: 0.06, speed: 24, regen: 2.3, color: 0xde7f4d, model: "xebec" },
-  { id: "bombketch", name: "Bomb Ketch", price: 5600, hp: 560, armor: 0.11, speed: 10, regen: 2.7, color: 0x75856f, model: "turtle" },
-  { id: "brig", name: "Brig", price: 5900, hp: 455, armor: 0.08, speed: 23, regen: 2.4, color: 0x346e8f, model: "brig" },
-  { id: "barque", name: "Barque", price: 6050, hp: 470, armor: 0.08, speed: 21, regen: 2.4, color: 0x7e9bc9, model: "snow" },
-  { id: "corvette", name: "Corvette", price: 6650, hp: 510, armor: 0.1, speed: 25, regen: 2.4, color: 0x4c64a6, model: "frigate" },
-  { id: "frigate", name: "Frigate", price: 7300, hp: 580, armor: 0.12, speed: 24, regen: 2.5, color: 0x4051a8, model: "frigate" },
-  { id: "storm", name: "Sloop-of-War", price: 7800, hp: 380, armor: 0.07, speed: 31, regen: 2.0, color: 0x3556b8, model: "storm" },
-  { id: "sixthrate", name: "Sixth Rate", price: 8120, hp: 535, armor: 0.1, speed: 24, regen: 2.6, color: 0x4768ad, model: "frigate" },
-  { id: "galleon", name: "Galleon", price: 8500, hp: 680, armor: 0.14, speed: 12, regen: 2.9, color: 0x7e4c9d, model: "galleon" },
-  { id: "merchantman", name: "Merchantman", price: 9100, hp: 760, armor: 0.12, speed: 11, regen: 3.0, color: 0xb5773c, model: "fluyt" },
-  { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
-  { id: "postship", name: "Post Ship", price: 10350, hp: 640, armor: 0.11, speed: 22, regen: 2.8, color: 0x5d7fb2, model: "frigate" },
-  { id: "carrack", name: "Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
-  { id: "treasure", name: "Treasure Junk", price: 11800, hp: 900, armor: 0.14, speed: 9, regen: 3.5, color: 0xd6a83c, model: "treasure" },
-  { id: "whaler", name: "Whaler", price: 10600, hp: 1750, armor: 0.1, speed: 12, regen: 2.0, color: 0x6f8792, model: "frigate" },
-  { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
-  { id: "ballooner", name: "Ballooner", price: 15000, hp: 1350, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
-  { id: "fourthrate", name: "Fourth Rate", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
-  { id: "grandfrigate", name: "Grand Frigate", price: 28500, hp: 1060, armor: 0.12, speed: 18, regen: 5.2, color: 0x4f78b5, model: "frigate" },
-  { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
-  { id: "windrunner", name: "Windrunner", price: 31500, hp: 1040, armor: 0.04, speed: 28, regen: 4.2, color: 0xe0b24a, model: "clipper" },
-  { id: "firstrate", name: "First Rate", price: 20500, hp: 1320, armor: 0.2, speed: 9, regen: 4.0, color: 0xc9b05a, model: "manowar" },
-];
-
-const shipBalance = {
-  skiff: { name: "Skiff", price: 0, hp: 435, armor: 0, speed: 15, regen: 1, capacity: 4, hitbox: 2.1 },
-  shallop: { name: "Shallop", price: 380, hp: 495, armor: 0, speed: 17, regen: 1, capacity: 5, hitbox: 2.25 },
-  pinnace: { name: "Pinnace", price: 560, hp: 555, armor: 0, speed: 20, regen: 1, capacity: 4, hitbox: 2.35 },
-  hoy: { name: "Hoy", price: 760, hp: 660, armor: 0.03, speed: 11, regen: 2, capacity: 10, hitbox: 2.9 },
-  yawl: { name: "Yawl", price: 950, fixedPrice: true, hp: 585, armor: 0, speed: 18, regen: 1, capacity: 5, hitbox: 2.45, weight: 62 },
-  balinger: { name: "Balinger", price: 1250, fixedPrice: true, hp: 720, armor: 0.02, speed: 14, regen: 2, capacity: 11, hitbox: 3.0, weight: 88 },
-  felucca: { name: "Felucca", price: 1850, fixedPrice: true, hp: 650, armor: 0, speed: 25, regen: 1, capacity: 6, hitbox: 3.0, weight: 72 },
-  bilander: { name: "Bilander", price: 2150, fixedPrice: true, hp: 840, armor: 0.04, speed: 16, regen: 2, capacity: 13, hitbox: 3.2, weight: 98 },
-  cog: { name: "Cog", price: 980, hp: 780, armor: 0.05, speed: 10, regen: 2, capacity: 14, hitbox: 2.85 },
-  longship: { name: "Longship", price: 1200, hp: 615, armor: 0, speed: 24, regen: 1, capacity: 6, hitbox: 3.2 },
-  dogger: { name: "Dogger", price: 1320, hp: 690, armor: 0.03, speed: 18, regen: 2, capacity: 8, hitbox: 2.9 },
-  dhow: { name: "Dhow", price: 1450, hp: 705, armor: 0.01, speed: 19, regen: 2, capacity: 12, hitbox: 3.0 },
-  sloop: { name: "Sloop", price: 1720, hp: 675, armor: 0.02, speed: 27, regen: 1, capacity: 6, hitbox: 3.0 },
-  knarr: { name: "Knarr", price: 1850, hp: 870, armor: 0.05, speed: 12, regen: 2, capacity: 16, hitbox: 3.2 },
-  lugger: { name: "Lugger", price: 2050, hp: 735, armor: 0.02, speed: 22, regen: 2, capacity: 9, hitbox: 3.0 },
-  tartane: { name: "Tartane", price: 2250, hp: 750, armor: 0.02, speed: 24, regen: 2, capacity: 9, hitbox: 3.1 },
-  pink: { name: "Pink", price: 2500, hp: 900, armor: 0.04, speed: 15, regen: 2, capacity: 16, hitbox: 3.2 },
-  cat: { name: "Catamaran", price: 2550, hp: 630, armor: 0, speed: 28, regen: 1, capacity: 5, hitbox: 3.0 },
-  dart: { name: "Cutter", price: 2900, hp: 690, armor: 0.02, speed: 30, regen: 1, capacity: 5, hitbox: 3.0 },
-  junk: { name: "Junk", price: 3200, hp: 990, armor: 0.06, speed: 15, regen: 3, capacity: 22, hitbox: 3.6 },
-  ketch: { name: "Ketch", price: 3300, hp: 1020, armor: 0.05, speed: 16, regen: 2, capacity: 14, hitbox: 3.3 },
-  schooner: { name: "Schooner", price: 3600, hp: 900, armor: 0.03, speed: 26, regen: 2, capacity: 10, hitbox: 3.3 },
-  galley: { name: "Galley", price: 3900, hp: 930, armor: 0.02, speed: 23, regen: 2, capacity: 7, hitbox: 3.5 },
-  xebec: { name: "Xebec", price: 4300, hp: 960, armor: 0.03, speed: 29, regen: 2, capacity: 8, hitbox: 3.4 },
-  brigantine: { name: "Brigantine", price: 4850, hp: 1080, armor: 0.06, speed: 22, regen: 2, capacity: 14, hitbox: 3.8 },
-  caravel: { name: "Caravel", price: 5200, hp: 1170, armor: 0.06, speed: 16, regen: 3, capacity: 18, hitbox: 3.5 },
-  snow: { name: "Snow", price: 5750, hp: 1290, armor: 0.07, speed: 19, regen: 3, capacity: 18, hitbox: 3.7 },
-  packet: { name: "Packet Ship", price: 6100, hp: 1050, armor: 0.03, speed: 27, regen: 2, capacity: 12, hitbox: 3.5 },
-  chassemaree: { name: "Chasse-Maree", price: 6200, fixedPrice: true, hp: 1030, armor: 0.02, speed: 28, regen: 2, capacity: 13, hitbox: 3.5, weight: 108 },
-  barquentine: { name: "Barquentine", price: 6750, hp: 1200, armor: 0.05, speed: 24, regen: 2, capacity: 24, hitbox: 3.7 },
-  clipper: { name: "Clipper", price: 7200, hp: 1080, armor: 0.02, speed: 33, regen: 2, capacity: 18, hitbox: 3.6 },
-  fluyt: { name: "Fluyt", price: 7600, hp: 1500, armor: 0.08, speed: 13, regen: 3, capacity: 34, hitbox: 4.0 },
-  polacre: { name: "Polacre", price: 7850, fixedPrice: true, hp: 1320, armor: 0.04, speed: 24, regen: 2, capacity: 17, hitbox: 3.7, weight: 126 },
-  storm: { name: "Sloop-of-War", price: 8500, hp: 1140, armor: 0.04, speed: 31, regen: 2, capacity: 7, hitbox: 3.4 },
-  bombketch: { name: "Bomb Ketch", price: 8300, hp: 1680, armor: 0.1, speed: 10, regen: 3, capacity: 12, hitbox: 3.9 },
-  brig: { name: "Brig", price: 8650, fixedPrice: true, hp: 1400, armor: 0.05, speed: 23, regen: 3, capacity: 15, hitbox: 3.8, weight: 132 },
-  barque: { name: "Barque", price: 8750, hp: 1410, armor: 0.06, speed: 21, regen: 3, capacity: 28, hitbox: 3.9 },
-  corvette: { name: "Corvette", price: 9400, hp: 1530, armor: 0.08, speed: 25, regen: 3, capacity: 14, hitbox: 3.9 },
-  sixthrate: { name: "Sixth Rate", price: 9900, fixedPrice: true, hp: 1600, armor: 0.08, speed: 24, regen: 3, capacity: 15, hitbox: 4.0, weight: 145 },
-  frigate: { name: "Frigate", price: 10500, hp: 1740, armor: 0.1, speed: 24, regen: 3, capacity: 16, hitbox: 4.1 },
-  postship: { name: "Post Ship", price: 11200, fixedPrice: true, hp: 1880, armor: 0.09, speed: 22, regen: 3, capacity: 18, hitbox: 4.2, weight: 162 },
-  merchantman: { name: "Merchantman", price: 11600, hp: 2280, armor: 0.1, speed: 11, regen: 4, capacity: 42, hitbox: 4.4 },
-  carrack: { name: "Carrack", price: 12600, hp: 2340, armor: 0.11, speed: 10, regen: 4, capacity: 30, hitbox: 4.4 },
-  galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
-  eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
-  treasure: { name: "Treasure Junk", price: 16800, hp: 2700, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 4.9 },
-  whaler: { name: "Whaler", price: 10600, fixedPrice: true, hp: 1750, armor: 0.1, speed: 12, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
-  razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
-  ballooner: { name: "Ballooner", price: 15000, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
-  fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
-  grandfrigate: { name: "Grand Frigate", price: 28500, fixedPrice: true, hp: 3150, armor: 0.12, speed: 18, regen: 6, capacity: 24, hitbox: 5.0, weight: 255 },
-  manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
-  windrunner: { name: "Windrunner", price: 31500, fixedPrice: true, hp: 3000, armor: 0, speed: 28, regen: 5, capacity: 18, hitbox: 4.8, weight: 210 },
-  firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
-};
-
-Object.assign(I18N.en.ships, Object.fromEntries(shipCatalog.map((ship) => [ship.id, ship.name])));
-Object.assign(I18N.zh.ships, {
-  skiff: "小艇", shallop: "浅水帆船", pinnace: "小型快艇", hoy: "霍伊船", yawl: "偏帆小船", balinger: "巴林杰帆船", felucca: "费卢卡帆船", bilander: "双桅小商船", cog: "柯克船", longship: "长船", dogger: "多格尔渔船", dhow: "独桅三角帆船", sloop: "单桅帆船", knarr: "克纳尔货船", lugger: "斜桅小帆船", tartane: "塔尔塔纳帆船", pink: "平克帆船", cat: "双体帆船", dart: "快艇", junk: "中式帆船", ketch: "双桅帆船", schooner: "纵帆船", galley: "桨帆船", xebec: "三桅小帆船", brigantine: "双桅纵帆船", caravel: "卡拉维尔帆船", snow: "斯诺双桅船", packet: "邮船", barquentine: "巴肯廷帆船", clipper: "飞剪船", fluyt: "荷兰货船", bombketch: "臼炮双桅船", barque: "三桅帆船", corvette: "轻型护卫舰", frigate: "护卫舰", storm: "战争单桅船", galleon: "盖伦船", merchantman: "武装商船", eastindiaman: "东印度商船", carrack: "卡拉克帆船", treasure: "宝船", whaler: "捕鲸船", razee: "削层护卫舰", ballooner: "气球船", fourthrate: "四级战列舰", grandfrigate: "大型护卫舰", manowar: "战列舰", windrunner: "逐风船", firstrate: "一级战列舰",
-});
-Object.assign(I18N.fr.ships, {
-  skiff: "Esquif", shallop: "Chaloupe", pinnace: "Pinasse", hoy: "Hoy", yawl: "Yawl", balinger: "Balinger", felucca: "Feluque", bilander: "Bilander", cog: "Cogue", longship: "Drakkar", dogger: "Dogre", dhow: "Dhow", sloop: "Sloop", knarr: "Knarr", lugger: "Lougre", tartane: "Tartane", pink: "Pinque", cat: "Catamaran", dart: "Cotre", junk: "Jonque", ketch: "Ketch", schooner: "Goélette", galley: "Galère", xebec: "Chebec", brigantine: "Brigantin", caravel: "Caravelle", snow: "Senau", packet: "Paquebot", barquentine: "Barquentine", clipper: "Clipper", fluyt: "Flûte", bombketch: "Ketch à bombes", barque: "Barque", corvette: "Corvette", frigate: "Frégate", storm: "Sloop de guerre", galleon: "Galion", merchantman: "Navire marchand", eastindiaman: "Indiaman", carrack: "Caraque", treasure: "Jonque au trésor", whaler: "Baleinier", razee: "Frégate rasée", ballooner: "Ballooner", fourthrate: "Quatrième rang", grandfrigate: "Grande frégate", manowar: "Vaisseau de ligne", windrunner: "Coureur des vents", firstrate: "Premier rang",
-});
-Object.assign(I18N.de.ships, {
-  skiff: "Skiff", shallop: "Schaluppe", pinnace: "Pinasse", hoy: "Hoy", yawl: "Yawl", balinger: "Balinger", felucca: "Feluke", bilander: "Bilander", cog: "Kogge", longship: "Langschiff", dogger: "Dogger", dhow: "Dhau", sloop: "Sloop", knarr: "Knarr", lugger: "Lugger", tartane: "Tartane", pink: "Pink", cat: "Katamaran", dart: "Kutter", junk: "Dschunke", ketch: "Ketsch", schooner: "Schoner", galley: "Galeere", xebec: "Schebecke", brigantine: "Brigantine", caravel: "Karavelle", snow: "Snow", packet: "Paketschiff", barquentine: "Barkentine", clipper: "Klipper", fluyt: "Fleute", bombketch: "Bombenketsch", barque: "Bark", corvette: "Korvette", frigate: "Fregatte", storm: "Kriegssloop", galleon: "Galeone", merchantman: "Handelsschiff", eastindiaman: "Ostindienfahrer", carrack: "Karacke", treasure: "Schatzdschunke", whaler: "Walfänger", razee: "Razee-Fregatte", ballooner: "Ballooner", fourthrate: "Vierter Rang", grandfrigate: "Große Fregatte", manowar: "Linienschiff", windrunner: "Windläufer", firstrate: "Erster Rang",
-});
-Object.assign(I18N.es.ships, {
-  skiff: "Esquife", shallop: "Chalupa", pinnace: "Pinaza", hoy: "Hoy", yawl: "Yola", balinger: "Balinger", felucca: "Faluca", bilander: "Bilander", cog: "Coca", longship: "Drakkar", dogger: "Dogger", dhow: "Dhow", sloop: "Balandra", knarr: "Knarr", lugger: "Lugre", tartane: "Tartana", pink: "Pinque", cat: "Catamarán", dart: "Cúter", junk: "Junco", ketch: "Queche", schooner: "Goleta", galley: "Galera", xebec: "Jabeque", brigantine: "Bergantín-goleta", caravel: "Carabela", snow: "Bergantín snow", packet: "Paquebote", barquentine: "Barquentina", clipper: "Clipper", fluyt: "Filibote", bombketch: "Queche bombardero", barque: "Barca", corvette: "Corbeta", frigate: "Fragata", storm: "Balandra de guerra", galleon: "Galeón", merchantman: "Mercante", eastindiaman: "Indiaman", carrack: "Carraca", treasure: "Junco del tesoro", whaler: "Ballenero", razee: "Fragata razee", ballooner: "Ballooner", fourthrate: "Cuarta clase", grandfrigate: "Gran fragata", manowar: "Navío de línea", windrunner: "Correvientos", firstrate: "Primera clase",
-});
-
-Object.assign(I18N.fr.ui, {
-  toastStopShip: "Arrete ton navire avant de marcher.", toastDeckView: "Vue pont. Appuie sur C pour reprendre la navigation.", toastReturnedDeck: "Retour sur le pont.", toastSailingControls: "Commandes de navigation restaurees.", toastAmmoSlotEmpty: "Cet emplacement est vide.", toastPutShotHotbar: "Place d'abord cette munition dans la barre.", toastBasicSlot: "Le boulet basique reste en emplacement 1.", toastWindShown: "Marqueurs de vent affiches.", toastWindHidden: "Marqueurs de vent masques.", toastGetCloser: "Approche-toi d'une ile pour accoster.", toastLineRetracted: "Ligne rentree.", toastWhalerOnly: "Seul le baleinier peut utiliser les filets lateraux.", toastNetsOut: "Filets du baleinier sortis. Vitesse reduite.", toastNetsIn: "Filets du baleinier rentres.", toastDockCancel: "Accostage annule. Reste pres de l'ile.", toastSailsRaised: "Voiles hissees.", toastDockBeforeShop: "Accoste a une ile avant d'acheter.", toastHoldFull: "Ta cale est pleine.", toastBlubberFull: "La cale a graisse est pleine.", toastRecoveredBlubber: "Graisse de baleine recuperee.", toastSpyShip: "Utilise la longue-vue depuis ton navire.", toastSpyNone: "Aucun navire trouve. Vise une voile.", toastNotEnoughGold: "Pas assez d'or.", toastNoCargoSell: "Aucune cargaison a vendre.", toastBalloonMax: "Tu as deja le maximum de ballons.", toastBalloonBought: "Montgolfiere achetee.", toastNeedPoints: "Monte de niveau pour gagner des points.", toastReloadMax: "Amelioration de rechargement au maximum.", toastUpgradeInstalled: "Amelioration installee.", toastBalloonerOnly: "Seul un Ballooner peut lancer des montgolfieres.", toastThreeBalloons: "Seulement 3 ballons peuvent etre lances a la fois.", toastNoBalloons: "Aucune montgolfiere de rechange.", toastBalloonLaunched: "Ballon lance. Appuie sur V pour changer de vue.", toastShipView: "Vue navire.", toastBalloonView: "Vue ballon.", toastNextBalloon: "Vue du ballon suivant.", toastBalloonDescending: "Ballon en descente. Garde-le au-dessus du Ballooner.", toastBombUsed: "Ce ballon a deja largue sa bombe.", toastBombAway: "Bombe larguee.", toastBalloonRecovered: "Ballon recupere.", toastBalloonSplash: "Ballon tombe a l'eau.", toastWaterfall: "Tu as franchi la cascade du bord du monde.", toastJumpWater: "Tu as saute a l'eau. Appuie sur F pour revenir au navire.", toastSwimming: "Tu nages. Appuie sur F pour revenir au navire.", toastGoldDiggerBlock: "Teleportation GoldDigger bloquee par l'ile.", toastGoldDiggerMinimap: "Teleportation GoldDigger via la mini-carte.", toastConnected: "Connecte aux eaux multijoueurs.", toastReconnected: "Reconnecte aux eaux multijoueurs.", toastDisconnected: "Multijoueur deconnecte. Reconnexion..."
-});
-Object.assign(I18N.de.ui, {
-  toastStopShip: "Halte dein Schiff an, bevor du herumlaeufst.", toastDeckView: "Deckansicht. Druecke C fuer Segelsteuerung.", toastReturnedDeck: "Zurueck an Deck.", toastSailingControls: "Segelsteuerung wiederhergestellt.", toastAmmoSlotEmpty: "Dieser Munitionsplatz ist leer.", toastPutShotHotbar: "Lege diese Munition zuerst in die Leiste.", toastBasicSlot: "Basis-Kugel bleibt auf Platz 1.", toastWindShown: "Windmarkierungen angezeigt.", toastWindHidden: "Windmarkierungen ausgeblendet.", toastGetCloser: "Fahre naeher an eine Insel zum Anlegen.", toastLineRetracted: "Leine eingeholt.", toastWhalerOnly: "Nur der Walfaenger kann Seitennetze nutzen.", toastNetsOut: "Walfaenger-Netze ausgefahren. Tempo reduziert.", toastNetsIn: "Walfaenger-Netze eingefahren.", toastDockCancel: "Anlegen abgebrochen. Bleib nahe an der Insel.", toastSailsRaised: "Segel gesetzt.", toastDockBeforeShop: "Lege an einer Insel an, bevor du einkaufst.", toastHoldFull: "Dein Laderaum ist voll.", toastBlubberFull: "Dein Waltran-Laderaum ist voll.", toastRecoveredBlubber: "Waltran geborgen.", toastSpyShip: "Benutze das Fernrohr von deinem Schiff aus.", toastSpyNone: "Kein Schiff gefunden. Ziele auf ein Segel.", toastNotEnoughGold: "Nicht genug Gold.", toastNoCargoSell: "Keine Ladung zum Verkaufen.", toastBalloonMax: "Du hast bereits die maximale Ballonzahl.", toastBalloonBought: "Heissluftballon gekauft.", toastNeedPoints: "Steige auf, um Upgradepunkte zu erhalten.", toastReloadMax: "Nachlade-Upgrade ist maximal.", toastUpgradeInstalled: "Upgrade installiert.", toastBalloonerOnly: "Nur ein Ballooner kann Heissluftballons starten.", toastThreeBalloons: "Nur 3 Ballons koennen gleichzeitig starten.", toastNoBalloons: "Keine Ersatzballons.", toastBalloonLaunched: "Ballon gestartet. Druecke V zum Wechseln.", toastShipView: "Schiffsansicht.", toastBalloonView: "Ballonansicht.", toastNextBalloon: "Naechste Ballonansicht.", toastBalloonDescending: "Ballon sinkt. Halte ihn ueber dem Ballooner.", toastBombUsed: "Dieser Ballon hat seine Bombe schon abgeworfen.", toastBombAway: "Bombe abgeworfen.", toastBalloonRecovered: "Ballon geborgen.", toastBalloonSplash: "Ballon ins Wasser gefallen.", toastWaterfall: "Du hast den Wasserfall am Rand der Welt ueberquert.", toastJumpWater: "Du bist ins Wasser gesprungen. Druecke F, um zurueckzukehren.", toastSwimming: "Du schwimmst. Druecke F, um zum Schiff zurueckzukehren.", toastGoldDiggerBlock: "GoldDigger-Teleport von Insel blockiert.", toastGoldDiggerMinimap: "GoldDigger-Minimap-Teleport.", toastConnected: "Mit Mehrspieler-Gewaessern verbunden.", toastReconnected: "Wieder mit Mehrspieler-Gewaessern verbunden.", toastDisconnected: "Mehrspieler getrennt. Neuverbindung..."
-});
-Object.assign(I18N.es.ui, {
-  toastStopShip: "Deten tu barco antes de caminar.", toastDeckView: "Vista de cubierta. Pulsa C para controles de navegacion.", toastReturnedDeck: "Volviste a cubierta.", toastSailingControls: "Controles de navegacion restaurados.", toastAmmoSlotEmpty: "Esa ranura esta vacia.", toastPutShotHotbar: "Pon esa municion en la barra primero.", toastBasicSlot: "La bala basica se queda en la ranura 1.", toastWindShown: "Marcadores de viento mostrados.", toastWindHidden: "Marcadores de viento ocultos.", toastGetCloser: "Acercate a una isla para atracar.", toastLineRetracted: "Sedal recogido.", toastWhalerOnly: "Solo el ballenero puede usar redes laterales.", toastNetsOut: "Redes del ballenero extendidas. Velocidad reducida.", toastNetsIn: "Redes del ballenero recogidas.", toastDockCancel: "Atracado cancelado. Quedate cerca de la isla.", toastSailsRaised: "Velas izadas.", toastDockBeforeShop: "Atraca en una isla antes de comprar.", toastHoldFull: "Tu bodega esta llena.", toastBlubberFull: "Tu bodega de grasa esta llena.", toastRecoveredBlubber: "Grasa de ballena recuperada.", toastSpyShip: "Usa el catalejo desde tu barco.", toastSpyNone: "El catalejo no encontro barcos. Apunta a una vela.", toastNotEnoughGold: "No tienes suficiente oro.", toastNoCargoSell: "No hay carga para vender.", toastBalloonMax: "Ya tienes el maximo de globos.", toastBalloonBought: "Globo aerostatico comprado.", toastNeedPoints: "Sube de nivel para ganar puntos.", toastReloadMax: "Mejora de recarga al maximo.", toastUpgradeInstalled: "Mejora instalada.", toastBalloonerOnly: "Solo un Ballooner puede lanzar globos.", toastThreeBalloons: "Solo se pueden lanzar 3 globos a la vez.", toastNoBalloons: "No hay globos de repuesto.", toastBalloonLaunched: "Globo lanzado. Pulsa V para cambiar vista.", toastShipView: "Vista de barco.", toastBalloonView: "Vista de globo.", toastNextBalloon: "Siguiente vista de globo.", toastBalloonDescending: "Globo descendiendo. Mantenlo sobre el Ballooner.", toastBombUsed: "Este globo ya lanzo su bomba.", toastBombAway: "Bomba lanzada.", toastBalloonRecovered: "Globo recuperado.", toastBalloonSplash: "Globo cayo al agua.", toastWaterfall: "Cruzaste la cascada del borde del mundo.", toastJumpWater: "Saltaste al agua. Pulsa F para volver al barco.", toastSwimming: "Estas nadando. Pulsa F para volver al barco.", toastGoldDiggerBlock: "Teletransporte GoldDigger bloqueado por isla.", toastGoldDiggerMinimap: "Teletransporte GoldDigger en minimapa.", toastConnected: "Conectado a aguas multijugador.", toastReconnected: "Reconectado a aguas multijugador.", toastDisconnected: "Multijugador desconectado. Reconectando..."
-});
-
-function armorCapForSpeed(speed) {
-  if (speed > 22) return 0;
-  if (speed >= 20) return 0.04;
-  if (speed >= 17) return 0.08;
-  if (speed >= 14) return 0.13;
-  return 0.2;
-}
-
-function deriveShipWeight(ship) {
-  const hullMass = (ship.hitbox || 3) ** 2 * 8;
-  const structureMass = (ship.hp || 500) / 150;
-  const cargoMass = (ship.capacity || 8) * 0.5;
-  const speedTrim = (ship.speed || 15) * 0.05;
-  return Math.round(clamp(hullMass + structureMass + cargoMass - speedTrim, 35, 320));
-}
-
-function deriveFairShipPrice(ship) {
-  if (ship.id === STARTER_SHIP) return 0;
-  const value = ship.hp * 2.2
-    + ship.speed * 95
-    + ship.regen * 260
-    + ship.capacity * 65
-    + ship.armor * 8500
-    + ship.hitbox * 260;
-  const sizePremium = 1 + Math.max(0, (ship.hitbox || 3) - 3) * 0.18;
-  const blended = ship.price * 0.55 + value * sizePremium * 0.45;
-  return Math.max(ship.price, Math.round(blended / 50) * 50);
-}
-
-for (const ship of shipCatalog) {
-  const balance = shipBalance[ship.id];
-  if (!balance) continue;
-  Object.assign(ship, balance);
-  ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
-  ship.regen = Math.round(clamp(ship.regen, 1, 8));
-  ship.price = balance.fixedPrice ? balance.price : deriveFairShipPrice(ship);
-  if (ship.price < 2500) {
-    const progress = clamp(ship.price / 2500, 0, 1);
-    ship.hp = Math.min(ship.hp, Math.round(420 + progress * 380));
-    ship.speed = Math.min(ship.speed, Math.round(15 + progress * 9));
-    ship.regen = Math.min(ship.regen, ship.price < 1200 ? 1 : 2);
-    ship.capacity = Math.min(ship.capacity || 8, Math.round(5 + progress * 9));
-    ship.armor = Math.min(ship.armor, progress > 0.75 ? 0.04 : 0.02);
+  const TIERED_TOOL_IDS = TIER_ORDER.flatMap((tier) => TOOL_BASES.map((base) => `${tier}${capBase(base)}`));
+  const SINGLE_TIER_TOOLS = ["rod", "oar", "musket"];
+  const TOOL_ITEMS = [...SINGLE_TIER_TOOLS, ...TIERED_TOOL_IDS, "axe", "spear", "hammer", "metalAxe", "metalSpear", "metalHammer"];
+  const HOTBAR_SWAP_SLOTS = Array.from({ length: 10 }, (_, i) => i);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  const now = () => performance.now() / 1000;
+  function capBase(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  const tierScale = 1 + Math.max(0, shipTier(ship.id) - 2) * 0.045;
-  ship.hitbox = Math.round((ship.hitbox || 3) * tierScale * 10) / 10;
-  ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
-}
 
-function readSavedValue(key, fallback = "") {
-  try {
-    return localStorage.getItem(key) || fallback;
-  } catch {
-    return fallback;
+  const recipes = {
+    raft: { wood: 6, rope: 2 },
+    grill: { wood: 8, scrap: 4 },
+    waterMaker: { wood: 8, scrap: 6, glass: 2 },
+    plantPot: { wood: 4, leaves: 4 },
+    chest: { wood: 8, cloth: 2 },
+    wall: { wood: 5, leaves: 2 },
+    torch: { wood: 2, leaves: 2, cloth: 1 },
+    cannon: { wood: 10, scrap: 8, rope: 2 },
+    bandage: { cloth: 2, leaves: 3 },
+    flask: { glass: 1, rope: 1 },
+    rod: { wood: 4, rope: 2 },
+    oar: { wood: 6, rope: 2 },
+    woodAxe: { wood: 5, rope: 1 },
+    scrapAxe: { wood: 4, scrap: 8, rope: 2 },
+    ironAxe: { wood: 5, scrap: 6, iron: 8, rope: 2 },
+    steelAxe: { wood: 6, iron: 6, steel: 8, rope: 3 },
+    woodSpear: { wood: 6, rope: 2 },
+    scrapSpear: { wood: 5, scrap: 10, rope: 3 },
+    ironSpear: { wood: 5, scrap: 7, iron: 10, rope: 3 },
+    steelSpear: { wood: 6, iron: 7, steel: 10, rope: 4 },
+    woodHammer: { wood: 6, rope: 1 },
+    scrapHammer: { wood: 5, scrap: 8, cloth: 2 },
+    ironHammer: { wood: 6, scrap: 6, iron: 7, cloth: 2 },
+    steelHammer: { wood: 7, iron: 5, steel: 7, cloth: 3 },
+    musket: { wood: 18, scrap: 26, rope: 6, cloth: 4, glass: 4 }
+  };
+
+  const blockHp = {
+    deck: 120,
+    grill: 143,
+    waterMaker: 165,
+    plantPot: 90,
+    chest: 180,
+    wall: 255,
+    torch: 68,
+    cannon: 225
+  };
+
+  const blockFootprints = {
+    grill: { w: 34, h: 28 },
+    waterMaker: { w: 34, h: 34 },
+    plantPot: { w: 32, h: 24 },
+    chest: { w: 36, h: 28 },
+    wall: { w: 64, h: 28 },
+    torch: { w: 14, h: 32 },
+    cannon: { w: 48, h: 34 }
+  };
+
+  const hotbar = [
+    { id: "rod", name: "Rod", key: "1", qty: 1, swappable: true },
+    { id: "oar", name: "Oar", key: "2", qty: 1, swappable: true },
+    { id: "woodAxe", name: "Wood Axe", key: "3", qty: 1, swappable: true },
+    { id: "woodSpear", name: "Wood Spear", key: "4", qty: 1, swappable: true },
+    { id: "woodHammer", name: "Wood Hammer", key: "5", qty: 1, swappable: true },
+    { id: "bandage", name: "Bandage", key: "6", qty: 1, swappable: true },
+    { id: "empty", name: "-", key: "7", swappable: true },
+    { id: "empty", name: "-", key: "8", swappable: true },
+    { id: "empty", name: "-", key: "9", swappable: true },
+    { id: "empty", name: "-", key: "0", swappable: true }
+  ];
+
+  let keys = new Set();
+  let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, down: false };
+  let selected = 0;
+  let last = now();
+  let toastTimer = 0;
+  let buildMode = false;
+  let buildChoice = "raft";
+  let buildAngle = 0;
+  let heldItem = null;
+  let selectedFood = null;
+  let toolAnim = { kind: null, t: 0, duration: 0 };
+  let pendingBuild = {};
+  let dayClock = 0;
+  let cast = null;
+  let rowingTimer = 0;
+  let rowingDurabilityTimer = 0;
+  let waveTime = 0;
+  let gameStarted = false;
+  let playerName = "Captain";
+  let devMode = false;
+  let serverPlayerId = null;
+  let serverSyncTimer = 0;
+  let scoreboardRows = [];
+  let remotePlayers = [];
+  let serverAggressiveSharks = [];
+  let serverProjectiles = [];
+  let remoteWorlds = new Map();
+  let activeCannon = null;
+  let musketCooldown = 0;
+  let openChest = null;
+  let dragSlotRef = null;
+  let serverSyncInFlight = false;
+  let nextServerObjectId = 1;
+  let pendingRemoteRaftMoves = new Map();
+  let pendingPlayerHits = [];
+  let pendingWorldCommands = [];
+  let pendingProjectileCommands = [];
+  let localChannel = null;
+  let usingLocalMultiplayer = false;
+  let localPeerId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const localPeers = new Map();
+
+  const state = createWorld();
+
+  function createWorld() {
+    const player = {
+      x: WORLD / 2,
+      y: WORLD / 2,
+      vx: 0,
+      vy: 0,
+      health: 100,
+      hunger: 88,
+      thirst: 86,
+      stamina: 100,
+      swimTime: 0,
+      xp: 0,
+      totalXp: 0,
+      level: 1,
+      points: 0,
+      speed: 0,
+      agility: 0,
+      strength: 0,
+      facing: 0,
+      attackCd: 0,
+      invuln: 0,
+      alive: true
+    };
+
+    return {
+      player,
+      raft: [
+        tile(0, 0, "deck"),
+        tile(1, 0, "deck"),
+        tile(0, 1, "deck"),
+        tile(1, 1, "deck")
+      ],
+      structures: [],
+      debris: [],
+      islands: [],
+      animals: [],
+      animalRespawns: [],
+      projectiles: [],
+      particles: [],
+      inventory: startingInventorySlots(),
+      resources: {
+        wood: 12,
+        leaves: 8,
+        scrap: 4,
+        iron: 0,
+        steel: 0,
+        cloth: 3,
+        rope: 4,
+        glass: 1,
+        rawFish: 0,
+        cookedFish: 0,
+        sharkMeat: 0,
+        meat: 0,
+        cookedMeat: 0,
+        coconut: 0,
+        tomato: 0,
+        bandage: 0
+      },
+      camera: { x: player.x, y: player.y },
+      raftOffset: { x: player.x - TILE * 0.5, y: player.y - TILE * 0.5 },
+      sharks: createSharks(player),
+      crocTimer: rnd(90, 170),
+      unlocks: { axe: "wood", spear: "wood", hammer: "wood" },
+      messages: [],
+      day: 1
+    };
   }
-}
 
-function saveValue(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Joining the game should still work if browser storage is blocked.
+  function emptySlots(count) {
+    return Array.from({ length: count }, () => null);
   }
-}
 
-function normalizeLanguage(value) {
-  return I18N[value] ? value : DEFAULT_LANGUAGE;
-}
+  function slot(id, qty = 1, meta = {}) {
+    if (!id || qty <= 0) return null;
+    const spec = toolSpec(id);
+    if (spec?.durability) {
+      const maxDurability = meta.maxDurability || spec.durability;
+      return {
+        id,
+        qty: 1,
+        durability: clamp(meta.durability ?? maxDurability, 0, maxDurability),
+        maxDurability
+      };
+    }
+    return { id, qty };
+  }
 
-const captainId = readSavedValue("islandwakeId") || crypto.randomUUID();
-saveValue("islandwakeId", captainId);
-const playerId = crypto.randomUUID();
-const state = {
-  name: readSavedValue("islandwakeName"),
-  language: normalizeLanguage(readSavedValue("islandwakeLanguage", DEFAULT_LANGUAGE)),
-  devToken: "",
-  infiniteGold: false,
-  infiniteLevels: false,
-  joined: false,
-  guideAsked: false,
-  level: 1,
-  xp: 0,
-  gold: 240,
-  points: 0,
-  mode: "ship",
-  tool: "cannon",
-  dockedAt: null,
-  shopTab: "goods",
-  shipType: STARTER_SHIP,
-  hp: shipBalance[STARTER_SHIP].hp,
-  cargo: {},
-  upgrades: { damage: 0, fireRate: 0, range: 0 },
-  ammo: { grapeshot: 0, hotshot: 0, harpoon: 0, airburst: 0 },
-  ammoSlots: [...AMMO_SLOT_TYPES],
-  selectedAmmo: "basic",
-  selectedAmmoSlot: 0,
-  pendingAmmoAssign: null,
-  inventory: Object.fromEntries(BUILD_ITEM_ORDER.map((id) => [id, 0])),
-  selectedBuildItem: null,
-  inventoryOpen: false,
-  buildSnap: true,
-  buildRotationOffset: 0,
-  docking: null,
-  fallingOffWorld: false,
-  fallingTimer: 0,
-  fallVelocityY: 0,
-  fallDrift: new THREE.Vector3(),
-  fallSpin: new THREE.Vector3(),
-  viewMode: "ship",
-  activeBalloonIndex: -1,
-  balloonStock: 0,
-  maxBalloons: 5,
-  whalerNets: false,
-  whalerNetProgress: 0,
-  characterHp: CHARACTER_MAX_HP,
-  swimHp: CHARACTER_MAX_HP,
-  showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
-  fire: null,
-  cooldown: 0,
-  rodCooldown: 0,
-  position: new THREE.Vector3(-15, 0, -12),
-  velocity: new THREE.Vector3(),
-  rotation: 0,
-  walkingPos: new THREE.Vector3(),
-  walkHeight: 0,
-  walkVelocityY: 0,
-  grounded: true,
-  leviathanGrabbed: false,
-  cameraYaw: 0,
-  cameraPitch: 0.28,
-  fishing: null,
-  spyTarget: null,
-};
+  function startingInventorySlots() {
+    const slots = emptySlots(PLAYER_INV_CAP);
+    slots[0] = slot("raft", 1);
+    return slots;
+  }
 
-const TOAST_EXACT_KEYS = {
-  "Stop your ship before walking around.": "toastStopShip",
-  "Deck view. Press C for sailing controls.": "toastDeckView",
-  "Returned to the deck.": "toastReturnedDeck",
-  "Sailing controls restored.": "toastSailingControls",
-  "That ammo slot is empty.": "toastAmmoSlotEmpty",
-  "Put that shot in a hotbar slot first.": "toastPutShotHotbar",
-  "Basic Shell stays in slot 1.": "toastBasicSlot",
-  "Wind markers shown.": "toastWindShown",
-  "Wind markers hidden.": "toastWindHidden",
-  "Get closer to an island to dock.": "toastGetCloser",
-  "Line retracted.": "toastLineRetracted",
-  "Only the Whaler can use side nets at sea.": "toastWhalerOnly",
-  "Whaler nets extended. Speed reduced.": "toastNetsOut",
-  "Whaler nets retracted.": "toastNetsIn",
-  "Docking cancelled. Stay close to the island.": "toastDockCancel",
-  "Sails raised.": "toastSailsRaised",
-  "Dock at an island before shopping.": "toastDockBeforeShop",
-  "Your hold is full.": "toastHoldFull",
-  "Your blubber hold is full.": "toastBlubberFull",
-  "Recovered whale blubber.": "toastRecoveredBlubber",
-  "Use the spyglass from your ship.": "toastSpyShip",
-  "Spyglass found no ships. Aim toward a sail.": "toastSpyNone",
-  "Not enough gold.": "toastNotEnoughGold",
-  "No cargo to sell.": "toastNoCargoSell",
-  "You already have the maximum number of balloons.": "toastBalloonMax",
-  "Hot air balloon purchased.": "toastBalloonBought",
-  "Level up to earn upgrade points.": "toastNeedPoints",
-  "Reload upgrade is maxed.": "toastReloadMax",
-  "Upgrade installed.": "toastUpgradeInstalled",
-  "Only a Ballooner can launch hot air balloons.": "toastBalloonerOnly",
-  "Only 3 balloons can be launched at once.": "toastThreeBalloons",
-  "No spare hot air balloons.": "toastNoBalloons",
-  "Balloon launched. Press V to switch view.": "toastBalloonLaunched",
-  "Ship view.": "toastShipView",
-  "Balloon view.": "toastBalloonView",
-  "Next balloon view.": "toastNextBalloon",
-  "Balloon descending. Keep it above the Ballooner.": "toastBalloonDescending",
-  "This balloon has already dropped its bomb.": "toastBombUsed",
-  "Bomb away.": "toastBombAway",
-  "Balloon recovered.": "toastBalloonRecovered",
-  "Balloon splashed down.": "toastBalloonSplash",
-  "You crossed the waterfall at the edge of the world.": "toastWaterfall",
-  "You jumped into the water. Press F to return to your ship.": "toastJumpWater",
-  "You are swimming. Press F to return to your ship.": "toastSwimming",
-  "GoldDigger teleport blocked: island.": "toastGoldDiggerBlock",
-  "GoldDigger minimap teleport.": "toastGoldDiggerMinimap",
-  "Connected to multiplayer waters.": "toastConnected",
-  "Reconnected to multiplayer waters.": "toastReconnected",
-  "Multiplayer disconnected. Reconnecting...": "toastDisconnected",
-};
+  function resetHotbarItems() {
+    setHotbarItem(0, slot("rod", 1));
+    setHotbarItem(1, slot("oar", 1));
+    setHotbarItem(2, slot("woodAxe", 1));
+    setHotbarItem(3, slot("woodSpear", 1));
+    setHotbarItem(4, slot("woodHammer", 1));
+    setHotbarItem(5, slot("bandage", 1));
+    setHotbarItem(6, null);
+    setHotbarItem(7, slot("flask", 1));
+    setHotbarItem(8, null);
+    setHotbarItem(9, null);
+  }
 
-function formatText(template, values = {}) {
-  return String(template).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
-}
+  function createSharks(player, islands = null) {
+    return Array.from({ length: 21 }, () => {
+      const p = randomOceanPoint(520, player, islands);
+      const a = rnd(0, TAU);
+      const aggressive = Math.random() < SHARK_AGGRESSION_CHANCE;
+      return {
+        x: p.x,
+        y: p.y,
+        hp: SHARK_HP,
+        bite: 0,
+        flee: 0,
+        aggressive,
+        aggro: aggressive ? 99 : 0,
+        wander: a,
+        finBob: rnd(0, TAU)
+      };
+    });
+  }
 
-function t(key, values = {}) {
-  const current = I18N[state.language]?.ui?.[key];
-  const fallback = I18N.en.ui[key] || key;
-  return formatText(current || fallback, values);
-}
+  function randomOceanPoint(minFrom = 0, from = null, islands = null) {
+    for (let i = 0; i < 80; i++) {
+      const p = { x: rnd(180, WORLD - 180), y: rnd(180, WORLD - 180) };
+      if (from && dist(p, from) < minFrom) continue;
+      if (islands?.some((island) => Math.hypot(p.x - island.x, p.y - island.y) < island.r + 95)) continue;
+      return p;
+    }
+    return { x: 520, y: 520 };
+  }
 
-function localize(group, key, fallback = key) {
-  return I18N[state.language]?.[group]?.[key] || I18N.en[group]?.[key] || fallback;
-}
+  function tile(gx, gy, type) {
+    const maxHp = blockHp[type] || blockHp.deck;
+    return { gx, gy, type, hp: maxHp, maxHp };
+  }
 
-function shipName(shipOrType) {
-  const ship = typeof shipOrType === "object" ? shipOrType : getShipStats(shipOrType);
-  return localize("ships", ship.id, ship.name || ship.id);
-}
+  function seedWorld() {
+    for (let i = 0; i < 240; i++) spawnDebris();
+    const specs = [
+      { x: 1200, y: 1100, r: 215, kind: "small" },
+      { x: 3000, y: 950, r: 260, kind: "medium", wreck: true },
+      { x: 5200, y: 1200, r: 285, kind: "medium" },
+      { x: 8200, y: 1050, r: 330, kind: "large", wreck: true },
+      { x: 1500, y: 3000, r: 300, kind: "medium" },
+      { x: 4000, y: 3300, r: 430, kind: "large", wreck: true },
+      { x: 6500, y: 3100, r: 245, kind: "small" },
+      { x: 8700, y: 3500, r: 275, kind: "medium" },
+      { x: 1150, y: 5500, r: 260, kind: "medium" },
+      { x: 3300, y: 5900, r: 225, kind: "small" },
+      { x: 6000, y: 5600, r: 380, kind: "large", wreck: true },
+      { x: 8500, y: 5900, r: 230, kind: "small" },
+      { x: 1700, y: 8250, r: 315, kind: "medium", wreck: true },
+      { x: 4700, y: 8100, r: 260, kind: "medium" },
+      { x: 7800, y: 8350, r: 390, kind: "large" }
+    ];
+    specs.forEach(addIsland);
+  }
 
-function goodName(name) {
-  return localize("goods", name, name);
-}
+  function setSafeSpawn() {
+    const p = { x: WORLD / 2, y: 560 };
+    const spawn = state.islands.some((island) => Math.hypot(p.x - island.x, p.y - island.y) < island.r + 260)
+      ? randomOceanPoint(0, null, state.islands)
+      : p;
+    state.player.x = spawn.x;
+    state.player.y = spawn.y;
+    state.camera.x = spawn.x;
+    state.camera.y = spawn.y;
+    state.raftOffset.x = spawn.x - TILE * 0.5;
+    state.raftOffset.y = spawn.y - TILE * 0.5;
+    state.sharks = createSharks(state.player, state.islands);
+  }
 
-const islandClaimNames = new Map();
+  function addIsland(spec) {
+    const island = { ...spec, trees: [], bushes: [], loot: [], shipwreck: null };
+    const treeCount = spec.kind === "large" ? 26 : spec.kind === "medium" ? 17 : 10;
+    for (let i = 0; i < treeCount; i++) {
+      const p = pointOnIsland(island, 0.78);
+      island.trees.push({ ...p, hp: 40, maxHp: 40, coconut: true, respawn: 0 });
+    }
+    for (let i = 0; i < treeCount + 4; i++) {
+      island.bushes.push(pointOnIsland(island, 0.9));
+    }
+    for (let i = 0; i < 10; i++) {
+      island.loot.push({ ...pointOnIsland(island, 0.86), type: Math.random() < 0.55 ? "tomato" : "cloth", respawn: 0 });
+    }
+    if (spec.wreck) addShipwreck(island);
+    state.islands.push(island);
 
-function shouldShowIslandLabel(islandOrName) {
-  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
-  if (!name) return false;
-  const island = typeof islandOrName === "object"
-    ? islandOrName
-    : typeof islandData !== "undefined"
-      ? islandData.find((item) => item.name === name)
-      : null;
-  return !island?.unnamed || islandClaimNames.has(name);
-}
+    const crabCount = spec.kind === "small" ? 3 : 5;
+    for (let i = 0; i < crabCount; i++) state.animals.push(animal("crab", pointOnIsland(island, 0.85), island));
+  }
 
-function islandName(islandOrName) {
-  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
-  if (name && islandClaimNames.has(name)) return islandClaimNames.get(name).name;
-  const island = typeof islandOrName === "object"
-    ? islandOrName
-    : typeof islandData !== "undefined"
-      ? islandData.find((item) => item.name === name)
-      : null;
-  if (island?.unnamed) return t("unclaimedIsland");
-  return localize("islands", name, name);
-}
+  function pointOnIsland(island, scale) {
+    const a = rnd(0, TAU);
+    const r = Math.sqrt(Math.random()) * island.r * scale;
+    return { x: island.x + Math.cos(a) * r, y: island.y + Math.sin(a) * r };
+  }
 
-function cultureName(culture) {
-  return localize("cultures", culture, culture);
-}
-
-function ammoName(ammoOrType) {
-  const id = typeof ammoOrType === "object" ? ammoOrType.id : ammoOrType;
-  const ammo = CANNONBALL_TYPES[id] || CANNONBALL_TYPES.basic;
-  return localize("ammo", id, ammo.name);
-}
-
-function ammoShortName(ammoOrType) {
-  const id = typeof ammoOrType === "object" ? ammoOrType.id : ammoOrType;
-  const ammo = CANNONBALL_TYPES[id] || CANNONBALL_TYPES.basic;
-  return localize("ammoShort", id, ammo.short);
-}
-
-function entityName(name) {
-  return localize("entities", name, name);
-}
-
-function translateLooseName(value) {
-  const text = String(value || "");
-  const ship = shipCatalog.find((item) => item.name === text || item.id === text);
-  if (ship) return shipName(ship);
-  if (goods.includes(text) || text === "Whale Blubber") return goodName(text);
-  const ammo = Object.values(CANNONBALL_TYPES).find((item) => item.name === text || item.id === text);
-  if (ammo) return ammoName(ammo);
-  if (I18N.en.entities[text]) return entityName(text);
-  if (I18N.en.islands[text]) return islandName(text);
-  return text;
-}
-
-function translateMessage(message) {
-  const text = String(message || "");
-  const exact = TOAST_EXACT_KEYS[text];
-  if (exact) return t(exact);
-  let match = text.match(/^Level (\d+)! Upgrade point earned\.$/);
-  if (match) return state.language === "en" ? text : `${t("lvl", { level: match[1] })}! ${t("toastNeedPoints")}`;
-  match = text.match(/^(.+) is empty\.$/);
-  if (match) return `${translateLooseName(match[1])} ${state.language === "en" ? "is empty." : t("emptySlot").toLowerCase()}.`;
-  match = text.match(/^(.+) equipped\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} ✓`;
-  match = text.match(/^Docking at (.+): 5 seconds\.$/);
-  if (match) return t("dockingPrompt", { island: islandName(match[1]), seconds: 5 }).replace(/<[^>]+>/g, "");
-  match = text.match(/^Docked at (.+)\. Press R for the market or C to set sail\.$/);
-  if (match) return `${t("docked", { island: islandName(match[1]) })}. ${t("pressSailShop").replace(/<[^>]+>/g, "")}`;
-  match = text.match(/^Bought (\d+) (.+)\. Replace a hotbar slot\.$/);
-  if (match) return state.language === "en" ? text : `${t("buy")} ${match[1]} ${translateLooseName(match[2])}. ${t("replaceAmmoPrompt", { ammo: translateLooseName(match[2]) })}`;
-  match = text.match(/^Bought (\d+) (.+)\.$/);
-  if (match) return state.language === "en" ? text : `${t("buy")} ${match[1]} ${translateLooseName(match[2])}.`;
-  match = text.match(/^Bought (.+)\.$/);
-  if (match) return state.language === "en" ? text : `${t("buy")} ${translateLooseName(match[1])}.`;
-  match = text.match(/^Sold (.+)\.$/);
-  if (match) return state.language === "en" ? text : `${t("sell")} ${translateLooseName(match[1])}.`;
-  match = text.match(/^(.+) assigned to slot (\d+)\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} → ${t("slot", { slot: match[2] })}`;
-  match = text.match(/^(.+) launched\.$/);
-  if (match) return state.language === "en" ? text : `${shipName(shipCatalog.find((ship) => ship.name === match[1]) || match[1])} ${t("sailing")}.`;
-  match = text.match(/^Sell cargo first\. (.+) holds (\d+) regular cargo\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("hold")} ${match[2]}.`;
-  match = text.match(/^Sell cargo first\. (.+) holds (\d+)\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("hold")} ${match[2]}.`;
-  match = text.match(/^(.+) cannot carry that much whale blubber\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${t("toastBlubberFull")}`;
-  match = text.match(/^(.+) recovered: repairs, gold, and XP\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: +${t("hp")}, +${t("gold")}, +XP.`;
-  match = text.match(/^(.+) reeled in after a hard pull\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])} +XP.`;
-  match = text.match(/^(.+) caught by (.+)\.$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}: ${match[2]}.`;
-  match = text.match(/^(.+) on the line!$/);
-  if (match) return state.language === "en" ? text : `${translateLooseName(match[1])}!`;
-  match = text.match(/^Sank a level (\d+) ship\. Crates overboard!$/);
-  if (match) return state.language === "en" ? text : `${t("lvl", { level: match[1] })}: ${t("crates")}!`;
-  match = text.match(/^Your ship was sunk\. You lost (\d+)g and restarted in a Skiff\.$/);
-  if (match) return state.language === "en" ? text : `${t("toastSailsRaised")} ${t("gold")} -${match[1]}. ${shipName("skiff")}.`;
-  return text;
-}
-
-function refreshLanguageUI() {
-  document.documentElement.lang = state.language;
-  [ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
-    if (!select) return;
-    if (!select.options.length) {
-      Object.entries(LANGUAGE_OPTIONS).forEach(([value, label]) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        select.appendChild(option);
+  function addShipwreck(island) {
+    const angle = rnd(0, TAU);
+    const p = {
+      x: island.x + Math.cos(angle) * island.r * 0.9,
+      y: island.y + Math.sin(angle) * island.r * 0.9
+    };
+    island.shipwreck = { ...p, angle, loot: [] };
+    for (let i = 0; i < 7; i++) {
+      island.shipwreck.loot.push({
+        x: p.x + Math.cos(angle + Math.PI / 2) * rnd(-45, 45) * SHIPWRECK_SCALE + Math.cos(angle) * rnd(-60, 35) * SHIPWRECK_SCALE,
+        y: p.y + Math.sin(angle + Math.PI / 2) * rnd(-45, 45) * SHIPWRECK_SCALE + Math.sin(angle) * rnd(-60, 35) * SHIPWRECK_SCALE,
+        type: shipwreckLootType(),
+        qty: 1,
+        dead: false
       });
     }
-    select.value = state.language;
-  });
-  document.querySelectorAll("[data-i18n]").forEach((node) => {
-    node.textContent = t(node.dataset.i18n);
-  });
-  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
-    node.placeholder = t(node.dataset.i18nPlaceholder);
-  });
-  document.querySelectorAll("[data-i18n-title]").forEach((node) => {
-    node.title = t(node.dataset.i18nTitle);
-  });
-  const shopTitle = document.querySelector("#shop header strong");
-  if (shopTitle) shopTitle.textContent = t("harborMarket");
-  if (ui.shopIsland && state.dockedAt) ui.shopIsland.textContent = islandName(state.dockedAt);
-  if (ui.playerName) ui.playerName.title = t("captainName");
-  refreshIslandLabels();
-  updateAmmoHotbar(true);
-  renderInventory();
-  updateHud();
-  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
-}
-
-function setLanguage(value) {
-  const next = normalizeLanguage(value);
-  if (state.language === next) return;
-  state.language = next;
-  saveValue("islandwakeLanguage", next);
-  refreshLanguageUI();
-}
-
-let playerShip;
-let character;
-let multiplayer = {
-  socket: null,
-  channel: null,
-  networkId: null,
-  mode: "offline",
-  lastSent: 0,
-  hasConnected: false,
-  reconnectAttempts: 0,
-  reconnectTimer: null,
-  serverWorld: false,
-};
-const islands = [];
-const bots = [];
-const remotePlayers = new Map();
-const projectiles = [];
-const seenRemoteShots = new Set();
-const impactEffects = [];
-const fish = [];
-const animals = [];
-const storms = [];
-const waveHazards = [];
-const activeKrakenAttacks = [];
-const windCurrents = [];
-const balloons = [];
-const serverBotBalloons = [];
-const balloonBombs = [];
-const crates = [];
-const buildingPieces = [];
-const buildingPieceMap = new Map();
-let buildPreview = null;
-let buildPreviewType = null;
-let lastBuildPreviewAt = 0;
-let lastShopPointerHandledAt = 0;
-let lastInventoryPointerHandledAt = 0;
-const labels = [];
-const ramCooldowns = new Map();
-const SHIP_WATERLINE_Y = -0.42;
-const CANNONBALL_SPEED = 29.3;
-const BOT_CANNON_RANGE = 34;
-const SHOT_REPLAY_MAX_AGE_MS = 3200;
-const TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS = 4200;
-const BOMB_EXPLOSION_REPLAY_MAX_AGE_MS = 2600;
-const KRAKEN_ATTACK_REPLAY_MAX_AGE_MS = KRAKEN_ATTACK_LIFE * 1000 + 450;
-const CRATE_LIFETIME = 120;
-const WHALE_BIT_LIFETIME = 300;
-const CRATE_SINK_TIME = 5;
-const MAX_TREASURES = 3;
-const CENTER_BOT_CLEAR_RADIUS = 88;
-const minimapCtx = ui.minimap.getContext("2d");
-const shipPreviewCache = new Map();
-let ammoHotbarSignature = "";
-let shipPreviewRenderer;
-let shipPreviewScene;
-let shipPreviewCamera;
-let fishingLine;
-let fishingBobber;
-let balloonReticle;
-let leviathan;
-let leviathanCooldown = 0;
-let tabHiddenAt = 0;
-let krakenBoss = null;
-let treasureSpawnTimer = 10 + Math.random() * 18;
-let nextStormAt = 35 + Math.random() * 85;
-const seaDriftObjects = [];
-const cloudObjects = [];
-const waterfallObjects = [];
-const waterfallFoamObjects = [];
-const waterfallMistObjects = [];
-const shipNightLights = [];
-const environment = {
-  hemi: null,
-  sun: null,
-  warm: null,
-  moonLight: null,
-  celestialRig: null,
-  celestialLine: null,
-  sunDisc: null,
-  moonDisc: null,
-  phase: "day",
-  lastCycleBucket: -1,
-  serverCycleTime: null,
-  serverCycleUpdatedAt: 0,
-  serverDayLength: DAY_LENGTH_SECONDS,
-  serverNightLength: NIGHT_LENGTH_SECONDS,
-};
-const leviathanAttacks = [
-  { id: "breach" },
-];
-
-function setCylinderBetween(mesh, start, end) {
-  const mid = start.clone().add(end).multiplyScalar(0.5);
-  const dir = end.clone().sub(start);
-  const length = Math.max(0.01, dir.length());
-  mesh.position.copy(mid);
-  mesh.scale.set(1, length, 1);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function dist2(a, b) {
-  const dx = a.x - b.x;
-  const dz = a.z - b.z;
-  return Math.hypot(dx, dz);
-}
-
-function angleDelta(target, current) {
-  return Math.atan2(Math.sin(target - current), Math.cos(target - current));
-}
-
-function lerpAngle(current, target, amount) {
-  return current + angleDelta(target, current) * amount;
-}
-
-function toast(message) {
-  ui.toast.textContent = translateMessage(message);
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (ui.toast.textContent = ""), 1800);
-}
-
-function captainName() {
-  return state.name.trim() || `${t("captain")} ${captainId.slice(0, 3).toUpperCase()}`;
-}
-
-function nameGateOpen() {
-  return (ui.nameGate && !ui.nameGate.classList.contains("hidden"))
-    || (ui.beginnerGuide && !ui.beginnerGuide.classList.contains("hidden"));
-}
-
-function closeBeginnerGuide() {
-  ui.beginnerGuide?.classList.add("hidden");
-  ui.guideQuestion?.classList.remove("hidden");
-  ui.guideContent?.classList.add("hidden");
-}
-
-function showBeginnerQuestion() {
-  if (!ui.beginnerGuide || state.guideAsked) return;
-  state.guideAsked = true;
-  ui.guideQuestion?.classList.remove("hidden");
-  ui.guideContent?.classList.add("hidden");
-  ui.beginnerGuide.classList.remove("hidden");
-}
-
-function showBeginnerGuide() {
-  ui.guideQuestion?.classList.add("hidden");
-  ui.guideContent?.classList.remove("hidden");
-}
-
-function xpForLevel(level) {
-  return Math.round((50 + level * 24) * 1.25);
-}
-
-function hasGoldDiggerPowers() {
-  return state.infiniteGold || state.devToken === "GoldDigger";
-}
-
-function addXP(amount) {
-  const maxLevel = state.infiniteLevels ? Number.POSITIVE_INFINITY : MAX_PLAYER_LEVEL;
-  if (state.level >= maxLevel) {
-    state.level = MAX_PLAYER_LEVEL;
-    state.xp = 0;
-    return;
   }
-  state.xp += amount;
-  while (state.level < maxLevel && state.xp >= xpForLevel(state.level)) {
-    state.xp -= xpForLevel(state.level);
-    state.level++;
-    state.points++;
-    toast(`Level ${state.level}! Upgrade point earned.`);
+
+  function shipwreckLootType() {
+    const roll = Math.random();
+    if (roll < 0.46) return "scrap";
+    if (roll < 0.66) return "glass";
+    if (roll < 0.83) return "rope";
+    if (roll < 0.96) return "iron";
+    return "steel";
   }
-  if (!state.infiniteLevels && state.level >= MAX_PLAYER_LEVEL) {
-    state.level = MAX_PLAYER_LEVEL;
-    state.xp = 0;
+
+  function animal(type, p, homeIsland = null) {
+    const stats = {
+      crab: { hp: 28, speed: 28, dmg: 4, xp: 7 },
+      pig: { hp: 70, speed: 54, dmg: 12, xp: 20 },
+      elephant: { hp: 180, speed: 42, dmg: 25, xp: 55 },
+      crocodile: { hp: SHARK_HP, speed: 36, dmg: CROCODILE_DAMAGE, xp: 38 }
+    }[type];
+    return { type, ...p, homeIsland, hp: stats.hp, maxHp: stats.hp, speed: stats.speed, dmg: stats.dmg, xp: stats.xp, hit: 0, wander: rnd(0, TAU), cd: 0 };
   }
-}
 
-function getShipStats(type = state.shipType) {
-  return shipCatalog.find((ship) => ship.id === type) || shipCatalog[0];
-}
-
-function maxHp() {
-  return getShipStats().hp;
-}
-
-function shipTier(type) {
-  const price = getShipStats(type).price;
-  if (price >= 26000) return 6;
-  if (price >= 16000) return 5;
-  if (price >= 10000) return 4;
-  if (price >= 6000) return 3;
-  if (price >= 2500) return 2;
-  if (price >= 900) return 1;
-  return 0;
-}
-
-function crateDropCount(target) {
-  const level = target.level || 1;
-  const tier = target.isBot ? shipTier(target.shipType) : shipTier(state.shipType);
-  const base = Math.floor((level + 1) / 4) + Math.max(0, tier);
-  return Math.max(1, Math.min(15, Math.ceil(base * CRATE_DROP_MULTIPLIER)));
-}
-
-function shipHitRadius(type = state.shipType) {
-  return getShipStats(type).hitbox || 3;
-}
-
-function shipWeight(type = state.shipType) {
-  return Math.max(1, getShipStats(type).weight || 80);
-}
-
-function shipVisualScale(type = state.shipType) {
-  const baseScale = {
-    skiff: 0.72,
-    shallop: 0.78,
-    pinnace: 0.8,
-    yawl: 0.82,
-    balinger: 0.88,
-    felucca: 0.88,
-    bilander: 0.92,
-    dart: 0.82,
-    cat: 0.86,
-    longship: 0.86,
-    cog: 0.86,
-    knarr: 0.88,
-    dhow: 0.88,
-    dogger: 0.88,
-    sloop: 0.9,
-    lugger: 0.9,
-    tartane: 0.9,
-    storm: 0.92,
-    brig: 1.12,
-    brigantine: 1.18,
-    packet: 1.05,
-    barquentine: 1.12,
-    barque: 1.15,
-    bombketch: 1.22,
-    turtle: 1.22,
-    corvette: 1.16,
-    frigate: 1.22,
-    whaler: 1.36,
-    ballooner: 1.18,
-    razee: 1.28,
-    grandfrigate: 1.38,
-    windrunner: 1.34,
-    galleon: 1.28,
-    merchantman: 1.28,
-    eastindiaman: 1.34,
-    carrack: 1.34,
-    treasure: 1.48,
-    fourthrate: 1.38,
-    manowar: 1.42,
-    firstrate: 1.5,
-    ironclad: 1.48,
-  }[type] || 1;
-  return baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055) * 1.2;
-}
-
-function shipHullDimensions(type = state.shipType) {
-  const [length, width] = {
-    shallop: [5.6, 1.85],
-    pinnace: [6.5, 1.75],
-    yawl: [6.0, 1.85],
-    balinger: [6.4, 2.7],
-    felucca: [7.4, 1.95],
-    bilander: [6.8, 2.55],
-    dart: [7.7, 1.75],
-    clipper: [7.4, 2.35],
-    galleon: [7.2, 3.25],
-    brig: [6.9, 3.05],
-    brigantine: [7.2, 2.75],
-    cat: [5.8, 1.45],
-    turtle: [6.2, 3.55],
-    bombketch: [6.4, 3.4],
-    storm: [8.1, 2.25],
-    sloop: [7.4, 2.0],
-    dhow: [7.1, 2.25],
-    cog: [6.2, 3.05],
-    hoy: [5.9, 2.85],
-    dogger: [6.6, 2.2],
-    xebec: [8.3, 2.4],
-    tartane: [7.2, 2.15],
-    caravel: [6.9, 2.65],
-    pink: [6.6, 2.55],
-    ketch: [6.9, 2.5],
-    frigate: [8.2, 2.9],
-    whaler: [8.6, 3.05],
-    ballooner: [8.1, 2.9],
-    corvette: [7.8, 2.65],
-    razee: [8.5, 3.0],
-    grandfrigate: [8.9, 3.18],
-    windrunner: [9.4, 2.55],
-    carrack: [7.4, 3.5],
-    manowar: [8.4, 3.8],
-    fourthrate: [8.3, 3.65],
-    firstrate: [9.0, 4.0],
-    longship: [8.7, 1.7],
-    knarr: [6.5, 2.6],
-    lugger: [7.0, 2.15],
-    galley: [8.8, 2.2],
-    snow: [7.5, 2.8],
-    packet: [7.8, 2.45],
-    chassemaree: [7.6, 2.25],
-    barquentine: [7.7, 2.55],
-    polacre: [7.9, 2.45],
-    barque: [8.0, 2.8],
-    brig: [7.8, 2.72],
-    fluyt: [7.0, 3.4],
-    merchantman: [7.4, 3.45],
-    eastindiaman: [7.8, 3.55],
-    treasure: [8.0, 4.15],
-    whaler: [8.3, 3.05],
-    ballooner: [8.0, 3.05],
-    ironclad: [7.8, 3.7],
-  }[type] || [6.5, 2.7];
-  const scale = shipVisualScale(type);
-  return { length: length * scale, width: width * scale };
-}
-
-function projectileHitsHull(localPoint, type) {
-  const { length, width } = shipHullDimensions(type);
-  const halfLength = length * 0.53 + 0.25;
-  const zT = Math.abs(localPoint.z) / halfLength;
-  if (zT > 1) return false;
-  const taper = clamp(1 - Math.pow(zT, 1.65) * 0.82, 0.18, 1);
-  const halfWidth = width * 0.52 * taper + 0.18;
-  const hullTop = 1.72 * shipVisualScale(type) + shipTier(type) * 0.16;
-  if (localPoint.y < -0.42 || localPoint.y > hullTop) return false;
-  const deckCurve = clamp(1 - Math.pow(Math.abs(localPoint.x) / Math.max(0.2, halfWidth), 2), 0, 1);
-  const allowedY = hullTop - (1 - deckCurve) * 0.42;
-  return Math.abs(localPoint.x) <= halfWidth && localPoint.y <= allowedY;
-}
-
-function projectileHitsMast(localPoint, type) {
-  const { length } = shipHullDimensions(type);
-  const scale = shipVisualScale(type);
-  const tier = shipTier(type);
-  const mastBottom = 1.05 * scale;
-  const mastTop = mastBottom + ((5.2 + Math.min(1.4, tier * 0.32)) * scale - mastBottom) * MAST_SIZE_SCALE;
-  if (localPoint.y < mastBottom || localPoint.y > mastTop) return false;
-  return mastPlan(type, length / scale).some((mastZ) => {
-    const z = -mastZ * scale * MAST_SPACING_SCALE;
-    const mastRadius = 0.22 * scale + 0.22;
-    return Math.hypot(localPoint.x, localPoint.z - z) <= mastRadius;
-  });
-}
-
-function projectileHitsShip(shot, ship, type) {
-  if (!ship) return false;
-  const broadRadius = Math.max(shipHitRadius(type) + 0.75, shipHullDimensions(type).length * 0.56);
-  if (dist2(shot.mesh.position, ship.position || ship) >= broadRadius) return false;
-  const localPoint = ship.worldToLocal
-    ? ship.worldToLocal(shot.mesh.position.clone())
-    : shot.mesh.position.clone().sub(ship.position || ship);
-  return projectileHitsHull(localPoint, type) || projectileHitsMast(localPoint, type);
-}
-
-function shipDeckLocalY(type = state.shipType) {
-  return 1.42 * shipVisualScale(type);
-}
-
-function localPointOnShipDeck(localPoint, type = state.shipType) {
-  const { length, width } = shipHullDimensions(type);
-  const halfLength = length * 0.46;
-  if (Math.abs(localPoint.z) > halfLength) return false;
-  const zT = Math.abs(localPoint.z) / Math.max(1, halfLength);
-  const taper = clamp(1 - Math.pow(zT, 1.85) * 0.72, 0.28, 1);
-  const halfWidth = width * 0.42 * taper;
-  return Math.abs(localPoint.x) <= halfWidth;
-}
-
-function shipStructureBoxes(type = state.shipType) {
-  const { length, width } = shipHullDimensions(type);
-  const scale = shipVisualScale(type);
-  const deckY = shipDeckLocalY(type);
-  const boxes = [];
-  const addCabinBox = (id, z, w, d, cabinScale = scale, roofY = 2.55 * cabinScale) => {
-    boxes.push({ id, z: -z, w: w * cabinScale, d: d * cabinScale, floorY: deckY, roofY });
-  };
-  const addRawBox = (id, z, w, d, roofY) => {
-    boxes.push({ id, z, w, d, floorY: deckY, roofY });
-  };
-  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
-  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "treasure", "windrunner"]);
-  const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner"].includes(type);
-  if (hasLargeArchitecture) {
-    const sternRoofY = type === "postship" ? 2.48 * scale : 2.08 * scale;
-    boxes.push({
-      id: "stern-castle",
-      z: -length * 0.34,
-      w: width * 0.68,
-      d: length * 0.17,
-      floorY: deckY + 0.02 * scale,
-      roofY: sternRoofY,
-      interior: largeInteriorTypes.has(type),
-    });
-    boxes.push({
-      id: "forecastle",
-      z: length * 0.34,
-      w: width * 0.48,
-      d: length * 0.12,
-      floorY: deckY + 0.02 * scale,
-      roofY: 1.72 * scale,
+  function spawnDebris() {
+    const types = ["wood", "leaves", "scrap", "cloth", "rope", "glass", "barrel"];
+    const type = types[Math.floor(Math.random() * types.length)];
+    state.debris.push({
+      x: rnd(260, WORLD - 260),
+      y: rnd(260, WORLD - 260),
+      vx: rnd(-8, 8),
+      vy: rnd(10, 26),
+      type,
+      bob: rnd(0, TAU),
+      life: 180
     });
   }
-  if (type === "whaler") {
-    boxes.push({ id: "whaler-cabin", z: -2.0 * scale, w: 2.1 * scale, d: 1.05 * scale, floorY: deckY, roofY: 1.98 * scale });
-    boxes.push({ id: "tryworks", x: 0.55 * scale, z: 0.1 * scale, w: 1.1 * scale, d: 0.8 * scale, floorY: deckY, roofY: 1.95 * scale });
-  } else if (type === "ballooner") {
-    boxes.push({ id: "ballooner-cabin", z: -1.55 * scale, w: 1.75 * scale, d: 0.92 * scale, floorY: deckY, roofY: 1.94 * scale });
-    boxes.push({ id: "balloon-platform", z: -length * 0.36, w: 3.35 * scale, d: 2.55 * scale, floorY: 1.82 * scale, roofY: 1.82 * scale });
+
+  seedWorld();
+  setSafeSpawn();
+  resetHotbarItems();
+  syncManagedCountsFromSlots();
+  renderHotbar();
+  renderRecipes();
+  renderRecipeBook();
+    updateHud();
+  usernameEl.focus();
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = `${innerWidth}px`;
+    canvas.style.height = `${innerHeight}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  if (type === "pinnace") addCabinBox("pinnace-cabin", 1.55, 1.35, 0.85, scale * 0.75);
-  else if (type === "dart") addCabinBox("cutter-cabin", 1.75, 1.25, 0.78, scale * 0.72);
-  else if (type === "sloop") addCabinBox("sloop-cabin", 1.9, 1.35, 0.85, scale * 0.82);
-  else if (type === "storm") addCabinBox("sloop-war-cabin", 1.9, 1.45, 0.9, scale * 0.82);
-  else if (type === "cog" || type === "hoy") {
-    addCabinBox(`${type}-cabin`, 1.45, 1.8, 0.82, scale * 0.78);
-    addRawBox(`${type}-stern`, -2.72 * scale, 2.3 * scale, 0.9 * scale, 2.08 * scale);
-  } else if (type === "knarr") addCabinBox("knarr-cabin", 1.85, 1.7, 1.0, scale * 0.8);
-  else if (type === "schooner" || type === "packet") addRawBox(`${type}-glasshouse`, -1.75 * scale, 1.35 * scale, 0.95 * scale, 1.92 * scale);
-  else if (type === "bombketch") addCabinBox("bombketch-cabin", 2.05, 1.9, 1.2, scale * 0.9);
-  else if (type === "caravel" || type === "pink" || type === "ketch") addCabinBox(`${type}-cabin`, 2.05, 2.0, 1.15, scale * 0.9);
-  else if (type === "fluyt") {
-    addCabinBox("fluyt-cabin", 2.25, 2.45, 1.55, scale);
-    addRawBox("fluyt-cargo-house", 0, 2.0 * scale, 2.1 * scale, 1.82 * scale);
-  } else if (type === "junk") addRawBox("junk-house", -1.55 * scale, 1.8 * scale, 1.18 * scale, 2.18 * scale);
-  return boxes;
-}
 
-function localPointInShipBox(localPoint, box, pad = 0) {
-  const x = box.x || 0;
-  return Math.abs(localPoint.x - x) <= box.w * 0.5 + pad
-    && Math.abs(localPoint.z - box.z) <= box.d * 0.5 + pad;
-}
+  window.addEventListener("resize", resize);
+  resize();
 
-function shipInteriorAllowed(localPoint, box, type = state.shipType) {
-  const scale = shipVisualScale(type);
-  const wall = 0.18 * scale;
-  const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
-    && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
-  const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
-  const doorHalfWidth = generousCabinDoor ? 0.62 * scale : 0.48 * scale;
-  const doorDepth = generousCabinDoor ? 0.58 * scale : 0.44 * scale;
-  const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
-    && Math.abs(localPoint.z - centerFacingZ) < doorDepth;
-  return inner || door;
-}
-
-function shipWalkSurfaceAt(localPoint, type = state.shipType, currentLocalY = shipDeckLocalY(type)) {
-  const deckY = shipDeckLocalY(type);
-  const onHullDeck = localPointOnShipDeck(localPoint, type);
-  let surface = onHullDeck ? { y: deckY, kind: "deck" } : null;
-  for (const box of shipStructureBoxes(type)) {
-    if (!localPointInShipBox(localPoint, box)) continue;
-    if (box.id === "balloon-platform" || currentLocalY >= box.roofY - 0.34 || localPoint.y >= box.roofY - 0.24) {
-      surface = { y: box.roofY, kind: "roof" };
-      continue;
+  window.addEventListener("keydown", (e) => {
+    const typingStartField = e.target === usernameEl || e.target === accessTokenEl;
+    if (typingStartField && e.code !== "Enter") return;
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "ShiftLeft", "ShiftRight", "Space"].includes(e.code)) e.preventDefault();
+    keys.add(e.code);
+    const idx = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0"].indexOf(e.code);
+    if (idx >= 0) {
+      selected = idx;
+      selectHotbarSlot(idx);
+      renderHotbar();
     }
-    if (box.interior && shipInteriorAllowed(localPoint, box, type)) {
-      return { y: box.floorY, kind: "interior" };
+    if (e.code === "KeyB") {
+      buildMode = !buildMode;
+      heldItem = buildMode ? buildChoice : hotbar[selected]?.id || null;
+      renderHotbar();
+      toast(buildMode ? `Build mode: ${label(buildChoice)} selected. N cycles recipes.` : "Build mode off.");
+    }
+    if (e.code === "KeyR") rotateBuild();
+    if (e.code === "KeyN") cycleBuildChoice();
+    if (e.code === "KeyG") cycleFoodChoice();
+    if (e.code === "KeyZ") train("speed");
+    if (e.code === "KeyX") train("agility");
+    if (e.code === "KeyV") train("strength");
+    if (e.code === "KeyC") toggleRecipeBook();
+    if (e.code === "KeyI") toggleInventory();
+    if (e.code === "KeyF") interact();
+    if (e.code === "Enter" && !gameStarted && !startScreenEl.hidden) startGame();
+    else if (e.code === "Enter" && !state.player.alive) showStartScreen();
+  });
+
+  window.addEventListener("keyup", (e) => keys.delete(e.code));
+  canvas.addEventListener("mousemove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+  });
+  canvas.addEventListener("mousedown", () => {
+    mouse.down = true;
+    useSelected();
+  });
+  canvas.addEventListener("mouseup", () => {
+    mouse.down = false;
+  });
+
+  document.querySelectorAll("[data-stat]").forEach((btn) => {
+    btn.addEventListener("click", () => train(btn.dataset.stat));
+  });
+
+  startButtonEl.addEventListener("click", startGame);
+  if (recipeBookOpenEl) recipeBookOpenEl.addEventListener("click", toggleRecipeBook);
+  recipeBookCloseEl.addEventListener("click", () => {
+    recipeBookEl.hidden = true;
+  });
+  inventoryCloseEl.addEventListener("click", () => closeInventory());
+  usernameEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") startGame();
+  });
+  if (accessTokenEl) {
+    accessTokenEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") startGame();
+    });
+  }
+  window.addEventListener("beforeunload", () => publishLocalPeer("leave"));
+
+  function startGame() {
+    const rawName = usernameEl.value.trim();
+    devMode = (accessTokenEl?.value || "").trim() === DEV_TOKEN;
+    playerName = cleanName(rawName);
+    const fresh = createWorld();
+    Object.keys(state).forEach((k) => delete state[k]);
+    Object.assign(state, fresh);
+    state.player.name = playerName;
+    state.debris = [];
+    state.islands = [];
+    state.animals = [];
+    seedWorld();
+    setSafeSpawn();
+    dayClock = 0;
+    cast = null;
+    rowingTimer = 0;
+    resetHotbarItems();
+    syncManagedCountsFromSlots();
+    if (devMode) applyDevToken();
+    buildMode = false;
+    buildAngle = 0;
+    heldItem = null;
+    selectedFood = null;
+    toolAnim = { kind: null, t: 0, duration: 0 };
+    activeCannon = null;
+    musketCooldown = 0;
+    openChest = null;
+    if (inventoryEl) inventoryEl.hidden = true;
+    serverSyncInFlight = false;
+    localPeers.clear();
+    serverAggressiveSharks = [];
+    remoteWorlds.clear();
+    pendingRemoteRaftMoves.clear();
+    selected = 0;
+    keys.clear();
+    mouse.down = false;
+    gameStarted = true;
+    startScreenEl.hidden = true;
+    gameOverEl.hidden = true;
+    renderHotbar();
+    renderRecipes();
+    renderRecipeBook();
+    joinServerMode();
+    toast(devMode ? "Dev token accepted. GoldDigger mode active." : `Welcome aboard, ${playerName}.`);
+  }
+
+  function showStartScreen() {
+    gameStarted = false;
+    gameOverEl.hidden = true;
+    startScreenEl.hidden = false;
+    usernameEl.value = playerName;
+    if (accessTokenEl) accessTokenEl.value = "";
+    usernameEl.focus();
+  }
+
+  function cleanName(value) {
+    return value.trim().replace(/\s+/g, " ").slice(0, 18) || "Captain";
+  }
+
+  function applyDevToken() {
+    state.player.health = 100;
+    state.player.hunger = 100;
+    state.player.thirst = 100;
+    for (const key of ["wood", "leaves", "scrap", "iron", "steel", "cloth", "rope", "glass", "sharkMeat", "meat"]) {
+      state.resources[key] = DEV_RESOURCE_AMOUNT;
+    }
+  }
+
+  function renderHotbar() {
+    syncHotbarItems();
+    hotbarEl.innerHTML = "";
+    hotbar.forEach((item, i) => {
+      const slot = document.createElement("div");
+      slot.className = `slot ${i === selected ? "active" : ""}`;
+      const icon = itemIcon(item.id);
+      const count = hotbarCount(item);
+      slot.innerHTML = `<kbd>${item.key}</kbd>${count ? `<span class="count">${count}</span>` : ""}<div class="icon">${icon}</div><div class="name">${hotbarName(item)}</div>`;
+      slot.addEventListener("click", () => {
+        selected = i;
+        selectHotbarSlot(i);
+        renderHotbar();
+      });
+      hotbarEl.append(slot);
+    });
+    renderInventory();
+  }
+
+  function itemIcon(id) {
+    const icons = {
+        rod: "ROD",
+        oar: "OAR",
+        musket: "MSK",
+        bandage: "BND",
+        flask: "EFL",
+        waterFlask: "WFL",
+        cookedFish: "FIS",
+        cookedMeat: "MEAT",
+        rawFish: "RAW",
+        tomato: "TOM",
+        coconut: "COC",
+        raft: "RAFT",
+        grill: "GRL",
+        waterMaker: "H2O",
+        plantPot: "POT",
+        chest: "BOX",
+        wall: "WAL",
+        torch: "TOR",
+        cannon: "CAN",
+        empty: ""
+      };
+    if (icons[id] !== undefined) return icons[id];
+    const spec = toolSpec(id);
+    if (spec && !spec.single) return `${spec.tier.charAt(0).toUpperCase()}${spec.base.slice(0, 2).toUpperCase()}`;
+    return label(id).slice(0, 3).toUpperCase();
+  }
+
+  function selectHotbarSlot(idx) {
+    const id = hotbar[idx]?.id || "empty";
+    if (isBuildRecipe(id)) {
+      buildChoice = id;
+      buildMode = true;
+      heldItem = id;
+    } else {
+      buildMode = false;
+      heldItem = id;
+      if (FOOD_ITEMS.includes(id)) selectedFood = id;
+    }
+  }
+
+  function hotbarName(item) {
+    if (item.id === "empty") return "-";
+    if (item.id === "bandage") return `Bandage ${item.qty || 0}`;
+    if (item.id === "flask" || item.id === "waterFlask") return `${label(item.id)} ${item.qty || 0}`;
+    if (FOOD_ITEMS.includes(item.id)) return `${label(item.id)} ${item.qty || 0}`;
+    if (isBuildRecipe(item.id)) return `${label(item.id)} ${item.qty || 0}`;
+    return item.name;
+  }
+
+  function hotbarCount(item) {
+    if (item.id === "empty") return "";
+    if (isDurableItem(item.id)) return item.durability ?? toolSpec(item.id).durability;
+    if (item.id === "bandage") return item.qty || "";
+    if (item.id === "flask" || item.id === "waterFlask") return item.qty || "";
+    if (FOOD_ITEMS.includes(item.id)) return item.qty || "";
+    if (isBuildRecipe(item.id)) return item.qty || "";
+    if (isToolItem(item.id) && (item.qty || 0) > 1) return item.qty;
+    return "";
+  }
+
+  function hotbarResource(id) {
+    return ["bandage", "flask", "waterFlask"].includes(id);
+  }
+
+  function canonicalToolId(id) {
+    return {
+      axe: "woodAxe",
+      spear: "woodSpear",
+      hammer: "woodHammer",
+      metalAxe: "scrapAxe",
+      metalSpear: "scrapSpear",
+      metalHammer: "scrapHammer"
+    }[id] || id;
+  }
+
+  function toolSpec(id) {
+    const canonical = canonicalToolId(id);
+    if (SINGLE_TIER_TOOLS.includes(canonical)) {
+      const names = { rod: "Wood Rod", oar: "Wood Oar", musket: "Wood Musket" };
+      return { id: canonical, base: canonical, tier: "wood", label: names[canonical], durability: TOOL_TIERS.wood.durability, power: 1, color: TOOL_TIERS.wood.color, single: true };
+    }
+    const match = /^(wood|scrap|iron|steel)(Axe|Spear|Hammer)$/.exec(canonical);
+    if (!match) return null;
+    const [, tier, baseName] = match;
+    const base = baseName.charAt(0).toLowerCase() + baseName.slice(1);
+    const tierInfo = TOOL_TIERS[tier];
+    return {
+      id: canonical,
+      base,
+      tier,
+      label: `${tierInfo.name} ${capBase(base)}`,
+      durability: tierInfo.durability,
+      power: tierInfo.power,
+      color: tierInfo.color,
+      single: false
+    };
+  }
+
+  function isDurableItem(id) {
+    return Boolean(toolSpec(id));
+  }
+
+  function tierIndex(tier) {
+    return Math.max(0, TIER_ORDER.indexOf(tier));
+  }
+
+  function isTieredToolRecipe(name) {
+    const spec = toolSpec(name);
+    return Boolean(spec && !spec.single && canonicalToolId(name) === name);
+  }
+
+  function recipeVisible(name) {
+    if (!recipes[name]) return false;
+    if (!isTieredToolRecipe(name)) return true;
+    const spec = toolSpec(name);
+    if (spec.tier === "wood") return true;
+    const unlockedTier = state.unlocks?.[spec.base] || "wood";
+    return tierIndex(spec.tier) <= tierIndex(unlockedTier) + 1;
+  }
+
+  function markToolUnlocked(id) {
+    const spec = toolSpec(id);
+    if (!spec || spec.single) return;
+    if (!state.unlocks) state.unlocks = { axe: "wood", spear: "wood", hammer: "wood" };
+    const current = state.unlocks[spec.base] || "wood";
+    if (tierIndex(spec.tier) > tierIndex(current)) state.unlocks[spec.base] = spec.tier;
+  }
+
+  function availableFoods() {
+    return FOOD_ITEMS.filter((key) => (state.resources[key] || 0) > 0);
+  }
+
+  function managedItemCount(id) {
+    if (!id || id === "empty") return 0;
+    return countSlots(state.inventory, id) + countHotbarSlots(id);
+  }
+
+  function isToolItem(id) {
+    return Boolean(toolSpec(id));
+  }
+
+  function isInventoryManaged(id) {
+    return id === "flask" || id === "waterFlask" || id === "bandage" || FOOD_ITEMS.includes(id) || isToolItem(id) || isBuildRecipe(id);
+  }
+
+  function inventorySlots() {
+    if (!Array.isArray(state.inventory)) state.inventory = emptySlots(PLAYER_INV_CAP);
+    while (state.inventory.length < PLAYER_INV_CAP) state.inventory.push(null);
+    if (state.inventory.length > PLAYER_INV_CAP) state.inventory.length = PLAYER_INV_CAP;
+    return state.inventory;
+  }
+
+  function chestSlots(chest) {
+    if (!chest) return emptySlots(CHEST_INV_CAP);
+    if (!Array.isArray(chest.storage)) {
+      const converted = emptySlots(CHEST_INV_CAP);
+      if (chest.storage && typeof chest.storage === "object") {
+        let i = 0;
+        for (const [id, qty] of Object.entries(chest.storage)) {
+          if (i >= CHEST_INV_CAP) break;
+          if (qty > 0) converted[i++] = slot(id, qty);
+        }
+      }
+      chest.storage = converted;
+    }
+    while (chest.storage.length < CHEST_INV_CAP) chest.storage.push(null);
+    if (chest.storage.length > CHEST_INV_CAP) chest.storage.length = CHEST_INV_CAP;
+    return chest.storage;
+  }
+
+  function normalizeSlot(item) {
+    if (!item || !item.id || item.id === "empty" || item.qty <= 0) return null;
+    const spec = toolSpec(item.id);
+    if (spec?.durability) {
+      const maxDurability = clamp(Number(item.maxDurability) || spec.durability, 1, spec.durability);
+      return {
+        id: spec.id,
+        qty: 1,
+        durability: clamp(Number(item.durability) || maxDurability, 0, maxDurability),
+        maxDurability
+      };
+    }
+    return { id: item.id, qty: item.qty };
+  }
+
+  function countSlots(slots, id) {
+    return (slots || []).reduce((sum, item) => sum + (item?.id === id ? item.qty || 0 : 0), 0);
+  }
+
+  function countHotbarSlots(id) {
+    return HOTBAR_SWAP_SLOTS.reduce((sum, idx) => sum + (hotbar[idx]?.id === id ? hotbar[idx].qty || 0 : 0), 0);
+  }
+
+  function usedInventorySlots(slots = inventorySlots()) {
+    return slots.filter(Boolean).length;
+  }
+
+  function playerHasInventorySpaceFor(id) {
+    if (isDurableItem(id)) return inventorySlots().some((item) => !item);
+    return inventorySlots().some((item) => !item || item.id === id);
+  }
+
+  function playerHasItemSpaceFor(id) {
+    if (isDurableItem(id)) return playerHasInventorySpaceFor(id) || HOTBAR_SWAP_SLOTS.some((idx) => hotbar[idx].id === "empty");
+    return playerHasInventorySpaceFor(id) || HOTBAR_SWAP_SLOTS.some((idx) => hotbar[idx].id === "empty" || hotbar[idx].id === id);
+  }
+
+  function syncHotbarItems() {
+    for (const idx of HOTBAR_SWAP_SLOTS) {
+      const item = hotbar[idx];
+      if (item.id !== "empty" && (!isInventoryManaged(item.id) || (item.qty || 0) <= 0)) setHotbarItem(idx, null);
+    }
+    const current = hotbar[selected]?.id;
+    if (buildMode) heldItem = buildChoice;
+    else if (current === "empty") heldItem = null;
+  }
+
+  function hotbarSwapTarget() {
+    if (HOTBAR_SWAP_SLOTS.includes(selected)) return selected;
+    return HOTBAR_SWAP_SLOTS.find((idx) => hotbar[idx].id === "empty") ?? HOTBAR_SWAP_SLOTS[0];
+  }
+
+  function putItemInHotbar(id, selectIt = false) {
+    if (!isInventoryManaged(id)) return false;
+    const existing = HOTBAR_SWAP_SLOTS.find((idx) => hotbar[idx].id === id);
+    const idx = existing ?? hotbarSwapTarget();
+    if (existing === undefined) {
+      const source = findSlotRefWithItem("inventory", id);
+      if (!source) return false;
+      moveSlot(source, { area: "hotbar", index: idx }, false);
+    }
+    if (selectIt) {
+      selected = idx;
+      selectHotbarSlot(idx);
+    }
+    renderHotbar();
+    return true;
+  }
+
+  function autoSlotItem(id) {
+    if (!isInventoryManaged(id)) return;
+    const idx = HOTBAR_SWAP_SLOTS.find((slotIndex) => hotbar[slotIndex].id === id);
+    if (idx !== undefined) syncManagedCountsFromSlots();
+  }
+
+  function toggleInventory(chest = null) {
+    if (!gameStarted) return;
+    if (inventoryEl.hidden) openInventory(chest);
+    else closeInventory();
+  }
+
+  function openInventory(chest = null) {
+    openChest = chest;
+    inventoryEl.hidden = false;
+    renderInventory();
+  }
+
+  function closeInventory() {
+    inventoryEl.hidden = true;
+    openChest = null;
+  }
+
+  function renderInventory() {
+    if (!inventoryEl || inventoryEl.hidden) return;
+    inventoryTitleEl.textContent = openChest ? "Inventory and Chest" : "Inventory";
+    inventoryItemsEl.innerHTML = "";
+    inventoryItemsEl.dataset.area = "inventory";
+    for (let i = 0; i < PLAYER_INV_CAP; i++) inventoryItemsEl.append(slotCard({ area: "inventory", index: i }, inventorySlots()[i]));
+
+    inventoryHotbarEl.innerHTML = "";
+    inventoryHotbarEl.dataset.area = "hotbar";
+    for (let i = 0; i < hotbar.length; i++) inventoryHotbarEl.append(slotCard({ area: "hotbar", index: i }, getSlot({ area: "hotbar", index: i }), hotbar[i].key));
+
+    chestPaneEl.hidden = !openChest;
+    chestItemsEl.innerHTML = "";
+    chestItemsEl.dataset.area = "chest";
+    if (openChest) {
+      const slots = chestSlots(openChest);
+      for (let i = 0; i < CHEST_INV_CAP; i++) chestItemsEl.append(slotCard({ area: "chest", index: i }, slots[i]));
+    }
+  }
+
+  function slotCard(ref, item, hotkey = "") {
+    const card = document.createElement("button");
+    const canUse = ref.area !== "hotbar" || HOTBAR_SWAP_SLOTS.includes(ref.index);
+    card.type = "button";
+    card.className = `item-card slot-cell${item ? " filled" : ""}${canUse ? " actionable" : " locked"}`;
+    card.dataset.area = ref.area;
+    card.dataset.index = String(ref.index);
+    card.disabled = !canUse;
+    card.draggable = Boolean(item && canUse);
+    const name = item ? label(item.id) : "Empty";
+    const qty = item?.durability !== undefined ? `${item.durability}/${item.maxDurability}` : item?.qty ? `x${item.qty}` : "";
+    card.innerHTML = `<kbd>${hotkey || ref.index + 1}</kbd><b>${name}</b><span>${qty}${canUse ? "" : "Locked"}</span>`;
+    card.addEventListener("dragstart", (event) => {
+      if (!item || !canUse) return;
+      dragSlotRef = ref;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", `${ref.area}:${ref.index}`);
+    });
+    card.addEventListener("dragover", (event) => {
+      if (canUse) event.preventDefault();
+    });
+    card.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const source = dragSlotRef || parseSlotRef(event.dataTransfer.getData("text/plain"));
+      moveSlot(source, ref);
+      dragSlotRef = null;
+    });
+    return card;
+  }
+
+  function parseSlotRef(text) {
+    const [area, index] = String(text || "").split(":");
+    return area ? { area, index: Number(index) } : null;
+  }
+
+  function getSlot(ref) {
+    if (!ref) return null;
+    if (ref.area === "inventory") return normalizeSlot(inventorySlots()[ref.index]);
+    if (ref.area === "chest") return openChest ? normalizeSlot(chestSlots(openChest)[ref.index]) : null;
+    if (ref.area === "hotbar") {
+      const item = hotbar[ref.index];
+      return HOTBAR_SWAP_SLOTS.includes(ref.index) ? normalizeSlot(item) : null;
     }
     return null;
   }
-  return surface;
-}
 
-function deckWorldPosition(localX = 0, localZ = 0, type = state.shipType) {
-  return playerShip.localToWorld(new THREE.Vector3(localX, shipDeckLocalY(type), localZ));
-}
-
-function shipSurfaceWorldPosition(localX, localZ, surfaceY) {
-  return playerShip.localToWorld(new THREE.Vector3(localX, surfaceY, localZ));
-}
-
-function shipSwimBlockAt(worldPoint) {
-  const candidates = [];
-  if (playerShip) candidates.push({ group: playerShip, type: state.shipType });
-  bots.forEach((bot) => {
-    if (bot.group?.visible !== false) candidates.push({ group: bot.group, type: bot.shipType || "cog" });
-  });
-  remotePlayers.forEach((remote) => {
-    if (remote.group?.visible !== false) candidates.push({ group: remote.group, type: remote.shipType || "skiff" });
-  });
-  for (const candidate of candidates) {
-    if (!candidate.group || !candidate.type) continue;
-    const radius = shipHitRadius(candidate.type) + 1.1;
-    if (dist2(worldPoint, candidate.group.position) > radius) continue;
-    const local = candidate.group.worldToLocal(worldPoint.clone());
-    const waterPoint = local.clone();
-    waterPoint.y = 0.32 * shipVisualScale(candidate.type);
-    if (projectileHitsHull(waterPoint, candidate.type)) return { ...candidate, local };
+  function setSlot(ref, item) {
+    const value = normalizeSlot(item);
+    if (ref.area === "inventory") inventorySlots()[ref.index] = value;
+    if (ref.area === "chest" && openChest) chestSlots(openChest)[ref.index] = value;
+    if (ref.area === "hotbar") setHotbarItem(ref.index, value);
   }
-  return null;
-}
 
-function pushSwimmerAwayFromShip(block, dt) {
-  if (!block?.group) return;
-  const away = character.position.clone().sub(block.group.position);
-  away.y = 0;
-  if (away.lengthSq() < 0.001) away.set(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
-  away.normalize();
-  character.position.add(away.multiplyScalar(1.8 * dt));
-}
-
-function firstPersonCharacterActive() {
-  return !!character?.visible && (state.mode === "land" || state.viewMode === "deck" || state.viewMode === "swim");
-}
-
-function resetCharacterHealth() {
-  state.characterHp = CHARACTER_MAX_HP;
-  state.swimHp = CHARACTER_MAX_HP;
-}
-
-function respawnCharacterOnShip(message = "Your character was knocked out and respawned on deck.") {
-  if (!playerShip || !character) return;
-  closeShop();
-  state.mode = "ship";
-  state.viewMode = "deck";
-  state.dockedAt = null;
-  state.activeBalloonIndex = -1;
-  resetCharacterHealth();
-  character.position.copy(deckWorldPosition(0, 0));
-  character.rotation.y = state.rotation;
-  character.visible = true;
-  state.walkHeight = 0;
-  state.walkVelocityY = 0;
-  state.grounded = true;
-  state.velocity.set(0, 0, 0);
-  state.position.copy(playerShip.position);
-  toast(message);
-  updateHud();
-}
-
-function damageCharacter(amount, options = {}) {
-  if (!firstPersonCharacterActive()) return false;
-  state.characterHp = Math.max(0, state.characterHp - Math.max(1, amount || 1));
-  state.swimHp = state.characterHp;
-  if (state.characterHp <= 0) {
-    respawnCharacterOnShip(options.message || "Your character was knocked out and respawned on deck.");
-  }
-  return true;
-}
-
-function projectileHitsCharacter(shot) {
-  if (!firstPersonCharacterActive() || !shot?.mesh || shot.owner === playerId) return false;
-  const pos = character.position;
-  const radius = state.viewMode === "swim" ? 0.42 : 0.5;
-  if (dist2(shot.mesh.position, pos) > radius) return false;
-  const bottom = pos.y - 0.08;
-  const top = pos.y + (state.viewMode === "swim" ? 0.58 : 1.12);
-  return shot.mesh.position.y >= bottom && shot.mesh.position.y <= top;
-}
-
-
-function enterDeckMode() {
-  if (state.mode !== "ship" || state.viewMode === "balloon") return;
-  if (state.velocity.length() > 0.35) return toast("Stop your ship before walking around.");
-  state.viewMode = "deck";
-  resetCharacterHealth();
-  character.position.copy(deckWorldPosition(0, 0));
-  character.rotation.y = state.rotation;
-  character.visible = true;
-  state.walkHeight = 0;
-  state.walkVelocityY = 0;
-  state.grounded = true;
-  state.velocity.set(0, 0, 0);
-  toast("Deck view. Press C for sailing controls.");
-}
-
-function returnCharacterToShipDeck() {
-  if (!playerShip || state.mode !== "ship") return;
-  state.viewMode = "deck";
-  resetCharacterHealth();
-  character.position.copy(deckWorldPosition(0, 0));
-  character.rotation.y = state.rotation;
-  character.visible = true;
-  state.walkHeight = 0;
-  state.walkVelocityY = 0;
-  state.grounded = true;
-  toast("Returned to the deck.");
-}
-
-function exitDeckMode() {
-  if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
-  state.viewMode = "ship";
-  resetCharacterHealth();
-  character.visible = false;
-  state.velocity.set(0, 0, 0);
-  toast("Sailing controls restored.");
-}
-
-function regularCargoCount() {
-  return Object.entries(state.cargo).reduce((total, [name, count]) => (
-    name === "Whale Blubber" ? total : total + count
-  ), 0);
-}
-
-function cargoCount() {
-  return regularCargoCount() + (state.shipType === "whaler" ? 0 : blubberCount());
-}
-
-function totalCargoCount() {
-  return regularCargoCount() + blubberCount();
-}
-
-function cargoCapacity() {
-  return getShipStats().capacity || 8;
-}
-
-function blubberCount() {
-  return state.cargo["Whale Blubber"] || 0;
-}
-
-function blubberCapacity() {
-  return state.shipType === "whaler" ? (getShipStats().blubberCapacity || 50) : Math.max(0, cargoCapacity() - cargoCount());
-}
-
-function canAddBlubber(amount = 1) {
-  const count = Math.max(0, Number(amount) || 0);
-  if (state.shipType === "whaler") return blubberCount() + count <= blubberCapacity();
-  return totalCargoCount() + count <= cargoCapacity();
-}
-
-function marketBuyPrice(island, name) {
-  if (name === "Whale Blubber") return 0;
-  return island?.goods?.[name] || 0;
-}
-
-function marketSellPrice(island, name) {
-  if (name === "Whale Blubber") return island?.name === "Portsmouth" ? 200 : 0;
-  return Math.max(1, Math.floor(marketBuyPrice(island, name) * TRADE_SELL_RATE));
-}
-
-function cannonDamage() {
-  return 34 + state.upgrades.damage * 2;
-}
-
-function cannonReload() {
-  return Math.max(0.36, 0.78 - Math.min(state.upgrades.fireRate, MAX_RELOAD_UPGRADES) * 0.02);
-}
-
-function cannonRange() {
-  return 34 + state.upgrades.range * 4;
-}
-
-function rangeDamageMultiplier(distance, range) {
-  return 1 + clamp(distance / Math.max(1, range), 0, 1) * 0.5;
-}
-
-function scaleDamageByRange(baseDamage, distance, range) {
-  return Math.round(baseDamage * rangeDamageMultiplier(distance, range));
-}
-
-function currentAmmoType() {
-  const slotType = state.ammoSlots[state.selectedAmmoSlot] || "basic";
-  return CANNONBALL_TYPES[slotType] || CANNONBALL_TYPES.basic;
-}
-
-function ammoCount(type) {
-  const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
-  return ammo.infinite ? Infinity : Math.max(0, Math.floor(state.ammo[type] || 0));
-}
-
-function selectAmmoSlot(index, announce = false) {
-  const slot = clamp(Math.floor(Number(index) || 0), 0, state.ammoSlots.length - 1);
-  const type = state.ammoSlots[slot];
-  if (!type) {
-    toast("That ammo slot is empty.");
-    return false;
-  }
-  const ammo = CANNONBALL_TYPES[type];
-  if (!ammo) return false;
-  if (!ammo.infinite && ammoCount(type) <= 0) {
-    toast(`${ammo.name} is empty.`);
-    return false;
-  }
-  state.selectedAmmoSlot = slot;
-  state.selectedAmmo = type;
-  updateAmmoHotbar();
-  if (announce) toast(`${ammo.name} equipped.`);
-  return true;
-}
-
-function selectAmmo(type) {
-  const slot = state.ammoSlots.findIndex((item) => item === type);
-  if (slot < 0) return toast("Put that shot in a hotbar slot first.");
-  selectAmmoSlot(slot);
-}
-
-function assignAmmoSlot(slot, type) {
-  const index = Math.floor(Number(slot));
-  if (!Number.isFinite(index) || index < 0 || index >= state.ammoSlots.length) return;
-  if (index === 0) return toast("Basic Shell stays in slot 1.");
-  if (type && !CANNONBALL_TYPES[type]) return;
-  const nextType = type || null;
-  const previousSelectedType = state.ammoSlots[state.selectedAmmoSlot];
-  if (nextType) {
-    state.ammoSlots.forEach((slotType, slotIndex) => {
-      if (slotIndex > 0 && slotIndex !== index && slotType === nextType) {
-        state.ammoSlots[slotIndex] = null;
+  function setHotbarItem(index, item) {
+    if (!HOTBAR_SWAP_SLOTS.includes(index)) return false;
+    const value = normalizeSlot(item);
+    hotbar[index].id = value ? value.id : "empty";
+    hotbar[index].name = value ? label(value.id) : "-";
+    delete hotbar[index].durability;
+    delete hotbar[index].maxDurability;
+    if (value) {
+      hotbar[index].qty = value.qty;
+      if (value.durability !== undefined) {
+        hotbar[index].durability = value.durability;
+        hotbar[index].maxDurability = value.maxDurability;
       }
-    });
-  }
-  state.ammoSlots[index] = nextType;
-  if (type && state.pendingAmmoAssign === type) state.pendingAmmoAssign = null;
-  if (nextType && (state.selectedAmmoSlot === index || previousSelectedType === nextType)) {
-    state.selectedAmmoSlot = index;
-    state.selectedAmmo = nextType;
-  }
-  if (state.selectedAmmoSlot === index && !nextType) {
-    state.selectedAmmoSlot = 0;
-    state.selectedAmmo = "basic";
-  }
-  updateAmmoHotbar();
-}
-
-function placeAmmoOnHotbar(type) {
-  if (!CANNONBALL_TYPES[type] || CANNONBALL_TYPES[type].infinite) return true;
-  if (state.ammoSlots.includes(type)) {
-    state.pendingAmmoAssign = null;
-    updateAmmoHotbar();
-    return true;
-  }
-  const openSlot = state.ammoSlots.findIndex((item, index) => index > 0 && !item);
-  if (openSlot > 0) {
-    assignAmmoSlot(openSlot, type);
-    return true;
-  }
-  state.pendingAmmoAssign = type;
-  updateAmmoHotbar();
-  return false;
-}
-
-function consumeAmmo(ammo) {
-  if (!ammo || ammo.infinite) return true;
-  if (ammoCount(ammo.id) <= 0) {
-    state.selectedAmmoSlot = 0;
-    state.selectedAmmo = "basic";
-    updateAmmoHotbar();
-    toast(`${ammo.name} is empty.`);
-    return false;
-  }
-  state.ammo[ammo.id] = ammoCount(ammo.id) - 1;
-  if (state.ammo[ammo.id] <= 0) {
-    state.selectedAmmoSlot = 0;
-    state.selectedAmmo = "basic";
-  }
-  updateAmmoHotbar();
-  return true;
-}
-
-function rotateFlatDirection(dir, angle) {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return new THREE.Vector3(dir.x * cos + dir.z * sin, 0, dir.z * cos - dir.x * sin).normalize();
-}
-
-function updateAmmoHotbar(force = false) {
-  if (!ui.ammoHotbar) return;
-  const signature = state.ammoSlots.map((type, index) => {
-    if (!type) return `${index}:empty`;
-    const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
-    return `${index}:${type}:${ammo.infinite ? "inf" : ammoCount(type)}:${state.selectedAmmoSlot === index ? "active" : ""}:${state.language}`;
-  }).join("|");
-  if (!force && signature === ammoHotbarSignature) return;
-  ammoHotbarSignature = signature;
-  ui.ammoHotbar.innerHTML = state.ammoSlots.map((type, index) => {
-    if (!type) {
-      const active = state.selectedAmmoSlot === index ? " active" : "";
-      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="${t("emptySlotTitle")}"><span>${index + 1}</span><strong>${t("emptySlot")}</strong><em>-</em></button>`;
-    }
-    const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
-    const count = ammo.infinite ? "&infin;" : ammoCount(type);
-    const active = state.selectedAmmoSlot === index ? " active" : "";
-    const empty = !ammo.infinite && ammoCount(type) <= 0 ? " empty" : "";
-    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammoName(ammo)}"><span>${index + 1}</span><strong>${ammoShortName(ammo)}</strong><em>${count}</em></button>`;
-  }).join("");
-}
-
-function botUpgradeLevels(botOrLevel = 1) {
-  const level = typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1;
-  const focus = typeof botOrLevel === "object" ? botOrLevel.upgradeFocus || "damage" : "damage";
-  const order = focus === "reload" ? ["reload", "range", "damage"]
-    : focus === "range" ? ["range", "damage", "reload"]
-      : ["damage", "reload", "range"];
-  const upgrades = { damage: 0, reload: 0, range: 0 };
-  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) {
-    for (let offset = 0; offset < order.length; offset++) {
-      const kind = order[(i + offset) % order.length];
-      if (kind === "reload" && upgrades.reload >= MAX_RELOAD_UPGRADES) continue;
-      upgrades[kind]++;
-      break;
-    }
-  }
-  return upgrades;
-}
-
-function botCannonDamage(botOrLevel = 1) {
-  return 34 + botUpgradeLevels(botOrLevel).damage * 2;
-}
-
-function botCannonReload(botOrLevel = 1) {
-  return Math.max(0.36, 0.78 - botUpgradeLevels(botOrLevel).reload * 0.02);
-}
-
-function botCannonRange(botOrLevel = 1) {
-  return BOT_CANNON_RANGE + botUpgradeLevels(botOrLevel).range * 4;
-}
-
-function compareStatLabel(label, delta, suffix = "") {
-  if (!delta) return `<span class="same">${label} =</span>`;
-  const sign = delta > 0 ? "+" : "";
-  const className = delta > 0 ? "better" : "worse";
-  return `<span class="${className}">${label} ${sign}${delta}${suffix}</span>`;
-}
-
-function shipCompareMarkup(ship) {
-  const current = getShipStats();
-  const parts = [
-    compareStatLabel(t("hp"), ship.hp - current.hp),
-    compareStatLabel(t("armor"), Math.round((ship.armor - current.armor) * 100), "%"),
-    compareStatLabel(t("speed"), ship.speed - current.speed),
-    compareStatLabel(t("regen"), ship.regen - current.regen),
-    compareStatLabel(t("hold"), ship.capacity - current.capacity),
-  ];
-  return `<div class="ship-compare">${t("vsYourShip", { ship: shipName(current), stats: parts.join(" ") })}</div>`;
-}
-
-function availableShipsForIsland(island) {
-  const ids = new Set([STARTER_SHIP, ...(island?.shipMarket || [])]);
-  return shipCatalog.filter((ship) => ids.has(ship.id)).sort((a, b) => a.price - b.price);
-}
-
-function replacePlayerShip(type, spawnPosition = null) {
-  const ship = getShipStats(type);
-  const old = playerShip;
-  const position = spawnPosition || old?.position || state.position;
-  const rotationY = Number.isFinite(old?.rotation?.y) ? old.rotation.y : state.rotation;
-  state.shipType = ship.id;
-  state.hp = ship.hp;
-  if (ship.id !== "whaler") {
-    state.whalerNets = false;
-    state.whalerNetProgress = 0;
-  }
-  playerShip = makeShip(ship.id);
-  updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
-  playerShip.position.copy(position);
-  playerShip.position.y = SHIP_WATERLINE_Y;
-  playerShip.rotation.set(0, rotationY, 0);
-  if (old) scene.remove(old);
-  scene.add(playerShip);
-  state.position.copy(playerShip.position);
-  state.rotation = playerShip.rotation.y;
-}
-
-function setSize() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-}
-
-addEventListener("resize", setSize);
-setSize();
-
-function mat(color, roughness = 0.9) {
-  return new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.05 });
-}
-
-const mats = {
-  water: new THREE.MeshStandardMaterial({ color: 0x35b7d4, roughness: 0.5, metalness: 0.04 }),
-  shallows: new THREE.MeshStandardMaterial({ color: 0x6ed7cf, roughness: 0.66, metalness: 0.02, transparent: true, opacity: 0.72 }),
-  sand: mat(0xe9d28a),
-  grass: mat(0x70bf61),
-  rock: mat(0x7e8991),
-  wood: mat(0x8b5a32),
-  sail: mat(0xfff5da),
-  dark: mat(0x2f3342),
-  gold: mat(0xd99928),
-  white: mat(0xf8f4e5),
-  red: mat(0xd54b3f),
-  crate: mat(0xb87533),
-  hull: mat(0x6b432b),
-  hullDark: mat(0x3f2d24),
-  rope: mat(0x5a3b25),
-  plank: mat(0xb77b42),
-};
-
-function addLights() {
-  const hemi = new THREE.HemisphereLight(0xdaf7ff, 0x5f8f73, 1.35);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.3);
-  sun.position.set(-60, 90, 40);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -145;
-  sun.shadow.camera.right = 145;
-  sun.shadow.camera.top = 145;
-  sun.shadow.camera.bottom = -145;
-  scene.add(sun);
-  scene.add(sun.target);
-  const warm = new THREE.DirectionalLight(0xffdba0, 0.85);
-  warm.position.set(80, 36, -70);
-  scene.add(warm);
-  scene.add(warm.target);
-  const moonLight = new THREE.DirectionalLight(0xaec8ff, 0);
-  moonLight.position.set(80, 60, -70);
-  scene.add(moonLight);
-  scene.add(moonLight.target);
-  const celestialEdgeDistance = WATERFALL_LIMIT + 620;
-  const celestialSideDrift = WATERFALL_LIMIT * 0.14;
-  const celestialRig = new THREE.Group();
-  celestialRig.position.set(0, 20, 0);
-  scene.add(celestialRig);
-  const celestialLine = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-celestialEdgeDistance, 0, -celestialSideDrift),
-      new THREE.Vector3(celestialEdgeDistance, 0, celestialSideDrift),
-    ]),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false })
-  );
-  celestialLine.visible = false;
-  celestialRig.add(celestialLine);
-  const sunDisc = new THREE.Mesh(
-    new THREE.SphereGeometry(12, 24, 14),
-    new THREE.MeshBasicMaterial({ color: 0xfff1a6, fog: false })
-  );
-  sunDisc.position.set(-celestialEdgeDistance, 0, -celestialSideDrift);
-  celestialRig.add(sunDisc);
-  const moonDisc = new THREE.Mesh(
-    new THREE.SphereGeometry(8.5, 24, 14),
-    new THREE.MeshBasicMaterial({ color: 0xdfe9ff, fog: false })
-  );
-  const moonShadow = new THREE.Mesh(
-    new THREE.SphereGeometry(8.65, 24, 14),
-    new THREE.MeshBasicMaterial({ color: 0x18243a, fog: false })
-  );
-  moonShadow.position.set(3.1, 1.1, 1.1);
-  moonDisc.add(moonShadow);
-  moonDisc.position.set(celestialEdgeDistance, 0, celestialSideDrift);
-  celestialRig.add(moonDisc);
-  Object.assign(environment, { hemi, sun, warm, moonLight, celestialRig, celestialLine, sunDisc, moonDisc });
-}
-
-function smoothStep(value) {
-  const t = clamp(value, 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
-function lightingFocusPosition() {
-  const balloon = state.viewMode === "balloon" ? activeBalloon() : null;
-  if (balloon?.group && !balloon.destroyed) return balloon.group.position;
-  if ((state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land") && character) return character.position;
-  if (playerShip) return playerShip.position;
-  return state.position;
-}
-
-function aimDirectionalLightFromCelestial(light, celestialPosition, focusPosition, distance = 760) {
-  const direction = celestialPosition.clone().sub(focusPosition);
-  if (direction.lengthSq() < 0.001) direction.set(0, 1, 0);
-  direction.normalize();
-  light.position.copy(focusPosition).add(direction.multiplyScalar(distance));
-  light.target.position.copy(focusPosition);
-  light.updateMatrixWorld();
-  light.target.updateMatrixWorld();
-}
-
-function updateShipNightLights(amount) {
-  for (let i = shipNightLights.length - 1; i >= 0; i--) {
-    const rig = shipNightLights[i];
-    if (!rig?.group?.parent) {
-      shipNightLights.splice(i, 1);
-      continue;
-    }
-    rig.material.opacity = amount;
-    if (rig.haloMaterial) rig.haloMaterial.opacity = 0;
-    rig.lights.forEach((light) => {
-      light.intensity = amount * rig.baseIntensity;
-    });
-  }
-}
-
-function updateDayNightCycle() {
-  if (!environment.sun || !environment.hemi) return;
-  const dayLength = Math.max(60, Number(environment.serverDayLength) || DAY_LENGTH_SECONDS);
-  const nightLength = Math.max(60, Number(environment.serverNightLength) || NIGHT_LENGTH_SECONDS);
-  const cycleLength = dayLength + nightLength;
-  const serverSynced = Number.isFinite(environment.serverCycleTime);
-  const cycleTime = serverSynced
-    ? (environment.serverCycleTime + Math.max(0, clock.elapsedTime - environment.serverCycleUpdatedAt)) % cycleLength
-    : clock.elapsedTime % cycleLength;
-  const isNight = cycleTime >= dayLength;
-  const dayProgress = clamp(cycleTime / dayLength, 0, 1);
-  const nightProgress = isNight ? clamp((cycleTime - dayLength) / nightLength, 0, 1) : 0;
-  const cycleProgress = isNight ? 0.5 + nightProgress * 0.5 : dayProgress * 0.5;
-  const sunriseProgress = !isNight ? clamp(cycleTime / SUNRISE_SECONDS, 0, 1) : 0;
-  const sunsetProgress = !isNight ? clamp((cycleTime - (dayLength - SUNSET_SECONDS)) / SUNSET_SECONDS, 0, 1) : 0;
-  const sunriseTransition = !isNight && cycleTime < SUNRISE_SECONDS ? 1 - smoothStep(sunriseProgress) : 0;
-  const sunsetTransition = !isNight && cycleTime > dayLength - SUNSET_SECONDS ? smoothStep(sunsetProgress) : 0;
-  const sunriseWarmth = !isNight && cycleTime < SUNRISE_SECONDS
-    ? Math.sin(sunriseProgress * Math.PI)
-    : 0;
-  const sunsetWarmth = !isNight && cycleTime > dayLength - SUNSET_SECONDS
-    ? Math.sin(sunsetProgress * Math.PI)
-    : 0;
-  const nightFactor = isNight ? 1 : clamp(Math.max(sunriseTransition, sunsetTransition), 0, 1);
-  const dayAmount = 1 - nightFactor;
-  const twilight = clamp(Math.max(sunriseWarmth, sunsetWarmth), 0, 1);
-
-  const celestialAngle = cycleProgress * Math.PI * 2;
-  const celestialEdgeDistance = WATERFALL_LIMIT + 620;
-  const celestialSideDrift = WATERFALL_LIMIT * 0.14;
-  const horizontalX = -Math.cos(celestialAngle) * celestialEdgeDistance;
-  const horizontalZ = -Math.cos(celestialAngle) * celestialSideDrift;
-  const verticalY = Math.sin(celestialAngle) * 520;
-  const sunLocal = new THREE.Vector3(horizontalX, verticalY, horizontalZ);
-  const moonLocal = sunLocal.clone().multiplyScalar(-1);
-  environment.sunDisc.position.copy(sunLocal);
-  environment.moonDisc.position.copy(moonLocal);
-  if (environment.celestialLine?.geometry) {
-    environment.celestialLine.geometry.setFromPoints([sunLocal, moonLocal]);
-  }
-  const sunPos = environment.sunDisc.getWorldPosition(new THREE.Vector3());
-  const moonPos = environment.moonDisc.getWorldPosition(new THREE.Vector3());
-  const lightFocus = lightingFocusPosition().clone();
-  lightFocus.y += state.viewMode === "balloon" ? 6 : 1.2;
-  aimDirectionalLightFromCelestial(environment.sun, sunPos, lightFocus, 820);
-  aimDirectionalLightFromCelestial(environment.warm, sunPos, lightFocus, 820);
-  aimDirectionalLightFromCelestial(environment.moonLight, moonPos, lightFocus, 820);
-  environment.sunDisc.visible = sunPos.y > 5 || !isNight;
-  environment.moonDisc.visible = moonPos.y > 5 || isNight || sunriseTransition > 0.15;
-
-  environment.sun.intensity = 0.18 + dayAmount * 2.25 + twilight * 0.35;
-  environment.hemi.intensity = 0.18 + dayAmount * 1.18;
-  environment.warm.intensity = 0.04 + twilight * 1.35;
-  environment.moonLight.intensity = nightFactor * 0.78;
-  renderer.toneMappingExposure = 0.48 + dayAmount * 0.7 + twilight * 0.16;
-
-  environment.sun.color.setHex(twilight > 0.05 ? 0xffe0a3 : 0xffffff);
-  environment.warm.color.setHex(0xffca70);
-  environment.moonLight.color.setHex(0xb8ccff);
-  environment.sunDisc.material.color.setHex(twilight > 0.05 ? 0xffde8a : 0xfff1a6);
-  environment.moonDisc.material.color.setHex(0xdfe9ff);
-  const sky = new THREE.Color(0x8edff0)
-    .lerp(new THREE.Color(0xffd27a), twilight * 0.66)
-    .lerp(new THREE.Color(0x07111d), nightFactor * 0.9);
-  scene.background.copy(sky);
-  scene.fog.color.copy(sky);
-  scene.fog.near = 185 + dayAmount * 55;
-  scene.fog.far = 520 + dayAmount * 460;
-  mats.water.color.copy(new THREE.Color(0x35b7d4).lerp(new THREE.Color(0x0b2433), nightFactor * 0.84));
-  mats.shallows.color.copy(new THREE.Color(0x6ed7cf).lerp(new THREE.Color(0x123444), nightFactor * 0.72));
-  updateShipNightLights(clamp((0.72 - dayAmount) / 0.52, 0, 1));
-  environment.phase = isNight ? "night" : twilight > 0.1 ? (sunriseWarmth >= sunsetWarmth ? "sunrise" : "sunset") : "day";
-}
-
-function addSea() {
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE, 104, 104), mats.water);
-  sea.rotation.x = -Math.PI / 2;
-  sea.receiveShadow = true;
-  sea.userData.wave = true;
-  scene.add(sea);
-  const grid = new THREE.GridHelper(SEA_SIZE, 76, 0x87e7f3, 0x87e7f3);
-  grid.position.y = 0.025;
-  grid.material.transparent = true;
-  grid.material.opacity = 0.08;
-  scene.add(grid);
-  const foamLimit = WATERFALL_LIMIT - 28;
-  for (let i = 0; i < 160; i++) {
-    const foam = new THREE.Mesh(new THREE.BoxGeometry(3 + Math.random() * 8, 0.04, 0.14), mat(0xd9fbff));
-    foam.position.set((Math.random() - 0.5) * foamLimit * 2, 0.035, (Math.random() - 0.5) * foamLimit * 2);
-    foam.rotation.y = Math.random() * Math.PI;
-    foam.userData.drift = Math.random() * 100;
-    scene.add(foam);
-    seaDriftObjects.push(foam);
-  }
-  addWorldWaterfall();
-}
-
-function addWorldWaterfall() {
-  const foamMat = new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.72, depthWrite: false });
-  const mistMat = new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
-  const makeEdge = (x, z, width, rot, sideX, sideZ) => {
-    const foam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, 6.6), foamMat.clone());
-    foam.position.set(x - sideX * 1.8, 0.09, z - sideZ * 1.8);
-    foam.rotation.y = rot;
-    foam.userData.waterfallFoam = true;
-    scene.add(foam);
-    waterfallFoamObjects.push(foam);
-    for (let i = 0; i < 18; i++) {
-      const mist = new THREE.Mesh(new THREE.PlaneGeometry(16 + Math.random() * 30, 12 + Math.random() * 20), mistMat.clone());
-      const along = (Math.random() - 0.5) * width;
-      mist.position.set(x + (sideZ ? along : sideX * 5.8), -8 - Math.random() * 26, z + (sideX ? along : sideZ * 5.8));
-      mist.rotation.y = rot;
-      mist.userData.waterfallMist = Math.random() * 100;
-      scene.add(mist);
-      waterfallMistObjects.push(mist);
-    }
-  };
-  makeEdge(0, WATERFALL_LIMIT, WATERFALL_LIMIT * 2, 0, 0, 1);
-  makeEdge(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI, 0, -1);
-  makeEdge(WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, Math.PI / 2, 1, 0);
-  makeEdge(-WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, -Math.PI / 2, -1, 0);
-}
-
-function makeCloud() {
-  const cloud = new THREE.Group();
-  const softMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 1,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true,
-  });
-  const shadeMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 1,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true,
-  });
-  const wispMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true,
-    side: THREE.DoubleSide,
-    fog: false,
-  });
-  for (let i = 0; i < 8; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), i < 3 ? shadeMat : softMat);
-    puff.scale.set(4.2 + Math.random() * 3.4, 0.65 + Math.random() * 0.42, 1.55 + Math.random() * 1.65);
-    puff.position.set(i * 2.35 + (Math.random() - 0.5) * 1.9, Math.random() * 0.75, (Math.random() - 0.5) * 3.7);
-    puff.rotation.set((Math.random() - 0.5) * 0.08, Math.random() * Math.PI, (Math.random() - 0.5) * 0.12);
-    cloud.add(puff);
-  }
-  for (let i = 0; i < 5; i++) {
-    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(8 + Math.random() * 8, 1.1 + Math.random() * 0.9), wispMat.clone());
-    sheet.material.opacity = 1;
-    sheet.position.set(2.5 + i * 3.2 + (Math.random() - 0.5) * 2.2, -0.45 + Math.random() * 0.6, (Math.random() - 0.5) * 4.8);
-    sheet.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.08);
-    cloud.add(sheet);
-  }
-  cloud.scale.set(1.3 + Math.random() * 1.25, 1, 1.05 + Math.random() * 0.55);
-  cloud.position.set((Math.random() - 0.5) * SEA_SIZE * 0.72, 42 + Math.random() * 18, (Math.random() - 0.5) * SEA_SIZE * 0.72);
-  cloud.userData.cloud = 0.7 + Math.random() * 0.9;
-  scene.add(cloud);
-  cloudObjects.push(cloud);
-}
-
-function makePalm() {
-  const tree = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 4.5, 6), mat(0x9b6b35));
-  trunk.position.y = 2.2;
-  trunk.rotation.z = 0.14;
-  trunk.castShadow = true;
-  tree.add(trunk);
-  for (let i = 0; i < 5; i++) {
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.75, 4.2, 4), mat(0x2f9e64));
-    leaf.position.set(Math.cos(i * 1.26) * 1.25, 4.65, Math.sin(i * 1.26) * 1.25);
-    leaf.rotation.z = Math.PI / 2;
-    leaf.rotation.y = i * 1.26;
-    leaf.castShadow = true;
-    tree.add(leaf);
-  }
-  return tree;
-}
-
-function makePine() {
-  const tree = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 3.6, 6), mat(0x7a5030));
-  trunk.position.y = 1.8;
-  trunk.castShadow = true;
-  tree.add(trunk);
-  for (let i = 0; i < 3; i++) {
-    const foliage = new THREE.Mesh(new THREE.ConeGeometry(1.45 - i * 0.22, 2.35, 7), mat(i % 2 ? 0x2f6b48 : 0x24543c));
-    foliage.position.y = 3.0 + i * 0.85;
-    foliage.castShadow = true;
-    tree.add(foliage);
-  }
-  return tree;
-}
-
-function makeBroadleafTree() {
-  const tree = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.46, 3.2, 6), mat(0x8b5a32));
-  trunk.position.y = 1.6;
-  trunk.castShadow = true;
-  tree.add(trunk);
-  const crownMat = mat(Math.random() < 0.5 ? 0x3c8b4f : 0x4f9b58);
-  for (let i = 0; i < 4; i++) {
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(1.05 + Math.random() * 0.25, 9, 7), crownMat);
-    crown.position.set((Math.random() - 0.5) * 1.25, 3.35 + Math.random() * 0.55, (Math.random() - 0.5) * 1.25);
-    crown.scale.y = 0.85;
-    crown.castShadow = true;
-    tree.add(crown);
-  }
-  return tree;
-}
-
-function makeIslandTree(theme) {
-  if (["norse", "rocky", "naval", "fort"].includes(theme)) return Math.random() < 0.68 ? makePine() : makeBroadleafTree();
-  if (["iberian", "trade", "starter", "schooner"].includes(theme)) return Math.random() < 0.55 ? makeBroadleafTree() : makePalm();
-  if (["atoll", "lagoon", "dhow", "market"].includes(theme)) return Math.random() < 0.78 ? makePalm() : makeBroadleafTree();
-  return Math.random() < 0.45 ? makePalm() : makeBroadleafTree();
-}
-
-function makeIsland(data) {
-  const group = new THREE.Group();
-  group.position.set(data.x, 0, data.z);
-  const radius = (data.radius || 20) * ISLAND_RADIUS_SCALE;
-  const accent = data.accent || 0xd64f45;
-  if (data.exploreOnly) {
-    const obstacles = [];
-    const collisionBoxes = [];
-    const terrainFeatures = [];
-    const walkPlatforms = [];
-    const smallLandY = data.emptyIsland ? 1.26 : 1.58;
-    const lobeHitScale = data.emptyIsland ? 0.84 : 0.92;
-    const lobeSpecs = data.lobes || [
-      { x: -radius * 0.18, z: -radius * 0.08, rx: radius * 0.58, rz: radius * 0.42, rot: 0.25 },
-      { x: radius * 0.22, z: radius * 0.1, rx: radius * 0.42, rz: radius * 0.56, rot: -0.42 },
-      { x: -radius * 0.02, z: radius * 0.3, rx: radius * 0.34, rz: radius * 0.26, rot: 0.72 },
-    ];
-    const surfaceLobes = lobeSpecs.map((lobe) => ({
-      ...lobe,
-      rx: lobe.rx * lobeHitScale,
-      rz: lobe.rz * lobeHitScale,
-    }));
-    lobeSpecs.forEach((lobe, index) => {
-      const sandHeight = data.emptyIsland ? 0.82 : 1.0;
-      const grassHeight = data.emptyIsland ? 0.42 : 0.52;
-      const sandY = (data.emptyIsland ? 0.45 : 0.58) + index * 0.03;
-      const grassY = sandY + sandHeight * 0.5 + grassHeight * 0.5 - 0.02;
-      const shallow = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.07, 12), mats.shallows);
-      shallow.scale.set(lobe.rx + 5, 1, lobe.rz + 5);
-      shallow.position.set(lobe.x, 0.08, lobe.z);
-      shallow.rotation.y = lobe.rot;
-      shallow.receiveShadow = true;
-      group.add(shallow);
-      const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, sandHeight, 10), mats.sand);
-      sand.scale.set(lobe.rx, 1, lobe.rz);
-      sand.position.set(lobe.x, sandY, lobe.z);
-      sand.rotation.y = lobe.rot;
-      sand.castShadow = true;
-      sand.receiveShadow = true;
-      group.add(sand);
-      const grass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, grassHeight, 9), mat(index % 2 ? data.color : new THREE.Color(data.color).multiplyScalar(0.88).getHex()));
-      grass.scale.set(lobe.rx * 0.72, 1, lobe.rz * 0.72);
-      grass.position.set(lobe.x, grassY, lobe.z);
-      grass.rotation.y = lobe.rot + 0.18;
-      grass.castShadow = true;
-      grass.receiveShadow = true;
-      group.add(grass);
-    });
-    if (data.emptyIsland) {
-      surfaceLobes.forEach((lobe) => {
-        collisionBoxes.push({
-          x: data.x + lobe.x,
-          z: data.z + lobe.z,
-          w: lobe.rx * 1.78,
-          d: lobe.rz * 1.78,
-          rot: lobe.rot,
-          pad: 0,
-          maxY: 0.24,
-        });
-      });
-      const label = makeLabel(islandName(data));
-      label.visible = shouldShowIslandLabel(data);
-      label.position.set(data.x, 8.2, data.z);
-      scene.add(label);
-      labels.push(label);
-      scene.add(group);
-      return {
-        ...data,
-        group,
-        radius,
-        landY: smallLandY,
-        obstacles,
-        collisionBoxes,
-        terrainFeatures,
-        walkPlatforms,
-        surfaceLobes,
-        label,
-        dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.86),
-        shop: new THREE.Vector3(data.x, 0, data.z),
-      };
-    }
-    const hillX = -radius * 0.12;
-    const hillZ = -radius * 0.08;
-    const hillR = radius * 0.22;
-    const hill = new THREE.Mesh(new THREE.ConeGeometry(hillR, radius * 0.28, 7), mats.rock);
-    hill.position.set(hillX, smallLandY + radius * 0.1, hillZ);
-    hill.scale.z = 0.72;
-    hill.rotation.y = 0.4;
-    hill.castShadow = true;
-    group.add(hill);
-    terrainFeatures.push({ x: data.x + hillX, z: data.z + hillZ, r: hillR, h: radius * 0.2 });
-    for (let i = 0; i < 10; i++) {
-      const angle = i * 1.65 + Math.random() * 0.25;
-      const tree = makeIslandTree(i % 2 ? "rocky" : "atoll");
-      tree.position.set(Math.cos(angle) * radius * (0.24 + Math.random() * 0.18), smallLandY + 0.12, Math.sin(angle) * radius * (0.2 + Math.random() * 0.16));
-      if (Math.hypot(tree.position.x - hillX, tree.position.z - hillZ) < hillR + 3.2) continue;
-      tree.scale.setScalar(0.55 + Math.random() * 0.32);
-      group.add(tree);
-      obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.1 * tree.scale.x });
-    }
-    for (let i = 0; i < 7; i++) {
-      const rockSize = 0.55 + Math.random() * 0.75;
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockSize, 0), mats.rock);
-      rock.position.set((Math.random() - 0.5) * radius * 1.2, 2.05, (Math.random() - 0.5) * radius * 1.05);
-      rock.rotation.set(Math.random(), Math.random(), Math.random());
-      rock.scale.set(0.8 + Math.random() * 0.8, 0.45 + Math.random() * 0.65, 0.8 + Math.random() * 0.8);
-      rock.position.y = smallLandY + 0.25 + rockSize * rock.scale.y * 0.42;
-      rock.castShadow = true;
-      group.add(rock);
-      obstacles.push({ x: data.x + rock.position.x, z: data.z + rock.position.z, r: 0.9 * Math.max(rock.scale.x, rock.scale.z) });
-    }
-    const marker = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.6, 6), mats.wood);
-    marker.position.set(radius * 0.18, 3.5, -radius * 0.22);
-    marker.rotation.z = -0.12;
-    group.add(marker);
-    const pennant = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.68, 1.2), mat(accent));
-    pennant.position.set(radius * 0.2, 4.65, -radius * 0.22);
-    group.add(pennant);
-    const label = makeLabel(islandName(data.name));
-    label.position.set(data.x, 9, data.z);
-    scene.add(label);
-    labels.push(label);
-    scene.add(group);
-    return {
-      ...data,
-      group,
-      radius,
-      landY: smallLandY,
-      obstacles,
-      collisionBoxes,
-      terrainFeatures,
-      walkPlatforms,
-      surfaceLobes,
-      label,
-      dock: new THREE.Vector3(data.x, 0, data.z + radius * 0.82),
-      shop: new THREE.Vector3(data.x, 0, data.z),
-    };
-  }
-  const shallows = new THREE.Mesh(new THREE.CylinderGeometry(radius + 7, radius + 10, 0.08, 24), mats.shallows);
-  shallows.position.y = 0.08;
-  shallows.receiveShadow = true;
-  group.add(shallows);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.6, radius * 0.86, 2.2, 18), mats.sand);
-  base.position.y = 0.7;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  group.add(base);
-  const grass = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.44, radius * 0.62, 1.25, 16), mat(data.color));
-  grass.position.y = 2.25;
-  grass.castShadow = true;
-  grass.receiveShadow = true;
-  group.add(grass);
-  const dockThemeSeed = (data.theme || "starter").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const dockLength = 16 + (dockThemeSeed % 4) * 1.35 + (["naval", "trade"].includes(data.theme) ? 2.4 : 0);
-  const dockWidth = 4.8 + (dockThemeSeed % 3) * 0.38 + (data.theme === "naval" ? 0.8 : 0);
-  const dockCenterZ = radius - 4;
-  const mountainLocal = {
-    x: -radius * 0.18,
-    z: -radius * 0.2,
-    r: radius * (data.theme === "rocky" ? 0.37 : 0.3),
-  };
-  const noTreeZones = [
-    { x: -radius * 0.24, z: -radius * 0.05, r: 7.5 },
-    { x: mountainLocal.x, z: mountainLocal.z, r: mountainLocal.r + 5.5 },
-  ];
-  const clearOfNoTreeZones = (x, z, buffer = 0) => noTreeZones.every((zone) => Math.hypot(x - zone.x, z - zone.z) > zone.r + buffer);
-  const dock = new THREE.Mesh(new THREE.BoxGeometry(dockWidth, 0.45, dockLength), mats.wood);
-  dock.position.set(0, 1.45, dockCenterZ);
-  dock.castShadow = true;
-  dock.receiveShadow = true;
-  group.add(dock);
-  const obstacles = [
-    { x: data.x - radius * 0.24, z: data.z - radius * 0.05, r: 3.8 },
-  ];
-  const collisionBoxes = [
-    { x: data.x - radius * 0.24, z: data.z - radius * 0.05, w: 5.8, d: 5.0 },
-  ];
-  const terrainFeatures = [];
-  const walkPlatforms = [];
-  const addCollisionBox = (x, z, w, d, pad = 0.45, rot = 0, options = {}) => {
-    collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot, ...options });
-  };
-  const addWalkPlatform = (x, z, w, d, y, rot = 0, options = {}) => {
-    walkPlatforms.push({ x: data.x + x, z: data.z + z, w, d, y, rot, ...options });
-  };
-  const localIslandSurfaceY = (x, z) => {
-    const distance = Math.hypot(x, z);
-    const edgeSlope = clamp((distance - radius * 0.62) / (radius * 0.34), 0, 1);
-    return 2.9 - edgeSlope * 0.82;
-  };
-  const clearBuildSpot = (x, z, size) => {
-    return Math.hypot(x, z) < radius * 0.56 && clearOfNoTreeZones(x, z, size * 1.45);
-  };
-  const clearHouseProfile = (profile) => {
-    const size = Math.max(profile.w, profile.d);
-    if (clearBuildSpot(profile.x, profile.z, size)) return profile;
-    const candidates = [
-      { x: radius * 0.34, z: radius * 0.18 },
-      { x: radius * 0.22, z: radius * 0.34 },
-      { x: -radius * 0.34, z: radius * 0.28 },
-      { x: radius * 0.42, z: -radius * 0.02 },
-    ];
-    const spot = candidates.find((candidate) => clearBuildSpot(candidate.x, candidate.z, size));
-    return spot ? { ...profile, ...spot } : null;
-  };
-  const banner = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.2, 2.2), mat(accent));
-  banner.position.set(2.7, 3.45, radius - 6.2);
-  banner.castShadow = true;
-  group.add(banner);
-  [dockCenterZ - 6.2, dockCenterZ - 1.4, dockCenterZ + 3.4].forEach((z) => {
-    for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 2.35, 7), mats.wood);
-      post.position.set(side * (dockWidth * 0.36), 0.58, z);
-      post.castShadow = true;
-      group.add(post);
-    }
-  });
-  for (let i = 0; i < 5; i++) {
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(dockWidth + 0.35, 0.08, 0.18), mats.hullDark);
-    plank.position.set(0, 1.72, dockCenterZ - dockLength * 0.42 + i * dockLength * 0.21);
-    plank.castShadow = true;
-    group.add(plank);
-  }
-  const shop = new THREE.Group();
-  const hut = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3, 4.2), mat(0xd9a45e));
-  hut.position.y = 4.1;
-  hut.castShadow = true;
-  shop.add(hut);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.8, 2.4, 4), mat(0xbb5844));
-  roof.position.y = 6.8;
-  roof.rotation.y = Math.PI / 4;
-  roof.castShadow = true;
-  shop.add(roof);
-  shop.position.set(-radius * 0.24, 0, -radius * 0.05);
-  group.add(shop);
-  const addBlock = (x, z, w, h, d, color, y = 3.2, blocks = true) => {
-    const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
-    block.position.set(x, y + h * 0.5, z);
-    block.castShadow = true;
-    block.receiveShadow = true;
-    group.add(block);
-    if (blocks) collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d });
-    return block;
-  };
-  const addCone = (x, z, r, h, color, y = 5.4, sides = 4) => {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, sides), mat(color));
-    cone.position.set(x, y, z);
-    cone.rotation.y = Math.PI / sides;
-    cone.castShadow = true;
-    group.add(cone);
-    return cone;
-  };
-  const addTent = (x, z, color) => {
-    const cloth = new THREE.Mesh(new THREE.ConeGeometry(2.1, 1.2, 4), mat(color));
-    cloth.position.set(x, 3.55, z);
-    cloth.rotation.y = Math.PI / 4;
-    cloth.castShadow = true;
-    group.add(cloth);
-    obstacles.push({ x: data.x + x, z: data.z + z, r: 1.6 });
-  };
-  const addInteriorHouse = (x, z, w, d, color, roofColor = accent, options = {}) => {
-    const style = options.style || "standard";
-    const tallStyles = new Set(["twoStory", "warehouse", "towerHouse", "villa", "pagodaHouse"]);
-    const floors = clamp(options.floors || (tallStyles.has(style) ? 2 : 1), 1, 2);
-    const wallH = floors > 1 ? (style === "towerHouse" ? 3.65 : 3.25) : (style === "warehouse" ? 2.45 : 1.9);
-    const wallY = 3.12 + wallH * 0.5;
-    const roofH = style === "towerHouse" ? 1.45 : style === "pagodaHouse" ? 0.95 : style === "longhouse" || style === "warehouse" ? 1.05 : 1.25;
-    const roofY = 3.12 + wallH + roofH * 0.5 - 0.06;
-    const windowRows = floors > 1 ? [3.95, 5.18] : [4.3];
-    noTreeZones.push({ x, z, r: Math.max(w, d) * 0.78 + 2.4 });
-    const house = new THREE.Group();
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffbd62,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
-      side: THREE.DoubleSide,
-    });
-    const glowHaloMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffb04a,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
-      side: THREE.DoubleSide,
-    });
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), mats.plank);
-    floor.position.y = 3.08;
-    floor.receiveShadow = true;
-    house.add(floor);
-    const wallMat = mat(color);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, 0.22), wallMat);
-    back.position.set(0, wallY, -d * 0.5);
-    house.add(back);
-    for (const side of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.22, wallH, d), wallMat);
-      wall.position.set(side * w * 0.5, wallY, 0);
-      house.add(wall);
-      windowRows.forEach((rowY, rowIndex) => {
-        const windowZ = rowIndex % 2 === 0 ? -d * 0.16 : d * 0.16;
-        const window = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.08), mats.gold);
-        window.position.set(side * (w * 0.5 + 0.02), rowY, windowZ);
-        house.add(window);
-        const windowGlow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.46, 0.035), glowMaterial);
-        windowGlow.position.set(side * (w * 0.5 + 0.045), rowY, windowZ);
-        house.add(windowGlow);
-      });
-    }
-    const leftFront = new THREE.Mesh(new THREE.BoxGeometry(w * 0.34, wallH, 0.22), wallMat);
-    leftFront.position.set(-w * 0.33, wallY, d * 0.5);
-    const rightFront = leftFront.clone();
-    rightFront.position.x = w * 0.33;
-    house.add(leftFront, rightFront);
-    if (floors > 1) {
-      const upperWalkY = 4.72;
-      const upperFloorY = upperWalkY - 0.06;
-      const floorW = w * 0.88;
-      const floorD = d * 0.82;
-      const hole = { x: -w * 0.28, z: -d * 0.03, w: Math.min(1.35, w * 0.34), d: d * 0.48 };
-      const addUpperPanel = (cx, cz, pw, pd) => {
-        if (pw <= 0.18 || pd <= 0.18) return;
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(pw, 0.12, pd), mats.plank);
-        panel.position.set(cx, upperFloorY, cz);
-        panel.receiveShadow = true;
-        house.add(panel);
-        addWalkPlatform(x + cx, z + cz, Math.max(0.35, pw - 0.08), Math.max(0.35, pd - 0.08), upperWalkY, 0, { maxRise: 0.9 });
-      };
-      const floorMinX = -floorW * 0.5;
-      const floorMaxX = floorW * 0.5;
-      const floorMinZ = -floorD * 0.5;
-      const floorMaxZ = floorD * 0.5;
-      const holeMinX = hole.x - hole.w * 0.5;
-      const holeMaxX = hole.x + hole.w * 0.5;
-      const holeMinZ = hole.z - hole.d * 0.5;
-      const holeMaxZ = hole.z + hole.d * 0.5;
-      addUpperPanel((floorMinX + holeMinX) * 0.5, 0, holeMinX - floorMinX, floorD);
-      addUpperPanel((holeMaxX + floorMaxX) * 0.5, 0, floorMaxX - holeMaxX, floorD);
-      addUpperPanel(hole.x, (floorMinZ + holeMinZ) * 0.5, hole.w, holeMinZ - floorMinZ);
-      addUpperPanel(hole.x, (holeMaxZ + floorMaxZ) * 0.5, hole.w, floorMaxZ - holeMaxZ);
-      for (let i = 0; i < 10; i++) {
-        const t = (i + 0.5) / 10;
-        const stepX = hole.x;
-        const stepZ = d * 0.28 + (-d * 0.34 - d * 0.28) * t;
-        const stepY = 3.24 + (upperWalkY - 3.24) * t;
-        const step = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.16, 0.46), mats.wood);
-        step.position.set(stepX, stepY - 0.08, stepZ);
-        step.castShadow = true;
-        step.receiveShadow = true;
-        house.add(step);
-        addWalkPlatform(x + stepX, z + stepZ, 1.22, 0.54, stepY, 0, { maxRise: 0.7 });
-      }
-      const balcony = new THREE.Mesh(new THREE.BoxGeometry(w * 0.64, 0.13, 0.72), mats.plank);
-      balcony.position.set(0, 4.78, d * 0.65);
-      balcony.castShadow = true;
-      house.add(balcony);
-      addWalkPlatform(x, z + d * 0.65, w * 0.64, 0.72, 4.86, 0, { maxRise: 0.75 });
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 0.66, 0.12, 0.12), mats.dark);
-      rail.position.set(0, 5.05, d * 0.98);
-      house.add(rail);
-      for (const side of [-1, 1]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.1), mats.dark);
-        post.position.set(side * w * 0.32, 4.98, d * 0.98);
-        house.add(post);
-      }
-    }
-    if (style === "flat") {
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.44, 0.22, d + 0.44), mat(roofColor));
-      roof.position.y = roofY;
-      roof.castShadow = true;
-      house.add(roof);
     } else {
-      const sides = style === "towerHouse" ? 6 : 4;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.58, roofH, sides), mat(roofColor));
-      roof.position.y = roofY;
-      roof.rotation.y = Math.PI / sides;
-      if (style === "longhouse" || style === "warehouse") roof.scale.set(1.28, 1, 0.72);
-      roof.castShadow = true;
-      house.add(roof);
-      if (style === "pagodaHouse") {
-        for (let i = 0; i < 2; i++) {
-          const eave = new THREE.Mesh(new THREE.BoxGeometry(w + 1.2 - i * 0.38, 0.12, d + 1.2 - i * 0.38), mat(roofColor));
-          eave.position.y = 4.78 + i * 1.16;
-          eave.castShadow = true;
-          house.add(eave);
+      delete hotbar[index].qty;
+    }
+    return true;
+  }
+
+  function moveSlot(source, target, shouldRender = true) {
+    if (!source || !target) return false;
+    if (source.area === target.area && source.index === target.index) return false;
+    if (target.area === "hotbar" && !HOTBAR_SWAP_SLOTS.includes(target.index)) {
+      toast("That hotbar slot is locked.");
+      return false;
+    }
+    if (source.area === "hotbar" && !HOTBAR_SWAP_SLOTS.includes(source.index)) return false;
+    const sourceItem = getSlot(source);
+    const targetItem = getSlot(target);
+    if (!sourceItem) return false;
+    setSlot(target, sourceItem);
+    setSlot(source, targetItem);
+    syncManagedCountsFromSlots();
+    if ((source.area === "chest" || target.area === "chest") && openChest?.remoteOwnerId) syncRemoteStructure(openChest);
+    if (shouldRender) {
+      renderHotbar();
+      renderInventory();
+    }
+    return true;
+  }
+
+  function findSlotRefWithItem(area, id) {
+    const slots = area === "inventory" ? inventorySlots() : area === "chest" ? chestSlots(openChest) : hotbar;
+    if (area === "hotbar") {
+      const idx = HOTBAR_SWAP_SLOTS.find((slotIndex) => hotbar[slotIndex].id === id);
+      return idx === undefined ? null : { area, index: idx };
+    }
+    const idx = slots.findIndex((item) => item?.id === id);
+    return idx >= 0 ? { area, index: idx } : null;
+  }
+
+  function addPlayerItem(id, qty, preferred = "inventory") {
+    if (!isInventoryManaged(id) || qty <= 0) return false;
+    if (isDurableItem(id)) {
+      let remaining = Math.floor(qty);
+      while (remaining > 0) {
+        if (preferred === "hotbar") {
+          const emptyHotbar = HOTBAR_SWAP_SLOTS.find((idx) => hotbar[idx].id === "empty");
+          if (emptyHotbar !== undefined) {
+            setHotbarItem(emptyHotbar, slot(id, 1));
+            remaining--;
+            continue;
+          }
         }
+        const inv = inventorySlots();
+        const empty = inv.findIndex((item) => !item);
+        if (empty < 0) return remaining < qty;
+        inv[empty] = slot(id, 1);
+        remaining--;
       }
-      if (style === "longhouse") {
-        const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, w + 0.82, 6), mats.dark);
-        ridge.rotation.z = Math.PI / 2;
-        ridge.position.y = roofY + roofH * 0.44;
-        house.add(ridge);
+      syncManagedCountsFromSlots();
+      return true;
+    }
+    const slots = preferred === "hotbar" ? HOTBAR_SWAP_SLOTS.map((idx) => hotbar[idx]) : inventorySlots();
+    const stack = slots.find((item) => item?.id === id);
+    if (stack) {
+      stack.qty += qty;
+      syncManagedCountsFromSlots();
+      return true;
+    }
+    if (preferred === "hotbar") {
+      const emptyHotbar = HOTBAR_SWAP_SLOTS.find((idx) => hotbar[idx].id === "empty");
+      if (emptyHotbar !== undefined) {
+        setHotbarItem(emptyHotbar, slot(id, qty));
+        syncManagedCountsFromSlots();
+        return true;
       }
     }
-    if (style === "warehouse") {
-      for (const side of [-1, 1]) {
-        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.55), mats.crate);
-        crate.position.set(side * w * 0.28, 3.36, d * 0.82);
-        crate.castShadow = true;
-        house.add(crate);
-      }
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 0.32, 0.08), mat(0xd8c28f));
-      sign.position.set(0, 4.42, d * 0.56);
-      house.add(sign);
-    } else if (style === "towerHouse") {
-      const lookout = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 0.78, d * 0.42), mat(new THREE.Color(color).multiplyScalar(0.88).getHex()));
-      lookout.position.set(0, roofY - 0.42, 0);
-      lookout.castShadow = true;
-      house.add(lookout);
-    } else if (style === "stilt") {
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.86, 6), mats.wood);
-          post.position.set(sx * w * 0.36, 2.66, sz * d * 0.34);
-          post.castShadow = true;
-          house.add(post);
-        }
-      }
-    } else if (style === "villa") {
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(w * 0.18, 0.055, 7, 16, Math.PI), mat(roofColor));
-      arch.rotation.set(0, Math.PI / 2, 0);
-      arch.position.set(0, 4.05, d * 0.62);
-      house.add(arch);
+    const inv = inventorySlots();
+    const empty = inv.findIndex((item) => !item);
+    if (empty < 0) return false;
+    inv[empty] = slot(id, qty);
+    syncManagedCountsFromSlots();
+    return true;
+  }
+
+  function removePlayerItem(id, qty, preferredRef = null) {
+    if (!isInventoryManaged(id) || qty <= 0) return false;
+    const refs = [];
+    if (preferredRef && getSlot(preferredRef)?.id === id) refs.push(preferredRef);
+    for (const idx of HOTBAR_SWAP_SLOTS) refs.push({ area: "hotbar", index: idx });
+    for (let i = 0; i < PLAYER_INV_CAP; i++) refs.push({ area: "inventory", index: i });
+    let remaining = qty;
+    for (const ref of refs) {
+      const item = getSlot(ref);
+      if (!item || item.id !== id) continue;
+      const take = Math.min(remaining, item.qty);
+      item.qty -= take;
+      remaining -= take;
+      setSlot(ref, item.qty > 0 ? item : null);
+      if (remaining <= 0) break;
     }
-    const table = new THREE.Mesh(new THREE.BoxGeometry(w * 0.32, 0.22, d * 0.24), mats.wood);
-    table.position.set(0.1, 3.35, -d * 0.08);
-    house.add(table);
-    const interiorLamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 9, 7), glowMaterial);
-    interiorLamp.position.set(0, Math.min(roofY - roofH * 0.36, 5.75), -d * 0.08);
-    house.add(interiorLamp);
-    const doorwayLamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 9, 7), glowMaterial);
-    doorwayLamp.position.set(0, floors > 1 ? 4.78 : 4.42, d * 0.56);
-    house.add(doorwayLamp);
-    const interiorGlow = new THREE.Mesh(new THREE.CircleGeometry(1, 32), glowHaloMaterial);
-    interiorGlow.rotation.x = -Math.PI / 2;
-    interiorGlow.position.set(0, 3.18, -d * 0.06);
-    interiorGlow.scale.set(w * 0.34, d * 0.26, 1);
-    house.add(interiorGlow);
-    const porchGlow = new THREE.Mesh(new THREE.CircleGeometry(1, 32), glowHaloMaterial);
-    porchGlow.rotation.x = -Math.PI / 2;
-    porchGlow.position.set(0, 3.16, d * 0.73);
-    porchGlow.scale.set(w * 0.28, d * 0.22, 1);
-    house.add(porchGlow);
-    house.position.set(x, 0, z);
-    house.traverse((obj) => {
-      if (obj.isMesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
+    syncManagedCountsFromSlots();
+    renderHotbar();
+    renderInventory();
+    return remaining <= 0;
+  }
+
+  function syncManagedCountsFromSlots() {
+    for (const id of FOOD_ITEMS) state.resources[id] = managedItemCount(id);
+    state.resources.bandage = managedItemCount("bandage");
+    pendingBuild = {};
+    for (const id of Object.keys(recipes)) {
+      if (isBuildRecipe(id)) {
+        const qty = managedItemCount(id);
+        if (qty > 0) pendingBuild[id] = qty;
       }
-    });
-    group.add(house);
-    shipNightLights.push({
-      group: house,
-      material: glowMaterial,
-      haloMaterial: glowHaloMaterial,
-      haloOpacity: 0.2,
-      lights: [],
-      baseIntensity: 0,
-    });
-    const wallPad = 0.08;
-    addCollisionBox(x, z - d * 0.5, w, 0.28, wallPad);
-    addCollisionBox(x - w * 0.5, z, 0.28, d, wallPad);
-    addCollisionBox(x + w * 0.5, z, 0.28, d, wallPad);
-    addCollisionBox(x - w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
-    addCollisionBox(x + w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
-    addWalkPlatform(x, z, Math.max(0.8, w - 0.36), Math.max(0.8, d - 0.36), 3.16, 0, { maxRise: 0.7 });
-    return house;
-  };
-  const addThemeHouse = () => {
-    const profiles = {
-      norse: { x: radius * 0.15, z: radius * 0.02, w: 7.0, d: 3.35, color: 0x8b5a32, roof: 0x5a3b25, chimney: false, style: "longhouse" },
-      pagoda: { x: radius * 0.18, z: radius * 0.02, w: 4.25, d: 4.05, color: 0xd9a45e, roof: 0xd99928, chimney: false, style: "pagodaHouse", floors: 2 },
-      iberian: { x: radius * 0.16, z: radius * 0.04, w: 4.8, d: 3.65, color: 0xf4e5c9, roof: 0xb84f44, chimney: true, style: "villa", floors: 2 },
-      fort: { x: radius * 0.16, z: radius * 0.02, w: 4.75, d: 3.75, color: 0x9b9a87, roof: 0x4f5963, chimney: false, style: "towerHouse", floors: 2 },
-      naval: { x: radius * 0.17, z: radius * 0.02, w: 5.45, d: 3.55, color: 0xd8d2bd, roof: 0x4051a8, chimney: true, style: "twoStory", floors: 2 },
-      trade: { x: radius * 0.18, z: radius * 0.02, w: 6.35, d: 3.65, color: 0xb77b42, roof: 0x7a5030, chimney: true, style: "warehouse", floors: 2 },
-      lagoon: { x: radius * 0.18, z: radius * 0.04, w: 4.4, d: 3.25, color: 0xe2d0a5, roof: 0xd7b44a, chimney: false, style: "stilt" },
-      atoll: { x: radius * 0.18, z: radius * 0.04, w: 3.8, d: 3.1, color: 0xefc27c, roof: 0xef6f4f, chimney: false, style: "cottage" },
-      rocky: { x: radius * 0.17, z: radius * 0.02, w: 4.4, d: 3.45, color: 0x9b8b78, roof: 0x5b6268, chimney: true, style: "twoStory", floors: 2 },
+    }
+  }
+
+  function renderRecipes() {
+    renderRecipeBook();
+    renderInventory();
+  }
+
+  function recipeText(name) {
+    const recipe = recipes[name];
+    if (!recipe) return "no recipe";
+    return Object.entries(recipe).map(([res, qty]) => `${qty} ${label(res).toLowerCase()}`).join(", ");
+  }
+
+  function renderRecipeBook() {
+    if (!recipeGridEl) return;
+    recipeGridEl.innerHTML = "";
+    for (const name of Object.keys(recipes).filter(recipeVisible)) {
+      const card = document.createElement("button");
+      card.className = "recipe-card";
+      card.type = "button";
+      card.innerHTML = `<b>${label(name)}</b><span>${recipeText(name)}${pendingBuild[name] ? ` · ready ${pendingBuild[name]}` : ""}</span>`;
+      card.addEventListener("click", () => chooseRecipe(name));
+      recipeGridEl.append(card);
+    }
+  }
+
+  function craftRecipe(name) {
+    if (!gameStarted) return toast("Start survival first.");
+    if (!recipes[name]) return;
+    if (!buildMode) return toast("Enter build mode with B to craft.");
+    if (isBuildRecipe(name) && (pendingBuild[name] || 0) > 0) {
+      selectBuildItem(name);
+      recipeBookEl.hidden = true;
+      return toast(`${label(name)} ready to place.`);
+    }
+    if (!canAfford(name)) return toast(`Need ${recipeText(name)}.`);
+    if (!craft(name, name !== "bandage")) return;
+    recipeBookEl.hidden = true;
+    if (isBuildRecipe(name)) {
+      selectBuildItem(name);
+      return toast(`${label(name)} crafted. Click to place it.`);
+    }
+    toast(`${label(name)} crafted into inventory.`);
+  }
+
+  function selectBuildItem(name) {
+    buildChoice = name;
+    buildMode = true;
+    heldItem = name;
+    renderHotbar();
+    renderRecipes();
+  }
+
+  function chooseRecipe(name) {
+    recipeBookEl.hidden = true;
+    selectBuildItem(name);
+    const ready = isBuildRecipe(name) ? pendingBuild[name] || 0 : managedItemCount(name);
+    if (ready > 0 && isBuildRecipe(name)) return toast(`Holding ${label(name)} to place.`);
+    return toast(`Selected ${label(name)}. Click in build mode to craft${isBuildRecipe(name) ? " and place" : ""}.`);
+  }
+
+  function isToolRecipe(name) {
+    return Boolean(recipes[name] && toolSpec(name));
+  }
+
+  function isHotbarCraftRecipe(name) {
+    return isToolRecipe(name) || name === "flask";
+  }
+
+  function isCraftOnlyRecipe(name) {
+    return name === "bandage" || isHotbarCraftRecipe(name);
+  }
+
+  function isBuildRecipe(name) {
+    return Boolean(recipes[name]) && !isCraftOnlyRecipe(name);
+  }
+
+  function craftCycleChoices() {
+    return Object.keys(recipes).filter((name) => recipeVisible(name) && (isBuildRecipe(name) || isCraftOnlyRecipe(name)));
+  }
+
+  function canAfford(name) {
+    const recipe = recipes[name];
+    if (devMode && recipe) return true;
+    return Boolean(recipe) && Object.entries(recipe).every(([res, qty]) => (state.resources[res] || 0) >= qty);
+  }
+
+  function toggleRecipeBook() {
+    if (!buildMode) {
+      toast("Enter build mode with B to use the recipe book.");
+      return;
+    }
+    recipeBookEl.hidden = !recipeBookEl.hidden;
+    renderRecipeBook();
+  }
+
+  function selectHeldTool(id) {
+    const idx = hotbar.findIndex((item) => item.id === id);
+    if (idx >= 0) {
+      selected = idx;
+      buildMode = false;
+      heldItem = id;
+      renderHotbar();
+    }
+  }
+
+  function playerNetState(id = serverPlayerId || localPeerId) {
+    return {
+      id,
+      name: playerName,
+      x: state.player.x,
+      y: state.player.y,
+      facing: state.player.facing,
+      level: state.player.level,
+      xp: state.player.totalXp || 0,
+      health: state.player.health,
+      stamina: state.player.stamina,
+      onIsland: Boolean(isOnIsland(state.player)),
+      onRaft: Boolean(isOnRaft(state.player)),
+      selectedItem: buildMode ? buildChoice : hotbar[selected]?.id || "empty",
+      world: serializeServerWorld(),
+      raftCommands: consumeRemoteRaftMoves(),
+      playerHits: consumePlayerHits(),
+      worldCommands: consumeWorldCommands(),
+      projectileCommands: consumeProjectileCommands()
     };
-    const profile = clearHouseProfile({ ...(profiles[data.theme] || { x: radius * 0.18, z: radius * 0.03, w: 4.0, d: 3.2, color: 0xd9a45e, roof: accent, chimney: false, style: "standard" }) });
-    if (!profile) return null;
-    const house = addInteriorHouse(profile.x, profile.z, profile.w, profile.d, profile.color, profile.roof, {
-      style: profile.style,
-      floors: profile.floors,
-    });
-    if (profile.chimney) {
-      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.2, 0.42), mat(0x5a3b25));
-      chimney.position.set(profile.x + profile.w * 0.28, 5.75, profile.z - profile.d * 0.25);
-      chimney.castShadow = true;
-      group.add(chimney);
-    }
-    if (data.theme === "pagoda" && profile.style !== "pagodaHouse") {
-      for (let i = 0; i < 2; i++) {
-        const eave = new THREE.Mesh(new THREE.BoxGeometry(profile.w + 1.2 - i * 0.5, 0.12, profile.d + 1.2 - i * 0.5), mat(profile.roof));
-        eave.position.set(profile.x, 5.05 + i * 0.46, profile.z);
-        eave.castShadow = true;
-        group.add(eave);
-      }
-    }
-    if (data.theme === "norse" && profile.style !== "longhouse") {
-      const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, profile.w + 0.7, 6), mats.dark);
-      ridge.rotation.z = Math.PI / 2;
-      ridge.position.set(profile.x, 5.75, profile.z);
-      group.add(ridge);
-    }
-    return house;
-  };
-  const addMountain = (x, z, r, h, color = 0x66706e) => {
-    const mountain = new THREE.Group();
-    const peakProfiles = [];
-    const makePeak = (px, pz, pr, ph, tint, yaw = 0, snow = false) => {
-      const peak = new THREE.Mesh(new THREE.ConeGeometry(pr, ph, 7, 1), mat(tint));
-      peak.position.set(px, 3 + ph * 0.5, pz);
-      peak.scale.z = 0.78 + Math.random() * 0.22;
-      peak.rotation.set(0.06, yaw, -0.04);
-      peak.castShadow = true;
-      peak.receiveShadow = true;
-      mountain.add(peak);
-      peakProfiles.push({ x: px, z: pz, r: pr, h: ph });
-      if (snow) {
-        const cap = new THREE.Mesh(new THREE.ConeGeometry(pr * 0.34, ph * 0.24, 6, 1), mat(0xd9e4df));
-        cap.position.set(px - pr * 0.06, 3 + ph * 0.88, pz - pr * 0.04);
-        cap.scale.z = peak.scale.z;
-        cap.rotation.copy(peak.rotation);
-        cap.castShadow = true;
-        mountain.add(cap);
-      }
-    };
-    const baseColor = color;
-    const shadowColor = new THREE.Color(color).multiplyScalar(0.78).getHex();
-    makePeak(0, 0, r * 1.18, h * 1.55, baseColor, Math.random() * Math.PI, true);
-    makePeak(-r * 0.34, r * 0.14, r * 0.74, h * 1.06, shadowColor, Math.random() * Math.PI, false);
-    makePeak(r * 0.35, -r * 0.1, r * 0.68, h * 0.96, baseColor, Math.random() * Math.PI, false);
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.22;
-      const ridge = new THREE.Mesh(new THREE.ConeGeometry(r * 0.085, h * 0.86, 3), mat(i % 2 ? shadowColor : baseColor));
-      ridge.position.set(Math.cos(angle) * r * 0.34, 3 + h * 0.48, Math.sin(angle) * r * 0.28);
-      ridge.rotation.set(0.82, -angle, 0.2);
-      ridge.castShadow = true;
-      mountain.add(ridge);
-    }
-    const foothill = new THREE.Mesh(new THREE.ConeGeometry(r * 1.45, h * 0.38, 9, 1), mat(shadowColor));
-    foothill.position.y = 3 + h * 0.18;
-    foothill.scale.z = 0.68;
-    foothill.rotation.y = Math.random() * Math.PI;
-    foothill.receiveShadow = true;
-    mountain.add(foothill);
-    mountain.position.set(x, 0, z);
-    group.add(mountain);
-    terrainFeatures.push({
-      x: data.x + x,
-      z: data.z + z,
-      r: r * 1.32,
-      h: h * 1.05,
-      peaks: peakProfiles.map((peak) => ({
-        x: data.x + x + peak.x,
-        z: data.z + z + peak.z,
-        r: peak.r,
-        h: peak.h,
+  }
+
+  function serializeServerWorld() {
+    return {
+      raftOffset: { x: state.raftOffset.x, y: state.raftOffset.y },
+      raft: state.raft.map((rt) => ({ gx: rt.gx, gy: rt.gy, hp: rt.hp, maxHp: rt.maxHp })),
+      structures: state.structures.map((st) => ({
+        id: serverObjectId("st", st),
+        type: st.type,
+        x: st.x,
+        y: st.y,
+        angle: st.angle || 0,
+        base: st.base || "raft",
+        hp: st.hp,
+        maxHp: st.maxHp,
+        hitbox: footprint(st.type),
+        storage: st.type === "chest" ? chestSlots(st) : null
       })),
-    });
-  };
-  const addShipwreck = (angle, type = "galleon") => {
-    const wreck = new THREE.Group();
-    const wreckLength = type === "frigate" ? 10.4 : 9.2;
-    const wreckWidth = type === "frigate" ? 3.6 : 3.2;
-    const shoreDistance = radius * 0.72;
-    const x = Math.sin(angle) * shoreDistance;
-    const z = Math.cos(angle) * shoreDistance;
-    const yaw = angle + Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
-    const wreckWood = mat(0x5a3522);
-    const wetWood = mat(0x39261c);
-    const paleWood = mat(0x8c623f);
-    const makePiece = (w, h, d, px, py, pz, material = wreckWood, rot = [0, 0, 0]) => {
-      const piece = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-      piece.position.set(px, py, pz);
-      piece.rotation.set(rot[0], rot[1], rot[2]);
-      piece.castShadow = true;
-      piece.receiveShadow = true;
-      wreck.add(piece);
-      return piece;
+      animals: state.animals.map((a) => ({
+        id: serverObjectId("animal", a),
+        type: a.type,
+        x: a.x,
+        y: a.y,
+        hp: a.hp,
+        maxHp: a.maxHp,
+        submerged: Boolean(a.submerged)
+      })),
+      sharks: state.sharks.map((s) => ({
+        id: serverObjectId("shark", s),
+        x: s.x,
+        y: s.y,
+        hp: s.hp,
+        aggressive: Boolean(s.aggressive),
+        serverControlled: Boolean(s.serverControlled)
+      })),
+      debris: state.debris.map((d) => ({
+        id: serverObjectId("debris", d),
+        type: d.type,
+        x: d.x,
+        y: d.y,
+        vx: d.vx,
+        vy: d.vy,
+        stopped: Boolean(d.stopped),
+        life: d.life
+      })),
+      trees: state.islands.flatMap((island, islandIndex) =>
+        island.trees.map((tree) => ({
+          id: serverObjectId(`tree-${islandIndex}`, tree),
+          islandIndex,
+          x: tree.x,
+          y: tree.y,
+          hp: tree.hp,
+          maxHp: tree.maxHp,
+          dead: Boolean(tree.dead),
+          respawn: tree.respawn || 0
+        }))
+      ),
+      inventory: inventorySlots(),
+      hotbar: hotbar.map((item) => normalizeSlot(item)),
+      resources: { ...state.resources },
+      unlocks: { ...(state.unlocks || {}) }
     };
-    makePiece(wreckWidth * 0.42, 0.34, wreckLength * 0.96, -wreckWidth * 0.56, 0.38, -0.2, wreckWood, [0.08, 0.04, -0.38]);
-    makePiece(wreckWidth * 0.36, 0.32, wreckLength * 0.72, wreckWidth * 0.52, 0.34, -0.7, wetWood, [-0.02, -0.14, 0.46]);
-    makePiece(wreckWidth * 0.58, 0.28, wreckLength * 0.52, 0.1, 0.18, -0.52, paleWood, [0.04, 0.02, 0.03]);
-    makePiece(wreckWidth * 0.78, 0.46, 1.5, -0.4, 0.55, wreckLength * 0.42, wetWood, [0.16, 0.18, -0.12]);
-    makePiece(wreckWidth * 0.62, 0.38, 1.3, 0.68, 0.42, -wreckLength * 0.48, wreckWood, [-0.2, -0.22, 0.18]);
-    for (let i = 0; i < 5; i++) {
-      const rib = new THREE.Mesh(new THREE.TorusGeometry(wreckWidth * (0.48 + i * 0.015), 0.045, 6, 12, Math.PI), paleWood);
-      rib.position.set((i - 2) * 0.18, 0.74, -wreckLength * 0.34 + i * wreckLength * 0.16);
-      rib.rotation.set(Math.PI / 2, 0.18 * (i - 2), Math.PI * 0.5 + (i % 2 ? 0.18 : -0.14));
-      rib.scale.y = 0.78;
-      rib.castShadow = true;
-      wreck.add(rib);
-    }
-    makePiece(0.22, 0.22, wreckLength * 0.72, 0.9, 0.78, -0.12, wetWood, [1.42, 0.32, -0.28]);
-    makePiece(0.16, 0.16, wreckLength * 0.34, -1.42, 0.62, -0.98, paleWood, [1.22, -0.52, 0.36]);
-    for (let i = 0; i < 7; i++) {
-      const px = (Math.random() - 0.5) * wreckWidth * 2.2;
-      const pz = (Math.random() - 0.5) * wreckLength * 1.1;
-      makePiece(0.22 + Math.random() * 0.18, 0.12, 1.2 + Math.random() * 1.9, px, 0.12 + Math.random() * 0.3, pz, i % 2 ? wetWood : paleWood, [Math.random() * 0.24, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3]);
-    }
-    wreck.position.set(x, 2.35, z);
-    wreck.rotation.set(-0.04, yaw, 0.08);
-    group.add(wreck);
-    const worldX = data.x + x;
-    const worldZ = data.z + z;
-    obstacles.push({ x: worldX - Math.sin(yaw) * 2.4, z: worldZ - Math.cos(yaw) * 2.4, r: 1.15 });
-    obstacles.push({ x: worldX + Math.sin(yaw) * 2.1, z: worldZ + Math.cos(yaw) * 2.1, r: 1.0 });
-    addCollisionBox(x, z, wreckWidth * 0.9, wreckLength * 0.42, 0.16, yaw);
-  };
-  const addLake = (x, z, rx, rz, rot = 0) => {
-    const lakeMat = new THREE.MeshStandardMaterial({
-      color: 0x55b9d2,
-      roughness: 0.35,
-      metalness: 0.03,
-      transparent: true,
-      opacity: 0.78,
-    });
-    const lake = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 24), lakeMat);
-    lake.scale.set(rx, 1, rz);
-    lake.position.set(x, 3.02, z);
-    lake.rotation.y = rot;
-    lake.receiveShadow = true;
-    group.add(lake);
-    const shore = new THREE.Mesh(new THREE.TorusGeometry(1, 0.045, 8, 30), mat(0xd8c17b));
-    shore.scale.set(rx * 1.03, rz * 1.03, 0.12);
-    shore.position.set(x, 3.08, z);
-    shore.rotation.x = Math.PI / 2;
-    shore.rotation.z = rot;
-    group.add(shore);
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2 + rot;
-      const reed = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 0.06), mat(0x4f8b4d));
-      reed.position.set(x + Math.cos(angle) * rx * 0.9, 3.45, z + Math.sin(angle) * rz * 0.9);
-      reed.rotation.z = Math.sin(angle) * 0.2;
-      group.add(reed);
-    }
-    obstacles.push({ x: data.x + x, z: data.z + z, r: Math.max(rx, rz) * 0.88 });
-  };
-  const addForestPatch = (x, z, count, spread, theme = data.theme) => {
-    let placed = 0;
-    let tries = 0;
-    while (placed < count && tries < count * 5) {
-      tries++;
-      const angle = Math.random() * Math.PI * 2;
-      const distance = Math.sqrt(Math.random()) * spread;
-      const tree = makeIslandTree(theme);
-      tree.position.set(x + Math.cos(angle) * distance, 2.3, z + Math.sin(angle) * distance);
-      const treeRadius = 1.65;
-      if (!clearOfNoTreeZones(tree.position.x, tree.position.z, treeRadius + 3.4)) continue;
-      tree.scale.setScalar(0.82 + Math.random() * 0.65);
-      group.add(tree);
-      obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.35 * tree.scale.x });
-      placed++;
-    }
-  };
-  const addDecoratedHouse = (slot, index) => {
-    const palettes = [
-      { wall: 0xf1dcc0, roof: 0xb84f44 },
-      { wall: 0xb77b42, roof: 0x5a3b25 },
-      { wall: 0xd8d2bd, roof: 0x4051a8 },
-      { wall: 0xe2d0a5, roof: 0xd7b44a },
-      { wall: 0x9b8b78, roof: 0x4f5963 },
-    ];
-    const themedStyles = {
-      norse: ["longhouse", "cottage", "warehouse"],
-      pagoda: ["pagodaHouse", "twoStory", "stilt"],
-      iberian: ["villa", "twoStory", "cottage"],
-      fort: ["towerHouse", "twoStory", "warehouse"],
-      naval: ["twoStory", "towerHouse", "warehouse"],
-      trade: ["warehouse", "twoStory", "villa"],
-      lagoon: ["stilt", "cottage", "twoStory"],
-      atoll: ["cottage", "stilt", "standard"],
-      rocky: ["twoStory", "cottage", "towerHouse"],
-    };
-    const styles = themedStyles[data.theme] || ["standard", "twoStory", "warehouse"];
-    const style = slot.style || styles[(dockThemeSeed + index) % styles.length];
-    const floors = slot.floors || (["twoStory", "warehouse", "towerHouse", "villa", "pagodaHouse"].includes(style) ? 2 : 1);
-    const palette = palettes[(dockThemeSeed + index) % palettes.length];
-    addInteriorHouse(slot.x, slot.z, slot.w, slot.d, slot.color || palette.wall, slot.roof || palette.roof, { style, floors });
-    if (index % 2 === 0) {
-      const awning = new THREE.Mesh(new THREE.BoxGeometry(slot.w * 0.62, 0.12, 1.0), mat(accent));
-      awning.position.set(slot.x, floors > 1 ? 4.85 : 4.35, slot.z + slot.d * 0.62);
-      awning.rotation.x = -0.18;
-      awning.castShadow = true;
-      group.add(awning);
-    } else {
-      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.1, 0.42), mat(0x5a3b25));
-      chimney.position.set(slot.x + slot.w * 0.28, floors > 1 ? 6.65 : 5.65, slot.z - slot.d * 0.25);
-      chimney.castShadow = true;
-      group.add(chimney);
-    }
-  };
-  const addExtraHouseCluster = () => {
-    if (data.name === "Port Azure") return;
-    const denseTown = ["trade", "market", "naval", "fort", "iberian"].includes(data.theme);
-    const slots = [
-      { x: -radius * 0.08, z: radius * 0.28, w: 4.65, d: 3.35, style: denseTown ? "twoStory" : undefined, floors: denseTown ? 2 : undefined },
-      { x: radius * 0.32, z: radius * 0.02, w: 3.7, d: 3.0 },
-      { x: -radius * 0.35, z: radius * 0.23, w: 5.15, d: 3.55, style: denseTown ? "warehouse" : undefined, floors: denseTown ? 2 : undefined },
-      { x: radius * 0.16, z: -radius * 0.02, w: 4.1, d: 3.2 },
-      { x: radius * 0.04, z: radius * 0.39, w: 3.7, d: 3.0 },
-    ];
-    slots
-      .filter((slot) => clearBuildSpot(slot.x, slot.z, Math.max(slot.w, slot.d)))
-      .slice(0, denseTown ? 4 : 3)
-      .forEach(addDecoratedHouse);
-  };
-  const addPortAzureCastle = () => {
-    const castleX = radius * 0.22;
-    const castleZ = -radius * 0.3;
-    const castleW = 24;
-    const castleD = 20;
-    noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(castleW, castleD) * 0.72 + 5.5 });
-    const baseY = 3.02;
-    const wallH = 5.2;
-    const wallSink = 1.1;
-    const wallBodyH = wallH + wallSink;
-    const wallBodyY = baseY + wallH * 0.5 - wallSink * 0.5;
-    const wallTopY = baseY + wallH;
-    const topY = wallTopY + 0.18;
-    const stone = mat(0x7e8991);
-    const darkStone = mat(0x4f5963);
-    const floorStone = mat(0x6f7880);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffbd55,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
-    });
-    const glowHaloMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffa63c,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      fog: false,
-    });
-    const castle = new THREE.Group();
-    const addCastlePiece = (mesh, x, y, z) => {
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      castle.add(mesh);
-      return mesh;
-    };
-    const addCastleLight = (x, y, z, facing = "z", haloScale = 0.9, direction = 1) => {
-      if (facing === "floor") {
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.065, 0.68, 7), mats.dark);
-        addCastlePiece(post, x, y - 0.32, z);
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.1, 9), mats.dark);
-        addCastlePiece(base, x, y - 0.67, z);
-        const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
-        addCastlePiece(lantern, x, y, z);
-        const halo = new THREE.Mesh(new THREE.CircleGeometry(haloScale, 24), glowHaloMaterial);
-        halo.rotation.x = -Math.PI / 2;
-        addCastlePiece(halo, x, y - 0.55, z);
-        return;
-      }
-      const outwardX = facing === "x" ? direction : 0;
-      const outwardZ = facing === "z" ? direction : 0;
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(facing === "x" ? 0.08 : 0.48, 0.5, facing === "x" ? 0.48 : 0.08),
-        mats.dark,
-      );
-      addCastlePiece(plate, x, y, z);
-      const armStart = new THREE.Vector3(x + outwardX * 0.04, y + 0.08, z + outwardZ * 0.04);
-      const armEnd = new THREE.Vector3(x + outwardX * 0.52, y - 0.04, z + outwardZ * 0.52);
-      addRope(castle, armStart, armEnd, 1, 0.035, mats.dark);
-      const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.34, 8), mats.dark);
-      addCastlePiece(cage, armEnd.x + outwardX * 0.1, armEnd.y - 0.16, armEnd.z + outwardZ * 0.1);
-      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
-      addCastlePiece(lantern, armEnd.x + outwardX * 0.1, armEnd.y - 0.16, armEnd.z + outwardZ * 0.1);
-      const halo = new THREE.Mesh(new THREE.CircleGeometry(haloScale, 24), glowHaloMaterial);
-      if (facing === "x") halo.rotation.y = Math.PI / 2;
-      addCastlePiece(halo, armEnd.x + outwardX * 0.12, armEnd.y - 0.16, armEnd.z + outwardZ * 0.12);
-    };
-    const addCastleSlit = (x, z, facing = "z") => {
-      const slit = new THREE.Mesh(new THREE.BoxGeometry(facing === "x" ? 0.055 : 0.2, 0.86, facing === "x" ? 0.2 : 0.055), mats.dark);
-      addCastlePiece(slit, x, baseY + 2.55, z);
-      const glow = new THREE.Mesh(new THREE.BoxGeometry(facing === "x" ? 0.035 : 0.16, 0.58, facing === "x" ? 0.16 : 0.035), glowMaterial);
-      addCastlePiece(glow, x, baseY + 2.55, z);
-    };
-    const addCastleFlag = (x, z, color) => {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.55, 7), mats.dark);
-      addCastlePiece(pole, x, topY + 0.7, z);
-      const flag = clothPanel(1.0, 0.52, color, 0.035);
-      flag.position.set(x + 0.42, topY + 1.08, z);
-      flag.rotation.y = 0.08;
-      flag.castShadow = true;
-      castle.add(flag);
-    };
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, 0.18, castleD), mats.plank), 0, baseY + 0.02, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, wallBodyH, 0.65), stone), 0, wallBodyY, -castleD * 0.5);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallBodyH, castleD), stone), -castleW * 0.5, wallBodyY, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.65, wallBodyH, castleD), stone), castleW * 0.5, wallBodyY, 0);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallBodyH, 0.65), stone), -castleW * 0.32, wallBodyY, castleD * 0.5);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallBodyH, 0.65), stone), castleW * 0.32, wallBodyY, castleD * 0.5);
-    for (const y of [baseY + 1.05, wallTopY - 0.48]) {
-      addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 0.45, 0.18, 0.18), darkStone), 0, y, -castleD * 0.5 - 0.36);
-      addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, 0.18, 0.18), darkStone), -castleW * 0.32, y, castleD * 0.5 + 0.36);
-      addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, 0.18, 0.18), darkStone), castleW * 0.32, y, castleD * 0.5 + 0.36);
-      addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, castleD + 0.45), darkStone), -castleW * 0.5 - 0.36, y, 0);
-      addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, castleD + 0.45), darkStone), castleW * 0.5 + 0.36, y, 0);
-    }
-    const gateZ = castleD * 0.5 + 0.04;
-    const gatePierW = 1.08;
-    const gateGap = 3.55;
-    for (const side of [-1, 1]) {
-      const pierX = side * (gateGap * 0.5 + gatePierW * 0.5);
-      const pier = new THREE.Mesh(new THREE.BoxGeometry(gatePierW, wallBodyH, 0.86), darkStone);
-      addCastlePiece(pier, pierX, wallBodyY, gateZ);
-      const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.34, wallH * 0.62, 0.32), stone);
-      addCastlePiece(jamb, side * gateGap * 0.5, baseY + wallH * 0.31, gateZ + 0.38);
-      const buttress = new THREE.Mesh(new THREE.BoxGeometry(0.66, wallH * 0.82, 1.28), stone);
-      addCastlePiece(buttress, side * (gateGap * 0.5 + gatePierW + 0.28), baseY + wallH * 0.41, gateZ + 0.12);
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.36, 1.08), darkStone);
-      addCastlePiece(cap, pierX, baseY + wallH + 0.12, gateZ);
-    }
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(gateGap + gatePierW * 2.45, 0.92, 1.04), stone), 0, baseY + 3.88, gateZ);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(gateGap + gatePierW * 2.8, 0.36, 1.12), darkStone), 0, baseY + 4.62, gateZ);
-    const keystone = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.66, 0.32), darkStone);
-    addCastlePiece(keystone, 0, baseY + 3.42, gateZ + 0.42);
-    for (let i = -2; i <= 2; i++) {
-      const voussoir = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.28), i === 0 ? darkStone : stone);
-      voussoir.rotation.z = i * 0.12;
-      addCastlePiece(voussoir, i * 0.42, baseY + 3.1 + Math.abs(i) * 0.12, gateZ + 0.43);
-    }
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(gateGap * 0.62, 0.22, 0.08), mats.gold), 0, baseY + 3.26, gateZ + 0.5);
-    const gateDoor = new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.95, 0.14), mat(0x2c211c));
-    addCastlePiece(gateDoor, 0, baseY + 1.48, gateZ + 0.02);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(3.72, 0.36, 0.24), darkStone), 0, baseY + 2.98, gateZ + 0.08);
-    for (let i = -3; i <= 3; i++) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.82, 0.08), mats.dark);
-      addCastlePiece(bar, i * 0.38, baseY + 1.5, gateZ + 0.18);
-    }
-    addRope(castle, new THREE.Vector3(-1.28, baseY + 3.72, gateZ + 0.38), new THREE.Vector3(-0.66, baseY + 1.95, gateZ + 0.38), 1, 0.026, mats.dark);
-    addRope(castle, new THREE.Vector3(1.28, baseY + 3.72, gateZ + 0.38), new THREE.Vector3(0.66, baseY + 1.95, gateZ + 0.38), 1, 0.026, mats.dark);
-    for (const x of [-castleW * 0.28, 0, castleW * 0.28]) {
-      addCastleSlit(x, -castleD * 0.5 - 0.035, "z");
-    }
-    for (const z of [-castleD * 0.24, castleD * 0.08, castleD * 0.32]) {
-      addCastleSlit(-castleW * 0.5 - 0.035, z, "x");
-      addCastleSlit(castleW * 0.5 + 0.035, z, "x");
-    }
-    addCastleLight(-2.55, baseY + 2.9, castleD * 0.5 + 0.36, "z", 0.85, 1);
-    addCastleLight(2.55, baseY + 2.9, castleD * 0.5 + 0.36, "z", 0.85, 1);
-    addCastleLight(-castleW * 0.34, baseY + 3.0, castleD * 0.5 + 0.36, "z", 0.7, 1);
-    addCastleLight(castleW * 0.34, baseY + 3.0, castleD * 0.5 + 0.36, "z", 0.7, 1);
-    addCastleLight(-castleW * 0.5 - 0.36, baseY + 3.05, -castleD * 0.12, "x", 0.75, -1);
-    addCastleLight(castleW * 0.5 + 0.36, baseY + 3.05, -castleD * 0.12, "x", 0.75, 1);
-    addCastleLight(-castleW * 0.22, baseY + 3.05, -castleD * 0.5 - 0.36, "z", 0.75, -1);
-    addCastleLight(castleW * 0.22, baseY + 3.05, -castleD * 0.5 - 0.36, "z", 0.75, -1);
-    addCastleLight(-castleW * 0.5 + 0.36, baseY + 2.45, -castleD * 0.06, "x", 0.9, 1);
-    addCastleLight(castleW * 0.5 - 0.36, baseY + 2.45, -castleD * 0.06, "x", 0.9, -1);
-    addCastlePiece(new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.22, 1.3), mats.wood), 0, baseY + 0.22, castleD * 0.5 + 0.14);
-    const ledgeWidth = 4.25;
-    [
-      { x: 0, z: -castleD * 0.5, w: castleW + 1.4, d: ledgeWidth },
-      { x: 0, z: castleD * 0.5, w: castleW + 1.4, d: ledgeWidth },
-      { x: -castleW * 0.5, z: 0, w: ledgeWidth, d: castleD + 1.4 },
-      { x: castleW * 0.5, z: 0, w: ledgeWidth, d: castleD + 1.4 },
-    ].forEach((slab) => {
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(slab.w, 0.28, slab.d), floorStone);
-      addCastlePiece(floor, slab.x, topY - 0.14, slab.z);
-    });
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.05, 2.25, wallH + 1.35, 12), darkStone);
-        addCastlePiece(tower, sx * castleW * 0.5, baseY + (wallH + 1.1) * 0.5, sz * castleD * 0.5);
-        const towerFloor = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 2.55, 0.3, 12), floorStone);
-        addCastlePiece(towerFloor, sx * castleW * 0.5, topY - 0.06, sz * castleD * 0.5);
-        addCastleLight(sx * castleW * 0.5, topY + 0.64, sz * castleD * 0.5 + sz * 2.08, "z", 0.9, sz);
-        addCastleLight(sx * castleW * 0.5 + sx * 2.08, topY + 0.46, sz * castleD * 0.5, "x", 0.72, sx);
-        addCastleFlag(sx * castleW * 0.5 + sx * 0.18, sz * castleD * 0.5, sx === sz ? accent : 0xfff1a6);
-        obstacles.push({ x: data.x + castleX + sx * castleW * 0.5, z: data.z + castleZ + sz * castleD * 0.5, r: 2.25 });
-      }
-    }
-    for (let i = 0; i < 10; i++) {
-      const x = -castleW * 0.43 + i * castleW * 0.095;
-      const rearBlock = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 0.72), darkStone);
-      addCastlePiece(rearBlock, x, topY + 0.325, -castleD * 0.5);
-      const frontBlock = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 0.72), darkStone);
-      addCastlePiece(frontBlock, x, topY + 0.325, castleD * 0.5);
-    }
-    for (let i = 0; i < 8; i++) {
-      const z = -castleD * 0.4 + i * castleD * 0.114;
-      const leftBlock = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.65, 1.05), darkStone);
-      addCastlePiece(leftBlock, -castleW * 0.5, topY + 0.325, z);
-      const rightBlock = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.65, 1.05), darkStone);
-      addCastlePiece(rightBlock, castleW * 0.5, topY + 0.325, z);
-    }
-    for (let i = 0; i < 12; i++) {
-      const t = i / 11;
-      const stepY = baseY + 0.12 + t * (topY - baseY - 0.12);
-      const stepZ = castleD * 0.24 - t * castleD * 0.58;
-      const stepHeight = Math.max(0.28, stepY - baseY + 0.18);
-      const step = new THREE.Mesh(new THREE.BoxGeometry(2.85, stepHeight, 1.35), mats.wood);
-      addCastlePiece(step, castleW * 0.27, stepY - stepHeight * 0.5, stepZ);
-      addWalkPlatform(castleX + castleW * 0.27, castleZ + stepZ, 3.0, 1.42, stepY, 0, { maxRise: 1.15 });
-    }
-    const stairLandingZ = -castleD * 0.42;
-    const stairLanding = new THREE.Mesh(new THREE.BoxGeometry(3.55, 0.3, 3.7), floorStone);
-    addCastlePiece(stairLanding, castleW * 0.27, topY - 0.14, stairLandingZ);
-    addWalkPlatform(castleX + castleW * 0.27, castleZ + stairLandingZ, 3.7, 3.85, topY, 0, { maxRise: 1.15 });
-    [
-      { x: 0, z: -castleD * 0.5, w: castleW + 0.65, d: ledgeWidth - 0.35 },
-      { x: 0, z: castleD * 0.5, w: castleW + 0.65, d: ledgeWidth - 0.35 },
-      { x: -castleW * 0.5, z: 0, w: ledgeWidth - 0.35, d: castleD + 0.65 },
-      { x: castleW * 0.5, z: 0, w: ledgeWidth - 0.35, d: castleD + 0.65 },
-    ].forEach((platform) => addWalkPlatform(castleX + platform.x, castleZ + platform.z, platform.w, platform.d, topY, 0, { maxRise: 1.2 }));
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) addWalkPlatform(castleX + sx * castleW * 0.5, castleZ + sz * castleD * 0.5, 4.55, 4.55, topY + 0.08, 0, { maxRise: 1.2 });
-    }
-    const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 1.3), mats.wood);
-    addCastlePiece(table, -castleW * 0.18, baseY + 0.45, -castleD * 0.1);
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.14), mat(0x5a3b25));
-        addCastlePiece(leg, -castleW * 0.18 + sx * 1.05, baseY + 0.28, -castleD * 0.1 + sz * 0.46);
-      }
-    }
-    const mapTop = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.035, 0.95), mat(0xd8c28f));
-    addCastlePiece(mapTop, -castleW * 0.18, baseY + 0.59, -castleD * 0.1);
-    const hearth = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.32, 0.8), darkStone);
-    addCastlePiece(hearth, castleW * 0.22, baseY + 0.32, -castleD * 0.18);
-    const hearthGlow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 9, 7), glowMaterial);
-    hearthGlow.scale.set(1.05, 0.38, 0.78);
-    addCastlePiece(hearthGlow, castleW * 0.22, baseY + 0.48, -castleD * 0.18);
-    for (const offset of [-0.28, 0.28]) {
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.7, 7), mats.wood);
-      log.rotation.z = Math.PI / 2;
-      log.position.set(castleW * 0.22 + offset, baseY + 0.5, -castleD * 0.18);
-      log.castShadow = true;
-      castle.add(log);
-    }
-    for (const z of [-castleD * 0.3, castleD * 0.12]) {
-      const bench = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 0.42), mats.wood);
-      addCastlePiece(bench, -castleW * 0.02, baseY + 0.38, z);
-      for (const x of [-0.86, 0.86]) {
-        const support = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 0.18), mat(0x5a3b25));
-        addCastlePiece(support, -castleW * 0.02 + x, baseY + 0.22, z);
-      }
-    }
-    for (const side of [-1, 1]) {
-      const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 6), mat(side < 0 ? accent : 0xfff1a6));
-      shield.rotation.x = Math.PI / 2;
-      addCastlePiece(shield, side * castleW * 0.16, baseY + 2.55, castleD * 0.5 + 0.38);
-    }
-    for (const side of [-1, 1]) {
-      const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.17, 1.15, 9), mats.dark);
-      cannon.rotation.x = Math.PI / 2;
-      addCastlePiece(cannon, side * castleW * 0.22, topY + 0.34, castleD * 0.5 + 0.06);
-      const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.18, 0.46), mats.wood);
-      addCastlePiece(carriage, side * castleW * 0.22, topY + 0.08, castleD * 0.5 - 0.34);
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.48, 0.62), mats.crate);
-      addCastlePiece(crate, side * castleW * 0.34, baseY + 0.28, -castleD * 0.28);
-    }
-    const bannerA = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.8, 1.0), mat(accent));
-    addCastlePiece(bannerA, -castleW * 0.5 - 0.04, baseY + 2.7, castleD * 0.2);
-    const bannerB = bannerA.clone();
-    addCastlePiece(bannerB, castleW * 0.5 + 0.04, baseY + 2.7, castleD * 0.2);
-    castle.position.set(castleX, 0, castleZ);
-    group.add(castle);
-    shipNightLights.push({
-      group: castle,
-      material: glowMaterial,
-      haloMaterial: glowHaloMaterial,
-      haloOpacity: 0.18,
-      lights: [],
-      baseIntensity: 0,
-    });
-    addCollisionBox(castleX, castleZ - castleD * 0.5, castleW, 0.85, 0.12);
-    addCollisionBox(castleX - castleW * 0.5, castleZ, 0.85, castleD, 0.12);
-    addCollisionBox(castleX + castleW * 0.5, castleZ, 0.85, castleD, 0.12);
-    addCollisionBox(castleX - (gateGap * 0.5 + gatePierW * 0.5), castleZ + gateZ, gatePierW, 0.92, 0.08);
-    addCollisionBox(castleX + (gateGap * 0.5 + gatePierW * 0.5), castleZ + gateZ, gatePierW, 0.92, 0.08);
-    addCollisionBox(castleX - castleW * 0.32, castleZ + castleD * 0.5, castleW * 0.36, 0.85, 0.12);
-    addCollisionBox(castleX + castleW * 0.32, castleZ + castleD * 0.5, castleW * 0.36, 0.85, 0.12);
-    collisionBoxes.slice(-7).forEach((box) => {
-      box.walkableTopY = topY - 0.25;
-    });
-    addWalkPlatform(castleX, castleZ, castleW - 1.4, castleD - 1.4, baseY + 0.13, 0, { maxRise: 0.9 });
-  };
-  const addCrownHarborCastle = () => {
-    const castleX = radius * 0.28;
-    const castleZ = -radius * 0.24;
-    const fortW = 30;
-    const fortD = 22;
-    const baseY = 3.02;
-    const wallH = 4.4;
-    const wallSink = 1.1;
-    const wallBodyH = wallH + wallSink;
-    const wallBodyY = baseY + wallH * 0.5 - wallSink * 0.5;
-    const topY = baseY + wallH + 0.18;
-    noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(fortW, fortD) * 0.72 + 8 });
-    const stone = mat(0x7c8581);
-    const paleStone = mat(0xb6b59e);
-    const darkStone = mat(0x48565b);
-    const crownGold = mat(0xd99928);
-    const roofBlue = mat(0x355d8e);
-    const interiorStone = paleStone.clone();
-    interiorStone.side = THREE.DoubleSide;
-    interiorStone.needsUpdate = true;
-    const keepStone = stone.clone();
-    keepStone.side = THREE.DoubleSide;
-    keepStone.needsUpdate = true;
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffc46a,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
-    });
-    const castle = new THREE.Group();
-    const crownLights = [];
-    const addPiece = (mesh, x, y, z) => {
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      castle.add(mesh);
-      return mesh;
-    };
-    const addWallLamp = (x, y, z, facing = "z", direction = 1) => {
-      const outwardX = facing === "x" ? direction : 0;
-      const outwardZ = facing === "z" ? direction : 0;
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(facing === "x" ? 0.08 : 0.42, 0.42, facing === "x" ? 0.42 : 0.08), mats.dark), x, y, z);
-      const armStart = new THREE.Vector3(x + outwardX * 0.04, y + 0.04, z + outwardZ * 0.04);
-      const armEnd = new THREE.Vector3(x + outwardX * 0.48, y - 0.06, z + outwardZ * 0.48);
-      addRope(castle, armStart, armEnd, 1, 0.03, mats.dark);
-      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
-      addPiece(lantern, armEnd.x + outwardX * 0.08, armEnd.y - 0.12, armEnd.z + outwardZ * 0.08);
-    };
-    const addFlag = (x, z, color = accent) => {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.055, 2.1, 7), mats.dark);
-      addPiece(pole, x, topY + 0.9, z);
-      const flag = clothPanel(1.2, 0.6, color, 0.035);
-      flag.position.set(x + 0.48, topY + 1.35, z);
-      flag.rotation.y = 0.08;
-      flag.castShadow = true;
-      castle.add(flag);
-    };
-    const addCannon = (x, z, yaw) => {
-      const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.22, 0.52), mats.wood);
-      carriage.rotation.y = yaw;
-      addPiece(carriage, x, topY + 0.08, z);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 1.45, 10), mats.dark);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.rotation.z = -yaw;
-      addPiece(barrel, x + Math.sin(yaw) * 0.38, topY + 0.36, z + Math.cos(yaw) * 0.38);
-      addCollisionBox(castleX + x, castleZ + z, 1.05, 0.82, 0.08, yaw, { minY: topY - 0.45, maxY: topY + 1.1 });
-    };
-    addPiece(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.42, 8), paleStone), 0, baseY - 0.18, 0).scale.set(fortW * 0.62, 1, fortD * 0.54);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW - 0.95, 0.22, fortD - 0.95), mats.plank), 0, baseY + 0.02, 0);
-    addWalkPlatform(castleX, castleZ, fortW - 1.05, fortD - 1.05, baseY + 0.14, 0, { maxRise: 0.9 });
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(fortW, wallBodyH, 0.82), stone);
-    addPiece(backWall, 0, wallBodyY, -fortD * 0.5);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.82, wallBodyH, fortD), stone), -fortW * 0.5, wallBodyY, 0);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.82, wallBodyH, fortD), stone), fortW * 0.5, wallBodyY, 0);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW * 0.32, wallBodyH, 0.82), stone), -fortW * 0.34, wallBodyY, fortD * 0.5);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(fortW * 0.32, wallBodyH, 0.82), stone), fortW * 0.34, wallBodyY, fortD * 0.5);
-    const gateW = 4.2;
-    const gateZ = fortD * 0.5 + 0.12;
-    for (const sx of [-1, 1]) {
-      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 1.95, wallH + 1.4, 10), darkStone);
-      addPiece(tower, sx * (gateW * 0.5 + 1.45), baseY + (wallH + 1.25) * 0.5, gateZ);
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(2.05, 1.25, 10), roofBlue);
-      addPiece(roof, sx * (gateW * 0.5 + 1.45), baseY + wallH + 1.35, gateZ);
-      addWallLamp(sx * (gateW * 0.5 + 3.22), baseY + 2.55, gateZ + 0.45, "z", 1);
-    }
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(gateW + 3.7, 1.1, 1.0), darkStone), 0, baseY + 3.85, gateZ);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(gateW + 4.2, 0.38, 1.18), crownGold), 0, baseY + 4.58, gateZ);
-    const gateArch = new THREE.Mesh(new THREE.TorusGeometry(gateW * 0.48, 0.15, 8, 22, Math.PI), paleStone);
-    gateArch.position.set(0, baseY + 2.72, gateZ + 0.52);
-    gateArch.rotation.x = Math.PI / 2;
-    castle.add(gateArch);
-    const portcullis = new THREE.Mesh(new THREE.BoxGeometry(gateW * 0.72, 2.9, 0.1), mats.dark);
-    addPiece(portcullis, 0, baseY + 1.45, gateZ + 0.22);
-    for (let i = -3; i <= 3; i++) addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.9, 0.12), mats.gold), i * 0.42, baseY + 1.45, gateZ + 0.34);
-    const drawbridge = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.18, 5.2), mats.wood);
-    drawbridge.rotation.x = -0.08;
-    addPiece(drawbridge, 0, baseY + 0.02, fortD * 0.5 + 3.0);
-    for (const sx of [-1, 1]) addRope(castle, new THREE.Vector3(sx * 1.8, baseY + 3.6, gateZ + 0.35), new THREE.Vector3(sx * 2.05, baseY + 0.62, fortD * 0.5 + 4.9), 1, 0.032, mats.dark);
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const bastion = new THREE.Mesh(new THREE.BoxGeometry(6.4, wallH + 0.55, 6.4), darkStone);
-        bastion.rotation.y = Math.PI / 4;
-        addPiece(bastion, sx * (fortW * 0.5 + 1.45), baseY + (wallH + 0.42) * 0.5, sz * (fortD * 0.5 + 1.45));
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.28, 6.8), paleStone);
-        deck.rotation.y = Math.PI / 4;
-        addPiece(deck, sx * (fortW * 0.5 + 1.45), topY - 0.08, sz * (fortD * 0.5 + 1.45));
-        addWalkPlatform(castleX + sx * (fortW * 0.5 + 1.45), castleZ + sz * (fortD * 0.5 + 1.45), 6.8, 6.8, topY + 0.04, Math.PI / 4, { maxRise: 1.2 });
-        addFlag(sx * (fortW * 0.5 + 1.45), sz * (fortD * 0.5 + 1.45), sz > 0 ? accent : 0xfff1a6);
-        obstacles.push({ x: data.x + castleX + sx * (fortW * 0.5 + 1.45), z: data.z + castleZ + sz * (fortD * 0.5 + 1.45), r: 3.8 });
-      }
-    }
-    const wallWalks = [
-      { x: 0, z: -fortD * 0.5, w: fortW + 1.5, d: 3.2 },
-      { x: 0, z: fortD * 0.5, w: fortW + 1.5, d: 3.2 },
-      { x: -fortW * 0.5, z: 0, w: 3.2, d: fortD + 1.5 },
-      { x: fortW * 0.5, z: 0, w: 3.2, d: fortD + 1.5 },
-    ];
-    wallWalks.forEach((walk) => {
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(walk.w, 0.26, walk.d), paleStone), walk.x, topY - 0.13, walk.z);
-      addWalkPlatform(castleX + walk.x, castleZ + walk.z, walk.w - 0.2, walk.d - 0.2, topY, 0, { maxRise: 1.2 });
-    });
-    for (let i = 0; i < 9; i++) {
-      const x = -fortW * 0.42 + i * fortW * 0.105;
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.72, 0.72), darkStone), x, topY + 0.34, -fortD * 0.5);
-      if (i !== 4) addPiece(new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.72, 0.72), darkStone), x, topY + 0.34, fortD * 0.5);
-    }
-    for (let i = 0; i < 7; i++) {
-      const z = -fortD * 0.38 + i * fortD * 0.13;
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 1.0), darkStone), -fortW * 0.5, topY + 0.34, z);
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 1.0), darkStone), fortW * 0.5, topY + 0.34, z);
-    }
-    const keepX = -fortW * 0.18;
-    const keepZ = -fortD * 0.08;
-    const keep = new THREE.Mesh(new THREE.CylinderGeometry(4.15, 4.8, 6.2, 8), keepStone);
-    addPiece(keep, keepX, baseY + 3.1, keepZ);
-    const keepTop = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 0.32, 8), paleStone);
-    addPiece(keepTop, keepX, baseY + 6.36, keepZ);
-    const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(4.75, 2.2, 8), roofBlue);
-    addPiece(keepRoof, keepX, baseY + 7.6, keepZ);
-    const crown = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.12, 8, 18), crownGold);
-    crown.position.set(keepX, baseY + 8.95, keepZ);
-    crown.rotation.x = Math.PI / 2;
-    castle.add(crown);
-    const crownSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.2, 8), crownGold);
-    addPiece(crownSpire, keepX, baseY + 9.55, keepZ);
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
-      const window = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.08), glowMaterial);
-      window.position.set(keepX + Math.sin(angle) * 4.22, baseY + 4.2, keepZ + Math.cos(angle) * 4.22);
-      window.rotation.y = angle;
-      castle.add(window);
-    }
-    const keepFloor = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.65, 0.16, 16), mats.plank);
-    keepFloor.rotation.y = Math.PI / 16;
-    addPiece(keepFloor, keepX, baseY + 0.1, keepZ);
-    const keepDoorZ = keepZ + 4.72;
-    const keepDoor = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.15, 0.16), mats.dark);
-    addPiece(keepDoor, keepX, baseY + 1.14, keepDoorZ);
-    for (const side of [-1, 1]) {
-      const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.34, 0.56), paleStone);
-      addPiece(jamb, keepX + side * 0.88, baseY + 1.22, keepDoorZ + 0.03);
-    }
-    const keepDoorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.26, 0.58), crownGold);
-    addPiece(keepDoorLintel, keepX, baseY + 2.36, keepDoorZ + 0.04);
-    const keepDoorArch = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.08, 8, 18, Math.PI), crownGold);
-    keepDoorArch.rotation.x = Math.PI / 2;
-    addPiece(keepDoorArch, keepX, baseY + 2.15, keepDoorZ + 0.12);
-    const keepThreshold = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.16, 0.92), paleStone);
-    addPiece(keepThreshold, keepX, baseY + 0.08, keepDoorZ + 0.42);
-    addWalkPlatform(castleX + keepX, castleZ + keepDoorZ + 0.42, 2.15, 0.98, baseY + 0.18, 0, { maxRise: 0.7 });
-    const exitTrimZ = keepZ + 3.58;
-    const exitBackPlate = new THREE.Mesh(new THREE.BoxGeometry(2.22, 2.42, 0.08), darkStone);
-    addPiece(exitBackPlate, keepX, baseY + 1.26, exitTrimZ);
-    const exitCutout = new THREE.Mesh(new THREE.BoxGeometry(1.38, 2.05, 0.09), mats.dark);
-    addPiece(exitCutout, keepX, baseY + 1.1, exitTrimZ + 0.05);
-    for (const side of [-1, 1]) {
-      const innerJamb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.18, 0.14), crownGold);
-      addPiece(innerJamb, keepX + side * 0.79, baseY + 1.18, exitTrimZ + 0.08);
-      const exitLamp = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), glowMaterial);
-      addPiece(exitLamp, keepX + side * 1.08, baseY + 1.8, exitTrimZ + 0.12);
-    }
-    const innerLintel = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.16, 0.14), crownGold);
-    addPiece(innerLintel, keepX, baseY + 2.2, exitTrimZ + 0.08);
-    const crossLong = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 2.4), crownGold);
-    addPiece(crossLong, keepX, baseY + 0.24, keepZ);
-    const crossWide = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.34), crownGold);
-    addPiece(crossWide, keepX, baseY + 0.25, keepZ);
-    const roundTable = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.28, 10), mats.wood);
-    addPiece(roundTable, keepX - 1.25, baseY + 0.42, keepZ - 0.55);
-    const mapTop = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.04, 0.68), mat(0xd8c28f));
-    mapTop.rotation.y = -0.22;
-    addPiece(mapTop, keepX - 1.25, baseY + 0.59, keepZ - 0.55);
-    const scrollShelf = new THREE.Mesh(new THREE.BoxGeometry(0.44, 1.12, 1.48), mats.wood);
-    addPiece(scrollShelf, keepX - 2.62, baseY + 0.78, keepZ + 0.62);
-    for (let i = 0; i < 3; i++) {
-      const shelfLine = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.07, 1.34), crownGold);
-      addPiece(shelfLine, keepX - 2.62, baseY + 0.42 + i * 0.34, keepZ + 0.62);
-    }
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.62, 0.72), mats.crate);
-    addPiece(chest, keepX + 1.68, baseY + 0.42, keepZ - 1.35);
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.24, 0.46), mats.wood);
-    bench.rotation.y = Math.PI * 0.18;
-    addPiece(bench, keepX + 1.38, baseY + 0.36, keepZ + 1.26);
-    for (const offset of [-0.62, 0.62]) {
-      const benchLeg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.34, 0.13), mats.wood);
-      addPiece(benchLeg, keepX + 1.38 + offset, baseY + 0.2, keepZ + 1.26);
-    }
-    const weaponRack = new THREE.Mesh(new THREE.BoxGeometry(0.26, 1.18, 1.34), darkStone);
-    addPiece(weaponRack, keepX + 2.72, baseY + 0.82, keepZ + 0.08);
-    for (let i = -1; i <= 1; i++) {
-      const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.55, 5), mats.dark);
-      spear.rotation.z = 0.18;
-      addPiece(spear, keepX + 2.72, baseY + 1.06, keepZ + i * 0.36);
-    }
-    const keepLamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), glowMaterial);
-    addPiece(keepLamp, keepX, baseY + 3.25, keepZ);
-    addWalkPlatform(castleX + keepX, castleZ + keepZ, 6.6, 6.3, baseY + 0.18, 0, { maxRise: 0.8 });
-    const hallX = fortW * 0.2;
-    const hallZ = -fortD * 0.05;
-    const hallW = 7.2;
-    const hallD = 4.6;
-    const hallWallH = 3.2;
-    const hallDoorW = 1.48;
-    const hallBack = new THREE.Mesh(new THREE.BoxGeometry(hallW, hallWallH, 0.22), interiorStone);
-    addPiece(hallBack, hallX, baseY + hallWallH * 0.5, hallZ - hallD * 0.5);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.22, hallWallH, hallD), interiorStone), hallX - hallW * 0.5, baseY + hallWallH * 0.5, hallZ);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.22, hallWallH, hallD), interiorStone), hallX + hallW * 0.5, baseY + hallWallH * 0.5, hallZ);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry((hallW - hallDoorW) * 0.5, hallWallH, 0.22), interiorStone), hallX - (hallDoorW * 0.5 + (hallW - hallDoorW) * 0.25), baseY + hallWallH * 0.5, hallZ + hallD * 0.5);
-    addPiece(new THREE.Mesh(new THREE.BoxGeometry((hallW - hallDoorW) * 0.5, hallWallH, 0.22), interiorStone), hallX + (hallDoorW * 0.5 + (hallW - hallDoorW) * 0.25), baseY + hallWallH * 0.5, hallZ + hallD * 0.5);
-    const hallFloor = new THREE.Mesh(new THREE.BoxGeometry(hallW - 0.35, 0.12, hallD - 0.35), mats.plank);
-    addPiece(hallFloor, hallX, baseY + 0.08, hallZ);
-    const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(4.8, 1.5, 4), roofBlue);
-    hallRoof.rotation.y = Math.PI / 4;
-    addPiece(hallRoof, hallX, baseY + 4.05, hallZ);
-    const openDoor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.12), mats.dark);
-    addPiece(openDoor, hallX, baseY + 0.95, hallZ + hallD * 0.5 + 0.08);
-    const doorTrim = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.2, 0.16), crownGold);
-    addPiece(doorTrim, hallX, baseY + 1.9, hallZ + hallD * 0.5 + 0.12);
-    const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 1.2), mats.wood);
-    addPiece(table, hallX - 1.8, baseY + 0.5, hallZ - 1.1);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) addPiece(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), mats.wood), hallX - 1.8 + sx * 1.05, baseY + 0.27, hallZ - 1.1 + sz * 0.46);
-    const benchA = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.2, 0.42), mats.wood);
-    addPiece(benchA, hallX + 1.55, baseY + 0.36, hallZ - 1.25);
-    const benchB = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.2, 0.42), mats.wood);
-    addPiece(benchB, hallX + 1.55, baseY + 0.36, hallZ + 0.55);
-    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.05, 0.72), mat(accent));
-    addPiece(banner, hallX + hallW * 0.5 - 0.08, baseY + 1.82, hallZ - 0.75);
-    const hallLamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), glowMaterial);
-    addPiece(hallLamp, hallX, baseY + 2.5, hallZ - 0.2);
-    addWalkPlatform(castleX + hallX, castleZ + hallZ, hallW - 0.5, hallD - 0.5, baseY + 0.18, 0, { maxRise: 0.8 });
-    const stairStartX = fortW * 0.37;
-    const stairStartZ = fortD * 0.18;
-    const stairEndX = fortW * 0.18;
-    const stairEndZ = fortD * 0.5 - 1.55;
-    for (let i = 0; i < 13; i++) {
-      const t = i / 12;
-      const stepY = baseY + 0.16 + t * (topY - baseY - 0.08);
-      const stepX = stairStartX + (stairEndX - stairStartX) * t;
-      const stepZ = stairStartZ + (stairEndZ - stairStartZ) * t;
-      const stepHeight = Math.max(0.24, stepY - baseY + 0.12);
-      addPiece(new THREE.Mesh(new THREE.BoxGeometry(2.25, stepHeight, 0.92), mats.wood), stepX, stepY - stepHeight * 0.5, stepZ);
-      addWalkPlatform(castleX + stepX, castleZ + stepZ, 2.4, 1.04, stepY, 0, { maxRise: 1.15 });
-    }
-    addCannon(-fortW * 0.28, fortD * 0.5 - 0.15, 0);
-    addCannon(fortW * 0.28, fortD * 0.5 - 0.15, 0);
-    addCannon(-fortW * 0.5 + 0.15, -fortD * 0.15, -Math.PI / 2);
-    addCannon(fortW * 0.5 - 0.15, -fortD * 0.15, Math.PI / 2);
-    for (const pos of [
-      [-fortW * 0.38, baseY + 2.5, fortD * 0.5 + 0.38, "z", 1],
-      [fortW * 0.38, baseY + 2.5, fortD * 0.5 + 0.38, "z", 1],
-      [-fortW * 0.5 - 0.38, baseY + 2.75, -fortD * 0.18, "x", -1],
-      [fortW * 0.5 + 0.38, baseY + 2.75, -fortD * 0.18, "x", 1],
-      [0, baseY + 2.62, -fortD * 0.5 - 0.38, "z", -1],
-    ]) addWallLamp(...pos);
-    const keepLight = new THREE.PointLight(0xffc46a, 0, 18, 1.45);
-    keepLight.position.set(keepX, baseY + 4.4, keepZ);
-    castle.add(keepLight);
-    const gateLight = new THREE.PointLight(0xffb44d, 0, 16, 1.5);
-    gateLight.position.set(0, baseY + 2.6, gateZ + 0.4);
-    castle.add(gateLight);
-    crownLights.push(keepLight, gateLight);
-    castle.position.set(castleX, 0, castleZ);
-    group.add(castle);
-    shipNightLights.push({
-      group: castle,
-      material: glowMaterial,
-      haloMaterial: null,
-      haloOpacity: 0,
-      lights: crownLights,
-      baseIntensity: 0.85,
-    });
-    addCollisionBox(castleX, castleZ - fortD * 0.5, fortW, 0.95, 0.12);
-    addCollisionBox(castleX - fortW * 0.5, castleZ, 0.95, fortD, 0.12);
-    addCollisionBox(castleX + fortW * 0.5, castleZ, 0.95, fortD, 0.12);
-    addCollisionBox(castleX - fortW * 0.34, castleZ + fortD * 0.5, fortW * 0.32, 0.95, 0.12);
-    addCollisionBox(castleX + fortW * 0.34, castleZ + fortD * 0.5, fortW * 0.32, 0.95, 0.12);
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) addCollisionBox(castleX + sx * (fortW * 0.5 + 1.45), castleZ + sz * (fortD * 0.5 + 1.45), 5.3, 5.3, 0.12, Math.PI / 4);
-    }
-    addCollisionBox(castleX + keepX, castleZ + keepZ - 3.55, 6.4, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX - 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX + 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX - 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX + 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX - 1.25, castleZ + keepZ - 0.55, 1.05, 1.05, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.1 });
-    addCollisionBox(castleX + keepX - 2.62, castleZ + keepZ + 0.62, 0.62, 1.62, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.55 });
-    addCollisionBox(castleX + keepX + 1.68, castleZ + keepZ - 1.35, 1.18, 0.82, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.05 });
-    addCollisionBox(castleX + keepX + 1.38, castleZ + keepZ + 1.26, 1.9, 0.58, 0.05, Math.PI * 0.18, { minY: baseY - 0.1, maxY: baseY + 0.9 });
-    addCollisionBox(castleX + keepX + 2.72, castleZ + keepZ + 0.08, 0.5, 1.5, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.75 });
-    const hallWallMaxY = baseY + 3.7;
-    addCollisionBox(castleX + hallX, castleZ + hallZ - hallD * 0.5, hallW, 0.28, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX - hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX + hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX - hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX + hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + fortW * 0.08, castleZ - fortD * 0.18, 2.75, 1.35, 0.06, 0, { minY: baseY - 0.15, maxY: baseY + 1.2 });
-    addWalkPlatform(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, baseY + 0.12, 0, { maxRise: 0.7 });
-    addCollisionBox(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, 0.08, 0, { maxY: baseY + 0.65, walkableTopY: baseY + 0.1 });
-  };
-  addThemeHouse();
-  if (data.name === "Crown Harbor") addCrownHarborCastle();
-  addExtraHouseCluster();
-  if (data.theme === "starter") addPortAzureCastle();
-  if (["lagoon", "atoll", "trade", "market", "dhow", "schooner"].includes(data.theme)) {
-    addLake(-radius * 0.18, radius * 0.16, radius * 0.075, radius * 0.048, 0.25);
   }
-  if (["norse", "rocky", "naval", "fort", "starter", "schooner"].includes(data.theme)) {
-    addForestPatch(-radius * 0.32, -radius * 0.04, data.theme === "starter" ? 30 : 24, radius * 0.18, data.theme);
+
+  function serverObjectId(prefix, obj) {
+    if (!obj.serverObjectId) obj.serverObjectId = `${prefix}-${nextServerObjectId++}`;
+    return obj.serverObjectId;
   }
-  if (["trade", "market", "iberian"].includes(data.theme)) {
-    addForestPatch(radius * 0.32, radius * 0.16, 14, radius * 0.12, data.theme);
+
+  function queueRemoteRaftMove(ownerId, dx, dy) {
+    const existing = pendingRemoteRaftMoves.get(ownerId) || { ownerId, dx: 0, dy: 0 };
+    existing.dx += dx;
+    existing.dy += dy;
+    pendingRemoteRaftMoves.set(ownerId, existing);
   }
-  if (!["atoll", "lagoon"].includes(data.theme)) {
-    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e);
+
+  function consumeRemoteRaftMoves() {
+    const moves = [...pendingRemoteRaftMoves.values()]
+      .filter((move) => Math.hypot(move.dx, move.dy) > 0.01)
+      .map((move) => ({ ownerId: move.ownerId, dx: move.dx, dy: move.dy }));
+    pendingRemoteRaftMoves.clear();
+    return moves;
   }
-  if (["rocky", "schooner", "naval", "trade"].includes(data.theme)) {
-    const wreckAngle = data.theme === "naval" ? -1.0 : data.theme === "trade" ? 1.05 : data.theme === "rocky" ? -2.2 : 2.35;
-    addShipwreck(wreckAngle, data.theme === "naval" ? "frigate" : "galleon");
+
+  function queuePlayerHit(targetId, damage) {
+    if (!targetId || !Number.isFinite(damage)) return;
+    pendingPlayerHits.push({ targetId: String(targetId), damage: clamp(Math.round(damage), 1, 120) });
+    if (pendingPlayerHits.length > 24) pendingPlayerHits = pendingPlayerHits.slice(-24);
   }
-  if (data.theme === "norse") {
-    const hall = new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.4, 3.1), mat(0x8b5a32));
-    hall.position.set(4.4, 3.7, -3.4);
-    hall.castShadow = true;
-    group.add(hall);
-    const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(4.0, 1.7, 4), mat(0x5a3b25));
-    hallRoof.position.set(4.4, 5.45, -3.4);
-    hallRoof.rotation.y = Math.PI / 4;
-    group.add(hallRoof);
-    collisionBoxes.push({ x: data.x + 4.4, z: data.z - 3.4, w: 7.2, d: 3.8 });
-  } else if (data.theme === "pagoda") {
-    const px = 7.0;
-    const pz = -5.8;
-    const pagodaW = 8.4;
-    const pagodaD = 7.4;
-    const levelYs = [3.18, 5.96, 8.74];
-    const pagoda = new THREE.Group();
-    const wallMat = mat(0xe4b46a);
-    const beamMat = mat(0x7a2e25);
-    const roofMat = mat(accent);
-    const trimMat = mat(0xf0cf73);
-    const stoneMat = mat(0x8d8a78);
-    const paperMat = mat(0xf4e7bd);
-    const pagodaGlow = new THREE.MeshBasicMaterial({
-      color: 0xffc263,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
+
+  function consumePlayerHits() {
+    const hits = pendingPlayerHits.slice(0, 24);
+    pendingPlayerHits = [];
+    return hits;
+  }
+
+  function queueWorldCommand(ownerId, command) {
+    if (!ownerId || !command) return;
+    pendingWorldCommands.push({ ownerId, ...command });
+    if (pendingWorldCommands.length > 80) pendingWorldCommands = pendingWorldCommands.slice(-80);
+  }
+
+  function consumeWorldCommands() {
+    const commands = pendingWorldCommands.slice(0, 80);
+    pendingWorldCommands = [];
+    return commands;
+  }
+
+  function queueProjectileCommand(projectile) {
+    if (!projectile) return;
+    pendingProjectileCommands.push({
+      type: projectile.type,
+      x: projectile.x,
+      y: projectile.y,
+      vx: projectile.vx,
+      vy: projectile.vy,
+      life: projectile.life,
+      damage: projectile.damage,
+      radius: projectile.radius
     });
-    const pagodaLights = [];
-    noTreeZones.push({ x: px, z: pz, r: 8.5 });
-    const addPagodaPiece = (mesh, x, y, z) => {
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      pagoda.add(mesh);
-      return mesh;
-    };
-    const addLantern = (x, y, z) => {
-      const hook = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.54, 6), mats.dark);
-      hook.rotation.x = Math.PI / 2;
-      addPagodaPiece(hook, x, y + 0.14, z);
-      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), pagodaGlow);
-      lantern.scale.set(0.9, 1.18, 0.9);
-      addPagodaPiece(lantern, x, y - 0.12, z);
-    };
-    const addDeckPanel = (floorY, cx, cz, w, d) => {
-      if (w <= 0.18 || d <= 0.18) return;
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, d), mats.plank);
-      addPagodaPiece(floor, cx, floorY - 0.09, cz);
-      addWalkPlatform(px + cx, pz + cz, Math.max(0.4, w - 0.08), Math.max(0.4, d - 0.08), floorY, 0, { maxRise: 1.1 });
-    };
-    const addSplitDeck = (floorY, w, d, hole = null) => {
-      if (!hole) {
-        addDeckPanel(floorY, 0, 0, w, d);
-        return;
-      }
-      const leftW = hole.x - hole.w * 0.5 + w * 0.5;
-      const rightW = w * 0.5 - (hole.x + hole.w * 0.5);
-      const backD = hole.z - hole.d * 0.5 + d * 0.5;
-      const frontD = d * 0.5 - (hole.z + hole.d * 0.5);
-      addDeckPanel(floorY, -w * 0.5 + leftW * 0.5, 0, leftW, d);
-      addDeckPanel(floorY, hole.x + hole.w * 0.5 + rightW * 0.5, 0, rightW, d);
-      addDeckPanel(floorY, hole.x, -d * 0.5 + backD * 0.5, hole.w, backD);
-      addDeckPanel(floorY, hole.x, hole.z + hole.d * 0.5 + frontD * 0.5, hole.w, frontD);
-      const trimPieces = [
-        { x: hole.x, z: hole.z - hole.d * 0.5, w: hole.w + 0.24, d: 0.12 },
-        { x: hole.x, z: hole.z + hole.d * 0.5, w: hole.w + 0.24, d: 0.12 },
-        { x: hole.x - hole.w * 0.5, z: hole.z, w: 0.12, d: hole.d + 0.24 },
-        { x: hole.x + hole.w * 0.5, z: hole.z, w: 0.12, d: hole.d + 0.24 },
-      ];
-      trimPieces.forEach((piece) => addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(piece.w, 0.12, piece.d), beamMat), piece.x, floorY + 0.02, piece.z));
-    };
-    const addRail = (floorY, w, d) => {
-      const y = floorY + 0.68;
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w - 1.0, 0.14, 0.12), beamMat), 0, y, -d * 0.5 + 0.32);
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, 0.14, 0.12), beamMat), -w * 0.33, y, d * 0.5 - 0.32);
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, 0.14, 0.12), beamMat), w * 0.33, y, d * 0.5 - 0.32);
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, d - 0.86), beamMat), -w * 0.5 + 0.32, y, 0);
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, d - 0.86), beamMat), w * 0.5 - 0.32, y, 0);
-      for (let i = 0; i < 6; i++) {
-        const t = i / 5;
-        const x = -w * 0.36 + t * w * 0.72;
-        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.07), trimMat), x, floorY + 0.38, -d * 0.5 + 0.32);
-      }
-      for (let i = 0; i < 4; i++) {
-        const z = -d * 0.25 + i * d * 0.17;
-        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), trimMat), -w * 0.5 + 0.32, floorY + 0.36, z);
-        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), trimMat), w * 0.5 - 0.32, floorY + 0.36, z);
-      }
-    };
-    const addLattice = (floorY, w, d, level) => {
-      const y = floorY + 1.18;
-      const back = new THREE.Mesh(new THREE.BoxGeometry(w * 0.58, 0.86, 0.08), paperMat);
-      addPagodaPiece(back, 0, y, -d * 0.5 + 0.08);
-      for (let i = -2; i <= 2; i++) {
-        addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.96, 0.1), beamMat), i * w * 0.1, y, -d * 0.5 + 0.14);
-      }
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 0.07, 0.11), beamMat), 0, y + 0.32, -d * 0.5 + 0.15);
-      addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 0.07, 0.11), beamMat), 0, y - 0.32, -d * 0.5 + 0.15);
-      for (const sx of [-1, 1]) {
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, d * 0.34), paperMat);
-        addPagodaPiece(panel, sx * (w * 0.5 - 0.08), y, -d * 0.12);
-        for (let i = -1; i <= 1; i++) {
-          addPagodaPiece(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.05), beamMat), sx * (w * 0.5 - 0.14), y, -d * 0.12 + i * d * 0.11);
+    if (pendingProjectileCommands.length > 48) pendingProjectileCommands = pendingProjectileCommands.slice(-48);
+  }
+
+  function consumeProjectileCommands() {
+    const commands = pendingProjectileCommands.slice(0, 48);
+    pendingProjectileCommands = [];
+    return commands;
+  }
+
+  async function serverPost(path, body) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    try {
+      const res = await fetch(`${SERVER_API_ROOT}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      return res.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function joinServerMode() {
+    const local = playerNetState(localPeerId);
+    scoreboardRows = [local];
+    remotePlayers = [];
+    serverAggressiveSharks = [];
+    remoteWorlds.clear();
+    serverPlayerId = null;
+    usingLocalMultiplayer = false;
+    renderScoreboard();
+    try {
+      const data = await serverPost("/api/join", local);
+      serverPlayerId = data.id;
+      usingLocalMultiplayer = false;
+      localPeers.clear();
+      applyServerPlayerState((data.players || []).find((p) => p.id === serverPlayerId));
+      applyOwnServerWorld(data.worlds?.[serverPlayerId]);
+      remotePlayers = (data.players || []).filter((p) => p.id !== serverPlayerId);
+      applyRemoteWorlds(data.worlds || {}, serverPlayerId);
+      serverAggressiveSharks = data.serverSharks || [];
+      applyServerSharks(serverAggressiveSharks);
+      serverProjectiles = data.serverProjectiles || [];
+      scoreboardRows = data.scoreboard || [playerNetState(serverPlayerId)];
+      renderScoreboard();
+    } catch {
+      serverPlayerId = null;
+      joinLocalMultiplayer();
+    }
+  }
+
+  async function updateServerMode(dt) {
+    serverSyncTimer += dt;
+    if (serverSyncTimer < 0.28) return;
+    serverSyncTimer = 0;
+    if (!serverPlayerId) {
+      if (!usingLocalMultiplayer) joinLocalMultiplayer();
+      else updateLocalMultiplayer();
+      return;
+    }
+    if (serverSyncInFlight) return;
+    serverSyncInFlight = true;
+    try {
+      const data = await serverPost("/api/state", playerNetState(serverPlayerId));
+      if (data.id) serverPlayerId = data.id;
+      usingLocalMultiplayer = false;
+      applyServerPlayerState((data.players || []).find((p) => p.id === serverPlayerId));
+      scoreboardRows = data.scoreboard || [playerNetState(serverPlayerId)];
+      remotePlayers = (data.players || []).filter((p) => p.id !== serverPlayerId);
+      applyOwnServerWorld(data.worlds?.[serverPlayerId]);
+      applyRemoteWorlds(data.worlds || {}, serverPlayerId);
+      serverAggressiveSharks = data.serverSharks || [];
+      applyServerSharks(serverAggressiveSharks);
+      serverProjectiles = data.serverProjectiles || [];
+      renderScoreboard();
+    } catch {
+      serverPlayerId = null;
+      joinLocalMultiplayer();
+    } finally {
+      serverSyncInFlight = false;
+    }
+  }
+
+  function joinLocalMultiplayer() {
+    usingLocalMultiplayer = true;
+    ensureLocalChannel();
+    publishLocalPeer("state");
+    updateLocalMultiplayer(true);
+  }
+
+  function ensureLocalChannel() {
+    if (localChannel || !("BroadcastChannel" in window)) return;
+    try {
+      localChannel = new BroadcastChannel("raaft-io-local-players");
+      localChannel.onmessage = (event) => receiveLocalPeer(event.data);
+    } catch {
+      localChannel = null;
+    }
+  }
+
+  function publishLocalPeer(type = "state") {
+    if (!gameStarted && type !== "leave") return;
+    const payload = { type, ...playerNetState(localPeerId), seen: Date.now() };
+    if (localChannel) localChannel.postMessage(payload);
+    try {
+      if (type === "leave") localStorage.removeItem(`raaft-io-peer-${localPeerId}`);
+      else localStorage.setItem(`raaft-io-peer-${localPeerId}`, JSON.stringify(payload));
+    } catch {
+      // Local file pages can block storage; BroadcastChannel still handles live tabs.
+    }
+  }
+
+  function receiveLocalPeer(data) {
+    if (!data || data.id === localPeerId) return;
+    applyIncomingPlayerHits(data.playerHits, data.name || "Player");
+    if (data.type === "leave" || data.health <= 0) {
+      localPeers.delete(data.id);
+      updateLocalPeerRows();
+      return;
+    }
+    localPeers.set(data.id, { ...data, seen: data.seen || Date.now() });
+    updateLocalPeerRows();
+  }
+
+  function applyIncomingPlayerHits(hits, attackerName = "Player") {
+    if (!Array.isArray(hits) || !state.player.alive) return;
+    const selfIds = new Set([localPeerId, serverPlayerId].filter(Boolean));
+    for (const hit of hits.slice(0, 12)) {
+      if (!selfIds.has(String(hit?.targetId || ""))) continue;
+      hurt(clamp(Number(hit.damage) || 0, 0, 120), `${attackerName} hit you.`);
+    }
+  }
+
+  function readLocalStoragePeers() {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith("raaft-io-peer-")) continue;
+        const data = JSON.parse(localStorage.getItem(key) || "{}");
+        if (!data.seen || data.seen < Date.now() - 5000) {
+          localStorage.removeItem(key);
+          continue;
         }
+        receiveLocalPeer(data);
       }
-      if (level === 0) {
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 0.08), trimMat);
-        addPagodaPiece(sign, 0, floorY + 1.55, d * 0.5 + 0.16);
-        const ink = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, 0.09), mats.dark);
-        addPagodaPiece(ink, 0, floorY + 1.55, d * 0.5 + 0.22);
-      }
-    };
-    const addRoof = (roofY, w, d, level) => {
-      const eave = new THREE.Mesh(new THREE.BoxGeometry(w + 1.85, 0.16, d + 1.85), trimMat);
-      addPagodaPiece(eave, 0, roofY, 0);
-      const lowerRoof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.74, 0.78, 4), roofMat);
-      lowerRoof.rotation.y = Math.PI / 4;
-      lowerRoof.scale.z = d / w;
-      addPagodaPiece(lowerRoof, 0, roofY + 0.36, 0);
-      const upperRoof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.5, 0.46, 4), mat(0xa92d2d));
-      upperRoof.rotation.y = Math.PI / 4;
-      upperRoof.scale.z = d / w;
-      addPagodaPiece(upperRoof, 0, roofY + 0.72, 0);
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const corner = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.62, 4), trimMat);
-          corner.rotation.y = Math.PI / 4;
-          addPagodaPiece(corner, sx * (w * 0.5 + 0.72), roofY + 0.36, sz * (d * 0.5 + 0.72));
-        }
-      }
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.65, 0.16, 0.18), beamMat);
-      addPagodaPiece(beam, 0, roofY - 0.22, d * 0.5 + 0.14);
-      const rearBeam = beam.clone();
-      addPagodaPiece(rearBeam, 0, roofY - 0.22, -d * 0.5 - 0.14);
-      if (level === 2) {
-        const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.45, 8), trimMat);
-        addPagodaPiece(crown, 0, roofY + 1.22, 0);
-        const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), trimMat);
-        addPagodaPiece(pearl, 0, roofY + 2.05, 0);
-      }
-    };
-    const addFloor = (floorY, w, d, level, hole = null) => {
-      addSplitDeck(floorY, w, d, hole);
-      const wallH = 1.78;
-      addRail(floorY, w, d);
-      addLattice(floorY, w, d, level);
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, wallH + 0.32, 8), beamMat);
-          addPagodaPiece(pillar, sx * (w * 0.5 - 0.34), floorY + wallH * 0.5, sz * (d * 0.5 - 0.34));
-        }
-      }
-      for (const x of [-w * 0.22, w * 0.22]) addLantern(x, floorY + 1.52, d * 0.5 + 0.34);
-      addRoof(floorY + wallH + 0.2, w, d, level);
-      if (level === 0) {
-        const matTop = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.18, 0.82), mats.wood);
-        addPagodaPiece(matTop, 0.8, floorY + 0.34, -1.1);
-        const scroll = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.52), mat(0xf6e4b5));
-        addPagodaPiece(scroll, 0.8, floorY + 0.46, -1.1);
-      }
-    };
-    const addStairs = (startY, endY, startX, endX, startZ, endZ, rot = 0) => {
-      const steps = 12;
-      const addStairLanding = (x, z, y) => {
-        const landing = new THREE.Mesh(new THREE.BoxGeometry(rot ? 1.12 : 1.72, 0.16, rot ? 1.72 : 1.12), mats.wood);
-        landing.rotation.y = rot;
-        addPagodaPiece(landing, x, y - 0.08, z);
-        addWalkPlatform(px + x, pz + z, rot ? 1.2 : 1.82, rot ? 1.82 : 1.2, y, rot, { maxRise: 1.15 });
-      };
-      addStairLanding(startX, startZ, startY);
-      for (let i = 0; i < steps; i++) {
-        const t = (i + 0.5) / steps;
-        const x = startX + (endX - startX) * t;
-        const z = startZ + (endZ - startZ) * t;
-        const y = startY + (endY - startY) * t;
-        const step = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.18, 0.74), mats.wood);
-        step.rotation.y = rot;
-        addPagodaPiece(step, x, y + 0.04, z);
-        addWalkPlatform(px + x, pz + z, rot ? 0.92 : 1.64, rot ? 1.64 : 0.92, y + 0.15, rot, { maxRise: 1.15 });
-      }
-      addStairLanding(endX, endZ, endY);
-    };
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.5, 8), stoneMat);
-    base.scale.set(pagodaW * 0.62, 1, pagodaD * 0.55);
-    base.rotation.y = Math.PI / 8;
-    addPagodaPiece(base, 0, 2.92, 0);
-    addFloor(levelYs[0], pagodaW, pagodaD, 0);
-    addFloor(levelYs[1], pagodaW - 1.3, pagodaD - 1.0, 1, { x: -2.55, z: -1.92, w: 1.95, d: 1.9 });
-    addFloor(levelYs[2], pagodaW - 2.55, pagodaD - 2.0, 2, { x: 2.2, z: 1.68, w: 1.9, d: 1.85 });
-    addStairs(levelYs[0], levelYs[1], -2.55, -2.55, 2.25, -1.92, 0);
-    addStairs(levelYs[1], levelYs[2], 2.2, 2.2, -2.05, 1.68, 0);
-    const groundLight = new THREE.PointLight(0xffb54f, 0, 12, 1.55);
-    groundLight.position.set(0, levelYs[0] + 1.5, 0.2);
-    pagoda.add(groundLight);
-    const upperLight = new THREE.PointLight(0xffcb73, 0, 9, 1.6);
-    upperLight.position.set(0, levelYs[1] + 1.4, 0);
-    pagoda.add(upperLight);
-    pagodaLights.push(groundLight, upperLight);
-    pagoda.position.set(px, 0, pz);
-    group.add(pagoda);
-    shipNightLights.push({
-      group: pagoda,
-      material: pagodaGlow,
-      haloMaterial: null,
-      haloOpacity: 0,
-      lights: pagodaLights,
-      baseIntensity: 0.75,
-    });
-    const wallPad = 0.08;
-    addCollisionBox(px, pz - pagodaD * 0.5, pagodaW, 0.3, wallPad);
-    addCollisionBox(px - pagodaW * 0.5, pz, 0.3, pagodaD, wallPad);
-    addCollisionBox(px + pagodaW * 0.5, pz, 0.3, pagodaD, wallPad);
-    addCollisionBox(px - pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
-    addCollisionBox(px + pagodaW * 0.34, pz + pagodaD * 0.5, pagodaW * 0.32, 0.3, wallPad);
-  } else if ((data.theme === "fort" || data.theme === "naval") && data.name !== "Crown Harbor") {
-    for (let side of [-1, 1]) {
-      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.45, 3.2, 8), mats.rock);
-      tower.position.set(side * 5.2, 3.55, -5.2);
-      tower.castShadow = true;
-      group.add(tower);
-      obstacles.push({ x: data.x + side * 5.2, z: data.z - 5.2, r: 1.8 });
-      collisionBoxes.push({ x: data.x + side * 5.2, z: data.z - 5.2, w: 3.1, d: 3.1, pad: 0.18 });
+    } catch {
+      // Some browsers restrict localStorage for file URLs.
     }
   }
-  if (data.theme === "starter") {
-    const light = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.4, 8.6, 12), mat(0xf6ead0));
-    light.position.set(6.8, 6.9, -7.2);
-    light.castShadow = true;
-    group.add(light);
-    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.9, 12), new THREE.MeshBasicMaterial({ color: 0xfff1a6 }));
-    lantern.position.set(6.8, 11.35, -7.2);
-    group.add(lantern);
-    addCone(6.8, -7.2, 1.55, 1.15, accent, 12.1, 10);
-    obstacles.push({ x: data.x + 6.8, z: data.z - 7.2, r: 1.65 });
-    collisionBoxes.push({ x: data.x + 6.8, z: data.z - 7.2, w: 2.9, d: 2.9, pad: 0.15 });
+
+  function updateLocalMultiplayer(force = false) {
+    if (!usingLocalMultiplayer && !force) return;
+    ensureLocalChannel();
+    publishLocalPeer("state");
+    readLocalStoragePeers();
+    const staleAt = Date.now() - 5000;
+    for (const [id, peer] of localPeers) {
+      if ((peer.seen || 0) < staleAt) localPeers.delete(id);
+    }
+    updateLocalPeerRows();
   }
-  if (data.theme === "iberian") {
-    addBlock(4.7, -4.5, 3.2, 3.6, 3.0, 0xf4e5c9);
-    addCone(4.7, -4.5, 2.2, 1.4, 0xb84f44, 6.7);
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.13, 8, 18, Math.PI), mat(accent));
-    arch.position.set(-1.2, 3.65, -7.2);
-    arch.rotation.x = Math.PI / 2;
-    group.add(arch);
+
+  function updateLocalPeerRows() {
+    const local = playerNetState(localPeerId);
+    const peers = [...localPeers.values()].filter((p) => p.health > 0);
+    scoreboardRows = [local, ...peers];
+    remotePlayers = peers;
+    applyRemoteWorlds(Object.fromEntries(peers.filter((peer) => peer.world).map((peer) => [peer.id, peer.world])), localPeerId);
+    renderScoreboard();
   }
-  if (data.theme === "lagoon") {
-    const bridge = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.16, 8, 18, Math.PI), mat(0xd7b44a));
-    bridge.position.set(3.7, 3.25, 3.0);
-    bridge.rotation.x = Math.PI / 2;
-    group.add(bridge);
-    addCollisionBox(3.7, 3.0, 5.4, 0.7, 0.18);
-    addBlock(-5.1, -4.1, 2.5, 2.5, 2.4, 0xe2d0a5);
-    addCone(-5.1, -4.1, 1.8, 0.9, accent, 5.3);
-  }
-  if (data.theme === "trade") {
-    addBlock(4.8, -4.0, 4.8, 2.6, 3.2, 0xb77b42);
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5.2, 7), mats.wood);
-    mast.position.set(-5.4, 5.0, -2.6);
-    group.add(mast);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.5, 0.16), mat(0xf8f4e5));
-    blade.position.set(-5.4, 6.8, -2.6);
-    group.add(blade);
-    const blade2 = blade.clone();
-    blade2.rotation.z = Math.PI / 2;
-    group.add(blade2);
-    obstacles.push({ x: data.x - 5.4, z: data.z - 2.6, r: 1.2 });
-  }
-  if (data.theme === "dhow" || data.theme === "market") {
-    addTent(4.6, -3.9, accent);
-    addTent(1.8, -6.2, 0xf0d05a);
-    addTent(6.8, -0.8, 0xda9c5c);
-  }
-  if (data.theme === "schooner") {
-    addBlock(4.8, -4.2, 5.6, 1.0, 2.2, 0xb77b42, 3.0);
-    for (let i = 0; i < 3; i++) {
-      const rib = new THREE.Mesh(new THREE.TorusGeometry(1.05 + i * 0.2, 0.055, 6, 12, Math.PI), mats.wood);
-      rib.position.set(3.7 + i * 0.9, 3.65, -4.2);
-      rib.rotation.x = Math.PI / 2;
-      group.add(rib);
+
+  function applyRemoteWorlds(worlds, selfId) {
+    const activeRemote = activeCannon?.remoteOwnerId && activeCannon?.id ? { ownerId: activeCannon.remoteOwnerId, id: activeCannon.id } : null;
+    const openRemoteChest = openChest?.remoteOwnerId && openChest?.id ? { ownerId: openChest.remoteOwnerId, id: openChest.id } : null;
+    remoteWorlds.clear();
+    for (const [ownerId, world] of Object.entries(worlds || {})) {
+      if (!world || ownerId === selfId) continue;
+      if (!Array.isArray(world.raft) || !world.raftOffset) continue;
+      remoteWorlds.set(ownerId, normalizeRemoteWorld(world, ownerId));
+    }
+    if (activeRemote) {
+      const world = remoteWorlds.get(activeRemote.ownerId);
+      activeCannon = (world?.structures || []).find((st) => st.id === activeRemote.id) || null;
+    }
+    if (openRemoteChest) {
+      const world = remoteWorlds.get(openRemoteChest.ownerId);
+      openChest = (world?.structures || []).find((st) => st.id === openRemoteChest.id) || null;
     }
   }
-  if (data.theme === "atoll") {
-    addTent(4.4, -4.0, 0xef6f4f);
-    const shell = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.16, 8, 18), mat(0xf8f4e5));
-    shell.position.set(-5.2, 3.05, -4.2);
-    shell.scale.z = 0.5;
-    group.add(shell);
-    obstacles.push({ x: data.x - 5.2, z: data.z - 4.2, r: 1.2 });
-  }
-  const treeCount = data.theme === "atoll" ? 10 : ["norse", "rocky", "naval", "fort", "starter"].includes(data.theme) ? 16 : 11;
-  for (let i = 0; i < treeCount; i++) {
-    const tree = makeIslandTree(data.theme);
-    tree.position.set(Math.cos(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.22), 2.3, Math.sin(i * 1.7) * (radius * 0.28 + Math.random() * radius * 0.2));
-    if (!clearOfNoTreeZones(tree.position.x, tree.position.z, 3.6)) continue;
-    tree.scale.setScalar(0.75 + Math.random() * 0.48);
-    group.add(tree);
-    obstacles.push({ x: data.x + tree.position.x, z: data.z + tree.position.z, r: 1.35 * tree.scale.x });
-  }
-  for (let i = 0; i < 8; i++) {
-    const rockSize = 0.7 + Math.random() * 0.7;
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockSize, 0), mats.rock);
-    const rockX = Math.cos(i * 1.9) * (radius * 0.46 + Math.random() * radius * 0.2);
-    const rockZ = Math.sin(i * 1.9) * (radius * 0.42 + Math.random() * radius * 0.18);
-    rock.position.set(rockX, 2.7, rockZ);
-    rock.rotation.set(Math.random(), Math.random(), Math.random());
-    rock.scale.y = 0.55 + Math.random() * 0.7;
-    rock.position.y = localIslandSurfaceY(rockX, rockZ) + rockSize * rock.scale.y * 0.46;
-    rock.castShadow = true;
-    group.add(rock);
-    obstacles.push({ x: data.x + rock.position.x, z: data.z + rock.position.z, r: 1.1 * Math.max(rock.scale.x, rock.scale.z) });
-  }
-  const label = makeLabel(islandName(data.name));
-  label.position.set(data.x, 12, data.z);
-  scene.add(label);
-  labels.push(label);
-  scene.add(group);
-  return {
-    ...data,
-    group,
-    radius,
-    landY: 2.9,
-    obstacles,
-    collisionBoxes,
-    terrainFeatures,
-    walkPlatforms,
-    label,
-    dockBox: { x: data.x, z: data.z + dockCenterZ, w: dockWidth + 0.25, d: dockLength + 0.4 },
-    dock: new THREE.Vector3(data.x, 0, data.z + radius),
-    shop: new THREE.Vector3(data.x - radius * 0.24, 0, data.z - radius * 0.05),
-  };
-}
 
-function setLabelText(sprite, text) {
-  if (!sprite) return;
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 64;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "rgba(16,32,42,.72)";
-  ctx.beginPath();
-  ctx.roundRect(10, 8, 236, 42, 12);
-  ctx.fill();
-  ctx.fillStyle = "#fff8df";
-  ctx.font = "bold 24px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText(text, 128, 37);
-  const texture = new THREE.CanvasTexture(c);
-  if (sprite.material?.map) sprite.material.map.dispose();
-  sprite.material.map = texture;
-  sprite.material.needsUpdate = true;
-  sprite.userData.labelText = text;
-}
-
-function makeLabel(text) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
-  sprite.scale.set(18, 4.5, 1);
-  setLabelText(sprite, text);
-  return sprite;
-}
-
-function refreshIslandLabels() {
-  islands.forEach((island) => {
-    if (!island.label) return;
-    island.label.visible = shouldShowIslandLabel(island);
-    if (island.label.visible) setLabelText(island.label, islandName(island));
-  });
-}
-
-function buildItemName(id) {
-  return BUILD_ITEMS[id]?.name || id;
-}
-
-function buildInventoryCount(id) {
-  return Math.max(0, Math.floor(Number(state.inventory[id]) || 0));
-}
-
-function applyBuildInventory(message) {
-  const next = message?.inventory || {};
-  BUILD_ITEM_ORDER.forEach((id) => {
-    state.inventory[id] = Math.max(0, Math.floor(Number(next[id]) || 0));
-  });
-  if (message?.bought && BUILD_ITEMS[message.bought]) {
-    state.selectedBuildItem = message.bought;
-    toast(`Bought ${message.amount || 1} ${buildItemName(message.bought)}.`);
-  }
-  if (state.selectedBuildItem && buildInventoryCount(state.selectedBuildItem) <= 0) state.selectedBuildItem = null;
-  if (!state.infiniteGold && Number.isFinite(Number(message?.gold))) state.gold = Math.max(0, Number(message.gold));
-  renderInventory();
-  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
-  updateHud();
-}
-
-function clearBuildInventory(notifyServer = true) {
-  BUILD_ITEM_ORDER.forEach((id) => {
-    state.inventory[id] = 0;
-  });
-  state.selectedBuildItem = null;
-  renderInventory();
-  if (notifyServer && multiplayer.serverWorld) sendMultiplayer({ type: "clearBuildInventory" });
-}
-
-function islandClaimFor(islandOrName) {
-  const name = typeof islandOrName === "object" ? islandOrName?.name : islandOrName;
-  return name ? islandClaimNames.get(name) || null : null;
-}
-
-function playerOwnsIsland(island) {
-  const claim = islandClaimFor(island);
-  if (!claim) return false;
-  return [claim.owner, claim.clientId, claim.sessionId].includes(captainId)
-    || [claim.owner, claim.clientId, claim.sessionId].includes(playerId)
-    || [claim.owner, claim.clientId, claim.sessionId].includes(multiplayer.networkId);
-}
-
-function cleanIslandClaimName(value) {
-  const cleaned = String(value || "").trim().replace(/\s+/g, " ").replace(/[<>]/g, "").slice(0, 24);
-  return cleaned || `${captainName()}'s Isle`;
-}
-
-function applyIslandClaim(data) {
-  if (!data?.island) return;
-  const island = islands.find((item) => item.name === data.island);
-  if (!island) return;
-  const claim = {
-    island: island.name,
-    name: cleanIslandClaimName(data.name),
-    owner: data.owner || data.clientId || data.sessionId || "",
-    clientId: data.clientId || "",
-    sessionId: data.sessionId || "",
-    ownerName: data.ownerName || data.captain || "",
-  };
-  islandClaimNames.set(island.name, claim);
-  if (island.label) {
-    island.label.visible = true;
-    setLabelText(island.label, islandName(island));
-  }
-  if (state.dockedAt === island.name) updateHud();
-}
-
-function syncIslandClaims(claims = []) {
-  islandClaimNames.clear();
-  (Array.isArray(claims) ? claims : []).forEach((claim) => applyIslandClaim(claim));
-  refreshIslandLabels();
-  renderInventory();
-  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
-}
-
-function localPointInRotatedRect(point, rect, pad = 0) {
-  const dx = point.x - rect.x;
-  const dz = point.z - rect.z;
-  const rot = rect.rot || 0;
-  const cos = Math.cos(-rot);
-  const sin = Math.sin(-rot);
-  const localX = dx * cos - dz * sin;
-  const localZ = dx * sin + dz * cos;
-  return Math.abs(localX) <= rect.w * 0.5 + pad && Math.abs(localZ) <= rect.d * 0.5 + pad;
-}
-
-function rotateBuildLocal(local, rotation) {
-  const cos = Math.cos(rotation || 0);
-  const sin = Math.sin(rotation || 0);
-  return {
-    x: local.x * cos + local.z * sin,
-    z: -local.x * sin + local.z * cos,
-  };
-}
-
-function islandLobeNormalized(island, lobe, point, margin = 0) {
-  const rx = Math.max(0.2, lobe.rx - margin);
-  const rz = Math.max(0.2, lobe.rz - margin);
-  const dx = point.x - island.group.position.x - lobe.x;
-  const dz = point.z - island.group.position.z - lobe.z;
-  const rot = lobe.rot || 0;
-  const cos = Math.cos(-rot);
-  const sin = Math.sin(-rot);
-  const localX = dx * cos - dz * sin;
-  const localZ = dx * sin + dz * cos;
-  return (localX * localX) / (rx * rx) + (localZ * localZ) / (rz * rz);
-}
-
-function pointInIslandLobe(island, lobe, point, margin = 0) {
-  return islandLobeNormalized(island, lobe, point, margin) <= 1;
-}
-
-function islandSurfaceContains(island, point, margin = 0) {
-  if (!island) return false;
-  if (island.surfaceLobes?.length) {
-    return island.surfaceLobes.some((lobe) => pointInIslandLobe(island, lobe, point, margin));
-  }
-  return dist2(point, island.group.position) <= island.radius - margin;
-}
-
-function islandFootprintContains(island, point, margin = 0) {
-  if (!island) return false;
-  if (island.surfaceLobes?.length) {
-    return island.surfaceLobes.some((lobe) => pointInIslandLobe(island, lobe, point, -margin));
-  }
-  return dist2(point, island.group.position) <= island.radius + margin;
-}
-
-function addBuildingMeshPart(group, mesh) {
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-  return mesh;
-}
-
-function makeBuildingMesh(piece) {
-  const group = new THREE.Group();
-  const type = piece.type || "floor";
-  const wood = mats.plank;
-  const darkWood = mats.wood;
-  const cloth = mat(0xd84c3f);
-  if (type === "floor") {
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, BUILD_FLOOR_THICKNESS, BUILD_GRID_SIZE), wood);
-    floor.position.y = BUILD_FLOOR_THICKNESS * 0.5;
-    addBuildingMeshPart(group, floor);
-  } else if (type === "wall") {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, BUILD_WALL_DEPTH), wood);
-    wall.position.y = 1.18;
-    addBuildingMeshPart(group, wall);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_WALL_CAP_DEPTH), darkWood);
-    cap.position.y = 2.42;
-    addBuildingMeshPart(group, cap);
-  } else if (type === "cornerWall") {
-    const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, BUILD_WALL_DEPTH), wood);
-    wallA.position.set(BUILD_GRID_SIZE * 0.25, 1.18, -BUILD_GRID_SIZE * 0.25);
-    addBuildingMeshPart(group, wallA);
-    const capA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_WALL_CAP_DEPTH), darkWood);
-    capA.position.set(BUILD_GRID_SIZE * 0.25, 2.42, -BUILD_GRID_SIZE * 0.25);
-    addBuildingMeshPart(group, capA);
-    const wallB = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_DEPTH, 2.35, BUILD_GRID_SIZE), wood);
-    wallB.position.set(-BUILD_GRID_SIZE * 0.25, 1.18, BUILD_GRID_SIZE * 0.25);
-    addBuildingMeshPart(group, wallB);
-    const capB = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_CAP_DEPTH, 0.16, BUILD_GRID_SIZE), darkWood);
-    capB.position.set(-BUILD_GRID_SIZE * 0.25, 2.42, BUILD_GRID_SIZE * 0.25);
-    addBuildingMeshPart(group, capB);
-    const post = new THREE.Mesh(new THREE.BoxGeometry(BUILD_WALL_CAP_DEPTH, 2.55, BUILD_WALL_CAP_DEPTH), darkWood);
-    post.position.set(-BUILD_GRID_SIZE * 0.25, 1.28, -BUILD_GRID_SIZE * 0.25);
-    addBuildingMeshPart(group, post);
-  } else if (type === "door") {
-    for (const x of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, BUILD_WALL_DEPTH), wood);
-      post.position.set(x * 1.28, 1.18, 0);
-      addBuildingMeshPart(group, post);
-    }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.42, BUILD_WALL_CAP_DEPTH), darkWood);
-    lintel.position.y = 2.28;
-    addBuildingMeshPart(group, lintel);
-  } else if (type === "roof") {
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(BUILD_GRID_SIZE * 0.82, 1.1, 4), mat(0xb45f3f));
-    roof.rotation.y = Math.PI / 4;
-    roof.position.y = 0.76;
-    addBuildingMeshPart(group, roof);
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 1.06, 0.16, BUILD_GRID_SIZE * 1.06), darkWood);
-    deck.position.y = 0.12;
-    addBuildingMeshPart(group, deck);
-  } else if (type === "table") {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.22, 1.25), darkWood);
-    top.position.y = 0.9;
-    addBuildingMeshPart(group, top);
-    for (const x of [-0.82, 0.82]) {
-      for (const z of [-0.42, 0.42]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.18), mats.wood);
-        leg.position.set(x, 0.44, z);
-        addBuildingMeshPart(group, leg);
-      }
-    }
-  } else {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.2, 7), mats.wood);
-    pole.position.y = 1.6;
-    addBuildingMeshPart(group, pole);
-    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.82, 1.28), cloth);
-    banner.position.set(0, 2.48, 0.62);
-    addBuildingMeshPart(group, banner);
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.22, 8), mats.rock);
-    base.position.y = 0.11;
-    addBuildingMeshPart(group, base);
-  }
-  group.position.set(Number(piece.x) || 0, Number(piece.y) || 0, Number(piece.z) || 0);
-  group.rotation.y = Number(piece.rotation) || 0;
-  return group;
-}
-
-function removeBuildingPiece(piece) {
-  if (!piece) return;
-  scene.remove(piece.group);
-  buildingPieces.splice(buildingPieces.indexOf(piece), 1);
-  buildingPieceMap.delete(piece.id);
-}
-
-function buildingPieceIsMine(piece) {
-  if (!piece) return false;
-  return [piece.owner, piece.clientId, piece.sessionId].includes(captainId)
-    || [piece.owner, piece.clientId, piece.sessionId].includes(playerId)
-    || [piece.owner, piece.clientId, piece.sessionId].includes(multiplayer.networkId);
-}
-
-function removeBuildingPieceById(id) {
-  const piece = buildingPieceMap.get(id);
-  if (piece) removeBuildingPiece(piece);
-}
-
-function upsertBuildingPiece(data) {
-  if (!data?.id || !BUILD_ITEMS[data.type]) return;
-  const islandNameValue = data.island || data.islandName;
-  const island = islands.find((item) => item.name === islandNameValue);
-  if (!island) return;
-  const piece = {
-    id: data.id,
-    island: island.name,
-    type: data.type,
-    x: Number(data.x) || island.group.position.x,
-    y: Number.isFinite(Number(data.y)) ? Number(data.y) : island.landY,
-    z: Number(data.z) || island.group.position.z,
-    rotation: Number(data.rotation) || 0,
-    owner: data.owner || "",
-    clientId: data.clientId || "",
-    sessionId: data.sessionId || "",
-  };
-  const existing = buildingPieceMap.get(piece.id);
-  if (existing) {
-    Object.assign(existing, piece);
-    existing.group.position.set(piece.x, piece.y, piece.z);
-    existing.group.rotation.y = piece.rotation;
-    return;
-  }
-  piece.group = makeBuildingMesh(piece);
-  scene.add(piece.group);
-  buildingPieces.push(piece);
-  buildingPieceMap.set(piece.id, piece);
-}
-
-function syncBuildingPieces(items = []) {
-  const seen = new Set();
-  (Array.isArray(items) ? items : []).forEach((item) => {
-    if (!item?.id) return;
-    seen.add(item.id);
-    upsertBuildingPiece(item);
-  });
-  buildingPieces.slice().forEach((piece) => {
-    if (!seen.has(piece.id)) removeBuildingPiece(piece);
-  });
-}
-
-function buildingSurfaceYAt(island, point, baseY) {
-  let y = baseY;
-  buildingPieces.forEach((piece) => {
-    if (piece.island !== island.name) return;
-    const type = piece.type;
-    if (type !== "floor" && type !== "roof") return;
-    const surfaceY = piece.y + (type === "floor" ? BUILD_FLOOR_SURFACE_Y : 2.36);
-    const currentY = Number.isFinite(point.y) ? point.y : y;
-    if (surfaceY - currentY > 1.35) return;
-    if (localPointInRotatedRect(point, { x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.08, d: BUILD_GRID_SIZE * 1.08, rot: piece.rotation }, 0.08)) {
-      y = Math.max(y, surfaceY);
-    }
-  });
-  return y;
-}
-
-function buildingSupportTopY(piece, placementType) {
-  if (!piece) return null;
-  if (piece.type === "floor" && placementType !== "roof") return piece.y + BUILD_FLOOR_SURFACE_Y;
-  if (placementType === "roof" && (piece.type === "wall" || piece.type === "door" || piece.type === "cornerWall")) {
-    return piece.y + 2.54;
-  }
-  return null;
-}
-
-function buildingSupportsPlacement(supportType, placementType) {
-  if (placementType === "flag") return false;
-  if (placementType === "roof") return supportType === "wall" || supportType === "door" || supportType === "cornerWall";
-  return supportType === "floor";
-}
-
-function buildingSupportRects(piece, placementType) {
-  const rot = piece.rotation || 0;
-  if (piece.type === "floor" && placementType !== "roof") {
-    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.06, d: BUILD_GRID_SIZE * 1.06, rot }];
-  }
-  if (piece.type === "wall" || piece.type === "door") {
-    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE, d: BUILD_WALL_CAP_DEPTH, rot }];
-  }
-  if (piece.type === "cornerWall") {
-    return [
-      { x: piece.x + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_CAP_DEPTH, rot },
-      { x: piece.x - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_CAP_DEPTH, d: BUILD_GRID_SIZE, rot },
-    ];
-  }
-  return [];
-}
-
-function buildStackSupportAt(island, point, type, rotation) {
-  if (type === "flag") return null;
-  let best = null;
-  const pointY = Number.isFinite(point.y) ? point.y : island.landY;
-  const maxRise = type === "roof" ? 3.35 : 1.4;
-  const maxDrop = type === "roof" ? 1.8 : 0.82;
-  buildingPieces.forEach((piece) => {
-    if (piece.island !== island.name || !buildingPieceIsMine(piece)) return;
-    if (!buildingSupportsPlacement(piece.type, type)) return;
-    const topY = buildingSupportTopY(piece, type);
-    if (!Number.isFinite(topY)) return;
-    if (topY - pointY > maxRise || pointY - topY > maxDrop) return;
-    const pad = type === "roof" ? 0.72 : 0.38;
-    if (!buildingSupportRects(piece, type).some((rect) => localPointInRotatedRect(point, rect, pad))) return;
-    const distance = Math.hypot(point.x - piece.x, point.z - piece.z);
-    if (best && (topY < best.y - 0.05 || (Math.abs(topY - best.y) < 0.05 && distance >= best.distance))) return;
-    best = {
-      piece,
-      x: type === "roof" ? piece.x : point.x,
-      y: topY,
-      z: type === "roof" ? piece.z : point.z,
-      rotation: type === "roof" ? (piece.rotation || 0) : rotation,
-      distance,
-    };
-  });
-  return best;
-}
-
-function buildPlacementSurfaceYAt(island, point, type, rotation) {
-  const stack = buildStackSupportAt(island, point, type, rotation);
-  if (stack) return stack.y;
-  if (type === "roof") return null;
-  return islandGroundY(island, point);
-}
-
-function buildingCollisionBoxes(piece) {
-  const base = { x: piece.x, z: piece.z, rot: piece.rotation || 0, minY: piece.y - 0.15, maxY: piece.y + 2.7 };
-  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH }];
-  if (piece.type === "cornerWall") {
-    return [
-      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH },
-      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE },
-    ];
-  }
-  if (piece.type === "door") {
-    return [
-      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
-      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
-    ];
-  }
-  if (piece.type === "table") return [{ ...base, w: 2.25, d: 1.25, maxY: piece.y + 1.1 }];
-  if (piece.type === "flag") return [{ ...base, w: 0.85, d: 0.85, maxY: piece.y + 3.2 }];
-  return [];
-}
-
-function pointBlockedByBuildings(island, point, options = {}) {
-  return buildingPieces.some((piece) => {
-    if (piece.island !== island.name) return false;
-    const pointY = Number.isFinite(point.y) ? point.y : island.landY;
-    if (options.ignoreSupportForType && buildingSupportsPlacement(piece.type, options.ignoreSupportForType)) {
-      const topY = buildingSupportTopY(piece, options.ignoreSupportForType);
-      if (Number.isFinite(topY) && Math.abs(pointY - topY) < 0.86) return false;
-    }
-    return buildingCollisionBoxes(piece).some((box) => {
-      if (pointY < box.minY || pointY > box.maxY) return false;
-      return localPointInRotatedRect(point, box, 0.2);
-    });
-  });
-}
-
-function buildSnapSockets(type) {
-  const half = BUILD_GRID_SIZE * 0.5;
-  if (type === "wall" || type === "door") {
-    return [
-      { x: -half, z: 0 },
-      { x: half, z: 0 },
-    ];
-  }
-  if (type === "cornerWall") {
-    return [
-      { x: -BUILD_GRID_SIZE * 0.25, z: -BUILD_GRID_SIZE * 0.25 },
-      { x: BUILD_GRID_SIZE * 0.75, z: -BUILD_GRID_SIZE * 0.25 },
-      { x: -BUILD_GRID_SIZE * 0.25, z: BUILD_GRID_SIZE * 0.75 },
-    ];
-  }
-  if (type === "floor" || type === "roof") {
-    return [
-      { x: -half, z: 0 },
-      { x: half, z: 0 },
-      { x: 0, z: -half },
-      { x: 0, z: half },
-    ];
-  }
-  return [];
-}
-
-function snapSocketWorld(piece, socket, rotation = piece.rotation || 0) {
-  const offset = rotateBuildLocal(socket, rotation);
-  return { x: piece.x + offset.x, z: piece.z + offset.z };
-}
-
-function buildFootprintSnapPoints(footprint) {
-  const halfW = footprint.w * 0.5;
-  const halfD = footprint.d * 0.5;
-  const locals = [
-    { x: -halfW, z: -halfD, kind: "vertex" },
-    { x: halfW, z: -halfD, kind: "vertex" },
-    { x: halfW, z: halfD, kind: "vertex" },
-    { x: -halfW, z: halfD, kind: "vertex" },
-    { x: 0, z: -halfD, kind: "edge" },
-    { x: halfW, z: 0, kind: "edge" },
-    { x: 0, z: halfD, kind: "edge" },
-    { x: -halfW, z: 0, kind: "edge" },
-  ];
-  return locals.map((local) => {
-    const offset = rotateBuildLocal(local, footprint.rot || 0);
+  function normalizeRemoteWorld(world, ownerId = null) {
     return {
-      x: footprint.x + offset.x,
-      z: footprint.z + offset.z,
-      localX: local.x,
-      localZ: local.z,
-      kind: local.kind,
+      raftOffset: {
+        x: cleanCoord(world.raftOffset?.x, 0),
+        y: cleanCoord(world.raftOffset?.y, 0)
+      },
+      raft: (world.raft || []).map((rt) => ({
+        gx: Math.floor(cleanCoord(rt.gx, 0)),
+        gy: Math.floor(cleanCoord(rt.gy, 0)),
+        hp: clamp(cleanCoord(rt.hp, blockHp.deck), 0, 500),
+        maxHp: clamp(cleanCoord(rt.maxHp, blockHp.deck), 1, 500)
+      })),
+      structures: (world.structures || []).map((st) => ({
+        ...st,
+        remoteOwnerId: ownerId,
+        x: cleanCoord(st.x, 0),
+        y: cleanCoord(st.y, 0),
+        angle: cleanCoord(st.angle, 0),
+        hp: clamp(cleanCoord(st.hp, blockHp[st.type] || 80), 0, 600),
+        maxHp: clamp(cleanCoord(st.maxHp, blockHp[st.type] || 80), 1, 600),
+        timer: clamp(cleanCoord(st.timer, 0), 0, 1200),
+        maxTimer: clamp(cleanCoord(st.maxTimer, 0), 0, 1200),
+        cooldown: clamp(cleanCoord(st.cooldown, 0), 0, 20),
+        ready: Boolean(st.ready),
+        hasGlass: Boolean(st.hasGlass),
+        planted: Boolean(st.planted),
+        cooking: st.cooking || null,
+        storage: st.type === "chest" ? (Array.isArray(st.storage) ? st.storage.map(normalizeSlot) : emptySlots(CHEST_INV_CAP)) : null
+      }))
     };
-  });
-}
+  }
 
-function buildFootprintsOverlap(a, b, pad = 0.02) {
-  const corners = (rect) => buildFootprintSnapPoints(rect).slice(0, 4);
-  const axes = (rect) => {
-    const rot = rect.rot || 0;
+  function applyOwnServerWorld(world) {
+    if (!world || !Array.isArray(world.raft) || !world.raftOffset) return;
+    const normalized = normalizeRemoteWorld(world, null);
+    const activeId = activeCannon?.serverObjectId || activeCannon?.id || null;
+    const openChestId = openChest?.serverObjectId || openChest?.id || null;
+    state.raftOffset.x = normalized.raftOffset.x;
+    state.raftOffset.y = normalized.raftOffset.y;
+    state.raft = normalized.raft.map((rt) => ({ ...rt, type: "deck" }));
+    state.structures = normalized.structures.map((st) => {
+      const local = { ...st, base: st.base || "raft" };
+      local.serverObjectId = st.id;
+      delete local.remoteOwnerId;
+      return local;
+    });
+    if (activeId) activeCannon = state.structures.find((st) => (st.serverObjectId || st.id) === activeId) || null;
+    if (openChestId) openChest = state.structures.find((st) => (st.serverObjectId || st.id) === openChestId) || null;
+  }
+
+  function applyServerSharks(sharks) {
+    const claimed = new Set();
+    for (const serverShark of sharks || []) {
+      let shark = state.sharks.find((item) => item.serverId === serverShark.id);
+      if (!shark) {
+        shark = state.sharks.find((item) => !item.serverId && item.aggressive && !claimed.has(item));
+      }
+      if (!shark) shark = state.sharks.find((item) => !item.serverId && !claimed.has(item));
+      if (!shark) continue;
+      claimed.add(shark);
+      shark.serverId = serverShark.id;
+      shark.serverControlled = true;
+      shark.serverTargetId = serverShark.targetId || null;
+      shark.serverX = cleanCoord(serverShark.x, shark.x);
+      shark.serverY = cleanCoord(serverShark.y, shark.y);
+      shark.serverFacing = cleanCoord(serverShark.facing, shark.wander);
+      shark.aggressive = true;
+      shark.aggro = 99;
+      shark.flee = 0;
+      shark.hp = SHARK_HP;
+    }
+    for (const shark of state.sharks) {
+      if (shark.serverControlled && !claimed.has(shark)) {
+        shark.serverControlled = false;
+        shark.serverId = null;
+        shark.serverTargetId = null;
+      }
+      if ((sharks || []).length && !claimed.has(shark)) shark.aggressive = false;
+    }
+  }
+
+  function applyServerPlayerState(serverPlayer) {
+    if (!serverPlayer || devMode || !state.player.alive) return;
+    const serverHealth = clamp(cleanCoord(serverPlayer.health, state.player.health), 0, 100);
+    if (serverHealth >= state.player.health) return;
+    state.player.health = serverHealth;
+    toast("You took server-side damage.");
+    if (state.player.health <= 0) {
+      state.player.health = 0;
+      state.player.alive = false;
+      gameStarted = false;
+      publishLocalPeer("leave");
+      fallenNameEl.textContent = state.player.name || playerName;
+      document.getElementById("survived").textContent = state.day;
+      gameOverEl.hidden = false;
+    }
+  }
+
+  function cleanCoord(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function renderScoreboard() {
+    if (!scoreboardListEl) return;
+    const rows = [...scoreboardRows]
+      .sort((a, b) => (b.xp || 0) - (a.xp || 0))
+      .slice(0, 8);
+    scoreboardListEl.innerHTML = "";
+    for (const row of rows) {
+      const item = document.createElement("div");
+      item.className = "score-row";
+      const name = document.createElement("span");
+      name.textContent = row.name || "Player";
+      const level = document.createElement("span");
+      level.textContent = `Lv ${row.level || 1}`;
+      item.append(name, level);
+      scoreboardListEl.append(item);
+    }
+  }
+
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add("show");
+    toastTimer = 2.4;
+  }
+
+  function tick() {
+    const t = now();
+    const dt = Math.min(0.033, t - last);
+    last = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  function update(dt) {
+    waveTime += dt;
+    if (toastTimer > 0) {
+      toastTimer -= dt;
+      if (toastTimer <= 0) toastEl.classList.remove("show");
+    }
+    if (!gameStarted) {
+      state.camera.x += (state.player.x - state.camera.x) * 0.08;
+      state.camera.y += (state.player.y - state.camera.y) * 0.08;
+      updateMouseWorld();
+      updateHud();
+      return;
+    }
+    if (!state.player.alive) return;
+
+    const p = state.player;
+    if (activeCannon && (activeCannon.hp <= 0 || dist(activeCannon, p) > 92)) activeCannon = null;
+    if (openChest && (openChest.hp <= 0 || dist(openChest, p) > 92)) closeInventory();
+    p.attackCd = Math.max(0, p.attackCd - dt);
+    if (toolAnim.t > 0) {
+      toolAnim.t = Math.max(0, toolAnim.t - dt);
+      if (toolAnim.t <= 0) toolAnim.kind = null;
+    }
+    p.invuln = Math.max(0, p.invuln - dt);
+    musketCooldown = Math.max(0, musketCooldown - dt);
+    dayClock += dt;
+    state.day = Math.floor(dayClock / 90) + 1;
+
+    if (devMode) {
+      applyDevToken();
+    } else {
+      const drain = isOnRaft(p) ? 1 : 1.35;
+      p.hunger = clamp(p.hunger - dt * 0.34 * drain, 0, 100);
+      p.thirst = clamp(p.thirst - dt * 0.46 * drain, 0, 100);
+      if (p.hunger <= 0 || p.thirst <= 0) hurt((p.hunger <= 0 && p.thirst <= 0 ? 7 : 4) * dt, "Starvation and dehydration are winning.");
+    }
+
+    const inWater = !isOnRaft(p) && !isOnIsland(p);
+    if (inWater) {
+      p.swimTime = clamp((p.swimTime || 0) + dt, 0, DROWN_TIME + 8);
+      if (p.swimTime >= DROWN_TIME) hurt(12 * dt, "You are drowning.");
+    } else {
+      p.swimTime = Math.max(0, (p.swimTime || 0) - dt * 6);
+    }
+    const exhausted = p.stamina <= 0;
+    const sprinting = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && p.stamina > 4;
+    const baseSpeed = inWater ? (exhausted ? 22 : 48 + p.speed * 3 + p.agility * 2) : (exhausted ? 48 : 118) + (exhausted ? 0 : p.speed * 9 + p.agility * 5);
+    const speed = sprinting ? baseSpeed * (inWater ? 1.12 : 1.55) : baseSpeed;
+    let mx = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    let my = (keys.has("KeyS") ? 1 : 0) - (keys.has("KeyW") ? 1 : 0);
+    if (activeCannon) {
+      const turn = ((keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0)) * 1.8 * dt;
+      activeCannon.aimOffset = clamp((activeCannon.aimOffset || 0) + turn, -Math.PI / 2, Math.PI / 2);
+      if (Math.abs(turn) > 0.001) syncRemoteStructure(activeCannon);
+      mx = 0;
+    }
+    const len = Math.hypot(mx, my) || 1;
+    mx /= len;
+    my /= len;
+    p.x = clamp(p.x + mx * speed * dt, 80, WORLD - 80);
+    p.y = clamp(p.y + my * speed * dt, 80, WORLD - 80);
+    resolveWallCollision(p, 15);
+    if (mx || my) p.facing = Math.atan2(my, mx);
+    p.stamina = clamp(p.stamina + (sprinting && (mx || my) ? -28 : 8 + p.agility * 0.6) * dt, 0, 100);
+
+    const boardedRaft = raftBoardingAt(p);
+    if (boardedRaft && hotbar[selected].id === "oar" && mouse.down) {
+      if (!spendStamina(0.18, false)) {
+        rowingTimer = Math.max(0, rowingTimer - dt * 7);
+      } else {
+        const a = angleTo(screenCenterWorld(), mouseWorld());
+        const dx = Math.cos(a) * 72 * dt;
+        const dy = Math.sin(a) * 72 * dt;
+        const moved = boardedRaft.local ? moveRaft(dx, dy) : moveRemoteRaft(boardedRaft, dx, dy);
+        if (moved) {
+          p.x += dx;
+          p.y += dy;
+          rowingTimer += dt * 9;
+          rowingDurabilityTimer += dt;
+          if (rowingDurabilityTimer >= 0.75) {
+            rowingDurabilityTimer = 0;
+            useItemDurability();
+          }
+        }
+      }
+    } else {
+      rowingTimer = Math.max(0, rowingTimer - dt * 7);
+      rowingDurabilityTimer = 0;
+    }
+
+    updateCast(dt);
+    updateDebris(dt);
+    updateAnimals(dt);
+    updateShark(dt);
+    updateStructures(dt);
+    updateProjectiles(dt);
+    updateWorldRespawns(dt);
+    updateParticles(dt);
+
+    if (state.debris.length < 180) spawnDebris();
+    state.camera.x += (p.x - state.camera.x) * 0.12;
+    state.camera.y += (p.y - state.camera.y) * 0.12;
+    updateMouseWorld();
+    updateHud();
+    updateServerMode(dt);
+  }
+
+  function screenCenterWorld() {
+    return { x: state.camera.x, y: state.camera.y };
+  }
+
+  function mouseWorld() {
+    return { x: mouse.worldX, y: mouse.worldY };
+  }
+
+  function updateMouseWorld() {
+    mouse.worldX = state.camera.x + (mouse.x - innerWidth / 2);
+    mouse.worldY = state.camera.y + (mouse.y - innerHeight / 2);
+    state.player.facing = angleTo(state.player, mouseWorld());
+  }
+
+  function isOnRaft(p) {
+    return Boolean(raftAt(p.x, p.y) || remoteRaftAt(p.x, p.y));
+  }
+
+  function isOnIsland(p) {
+    return state.islands.some((island) => Math.hypot(p.x - island.x, p.y - island.y) <= island.r * ISLAND_WALK_SCALE);
+  }
+
+  function raftTileRect(rt) {
+    return {
+      x: state.raftOffset.x + rt.gx * TILE,
+      y: state.raftOffset.y + rt.gy * TILE,
+      w: TILE,
+      h: TILE
+    };
+  }
+
+  function remoteRaftTileRect(world, rt) {
+    return {
+      x: world.raftOffset.x + rt.gx * TILE,
+      y: world.raftOffset.y + rt.gy * TILE,
+      w: TILE,
+      h: TILE
+    };
+  }
+
+  function raftBoardingAt(p) {
+    const local = raftAt(p.x, p.y);
+    if (local) return { local: true, tile: local };
+    return remoteRaftAt(p.x, p.y);
+  }
+
+  function remoteRaftAt(x, y) {
+    for (const [ownerId, world] of remoteWorlds) {
+      for (const rt of world.raft || []) {
+        const r = remoteRaftTileRect(world, rt);
+        if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) {
+          return { local: false, ownerId, world, tile: rt };
+        }
+      }
+    }
+    return null;
+  }
+
+  function nearestRemoteStructure(p, maxDist = 56) {
+    let best = null;
+    let bestD = maxDist;
+    for (const [ownerId, world] of remoteWorlds) {
+      for (const st of world.structures || []) {
+        if (!st || st.hp <= 0) continue;
+        const d = dist(p, st);
+        if (d < bestD) {
+          best = { ownerId, structure: st };
+          bestD = d;
+        }
+      }
+    }
+    return best;
+  }
+
+  function moveRaft(dx, dy) {
+    if (raftWouldHitIsland(dx, dy)) {
+      toast("The raft scrapes the island shore.");
+      return false;
+    }
+    state.raftOffset.x += dx;
+    state.raftOffset.y += dy;
+    for (const st of state.structures) {
+      if (st.base === "raft") {
+        st.x += dx;
+        st.y += dy;
+      }
+    }
+    return true;
+  }
+
+  function moveRemoteRaft(boarded, dx, dy) {
+    if (!boarded?.world || remoteRaftWouldHitIsland(boarded.world, dx, dy)) {
+      toast("The raft scrapes the island shore.");
+      return false;
+    }
+    boarded.world.raftOffset.x += dx;
+    boarded.world.raftOffset.y += dy;
+    for (const st of boarded.world.structures || []) {
+      if (st.base === "raft") {
+        st.x += dx;
+        st.y += dy;
+      }
+    }
+    queueRemoteRaftMove(boarded.ownerId, dx, dy);
+    return true;
+  }
+
+  function raftWouldHitIsland(dx, dy) {
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      const corners = [
+        { x: r.x + dx + 6, y: r.y + dy + 6 },
+        { x: r.x + r.w + dx - 6, y: r.y + dy + 6 },
+        { x: r.x + dx + 6, y: r.y + r.h + dy - 6 },
+        { x: r.x + r.w + dx - 6, y: r.y + r.h + dy - 6 }
+      ];
+      if (corners.some((pt) => state.islands.some((island) => Math.hypot(pt.x - island.x, pt.y - island.y) < island.r + 8))) return true;
+    }
+    return false;
+  }
+
+  function remoteRaftWouldHitIsland(world, dx, dy) {
+    for (const rt of world.raft || []) {
+      const r = remoteRaftTileRect(world, rt);
+      const corners = [
+        { x: r.x + dx + 6, y: r.y + dy + 6 },
+        { x: r.x + r.w + dx - 6, y: r.y + dy + 6 },
+        { x: r.x + dx + 6, y: r.y + r.h + dy - 6 },
+        { x: r.x + r.w + dx - 6, y: r.y + r.h + dy - 6 }
+      ];
+      if (corners.some((pt) => state.islands.some((island) => Math.hypot(pt.x - island.x, pt.y - island.y) < island.r + 8))) return true;
+    }
+    return false;
+  }
+
+  function updateDebris(dt) {
+    for (const d of state.debris) {
+      if (!d.stopped) {
+        const next = { x: d.x + d.vx * dt, y: d.y + d.vy * dt };
+        const island = shoreCollision(next);
+        if (island) {
+          const a = angleTo(island, next);
+          d.x = island.x + Math.cos(a) * (island.r + 18);
+          d.y = island.y + Math.sin(a) * (island.r + 18);
+          d.vx = 0;
+          d.vy = 0;
+          d.stopped = true;
+        } else if (hitsWall(next, d.type === "barrel" ? 16 : 12)) {
+          d.vx = 0;
+          d.vy = 0;
+          d.stopped = true;
+        } else {
+          d.x = next.x;
+          d.y = next.y;
+        }
+      }
+      d.life -= dt;
+      d.bob += dt * 3;
+      if (!d.stopped && d.y > WORLD - 120) {
+        d.y = 120;
+        d.x = rnd(160, WORLD - 160);
+      }
+      if (dist(d, state.player) < 42) collectDebris(d);
+    }
+    state.debris = state.debris.filter((d) => !d.dead && d.life > 0);
+  }
+
+  function shoreCollision(p) {
+    return state.islands.find((island) => Math.hypot(p.x - island.x, p.y - island.y) < island.r + 18);
+  }
+
+  function collectDebris(d) {
+    d.dead = true;
+    if (d.type === "barrel") {
+      const haul = ["wood", "wood", "leaves", "scrap", "scrap", "cloth", "rope", "glass", "iron"];
+      const found = {};
+      for (let i = 0; i < 4; i++) {
+        const item = haul[Math.floor(Math.random() * haul.length)];
+        found[item] = (found[item] || 0) + 1;
+      }
+      if (Math.random() < 0.08) found.steel = (found.steel || 0) + 1;
+      for (const [item, qty] of Object.entries(found)) addRes(item, qty);
+      gainXp(5);
+      toast(`Barrel: ${Object.entries(found).map(([item, qty]) => `${qty} ${label(item).toLowerCase()}`).join(", ")}.`);
+      burst(d.x, d.y, "#d89a54", 10);
+      return;
+    }
+    addRes(d.type, 1);
+    gainXp(1);
+    burst(d.x, d.y, "#e8d3a4", 5);
+  }
+
+  function updateCast(dt) {
+    if (!cast) return;
+    cast.t += dt;
+    const dx = cast.tx - cast.x;
+    const dy = cast.ty - cast.y;
+    const len = Math.hypot(dx, dy);
+    if (!cast.hooked && len > 4) {
+      cast.x += (dx / len) * 420 * dt;
+      cast.y += (dy / len) * 420 * dt;
+    } else {
+      cast.hooked = true;
+      if (!cast.catch && cast.t > 0.8) {
+        const nearest = state.debris.find((d) => dist(d, cast) < 55);
+        if (nearest) {
+          cast.catch = nearest;
+          toast("Hooked floating debris.");
+        } else if (Math.random() < dt * 0.65) {
+          cast.catch = { type: "rawFish", x: cast.x, y: cast.y, fish: true };
+          toast("Fish on the line.");
+        }
+      }
+      const p = state.player;
+      const a = angleTo(cast, p);
+      cast.x += Math.cos(a) * 260 * dt;
+      cast.y += Math.sin(a) * 260 * dt;
+      if (cast.catch) {
+        cast.catch.x = cast.x;
+        cast.catch.y = cast.y;
+      }
+      if (dist(cast, p) < 36) {
+        if (cast.catch) {
+          if (cast.catch.fish) {
+            addRes("rawFish", 1);
+            gainXp(8);
+            toast("Caught raw fish. Grill it for more food.");
+          } else {
+            collectDebris(cast.catch);
+          }
+        }
+        cast = null;
+      }
+    }
+  }
+
+  function updateAnimals(dt) {
+    for (const a of state.animals) {
+      a.hit = Math.max(0, a.hit - dt);
+      a.cd = Math.max(0, a.cd - dt);
+      const p = state.player;
+      let near = dist(a, p);
+      let vx = Math.cos(a.wander) * 0.25;
+      let vy = Math.sin(a.wander) * 0.25;
+      const playerIsland = islandAt(p);
+      const crocodileOnLand = a.type === "crocodile" && playerIsland && a.homeIsland === playerIsland;
+      if (a.type === "crocodile" && a.submerged) {
+        if (!crocodileOnLand) continue;
+        const emerge = waterPointAroundIsland(a.homeIsland || playerIsland, rnd(34, 76));
+        a.x = emerge.x;
+        a.y = emerge.y;
+        a.wander = angleTo(a, p);
+        a.submerged = false;
+        near = dist(a, p);
+      }
+      if (a.type === "crocodile" && !crocodileOnLand) {
+        const home = a.homeIsland || nearestIsland(a);
+        if (!home || dist(a, home) > home.r * ISLAND_WALK_SCALE + 4) {
+          a.submerged = true;
+          continue;
+        }
+        const away = angleTo(home, a);
+        a.wander = away;
+        a.x += Math.cos(away) * a.speed * 1.65 * dt;
+        a.y += Math.sin(away) * a.speed * 1.65 * dt;
+        resolveWallCollision(a, 24);
+        continue;
+      }
+      const noticeRange = a.type === "crocodile" ? 999 : a.type === "crab" ? 55 : a.type === "pig" ? 90 : 125;
+      if (crocodileOnLand || near < noticeRange) {
+        const aa = angleTo(a, p);
+        vx = Math.cos(aa);
+        vy = Math.sin(aa);
+        a.wander = aa;
+      } else if (Math.random() < dt * 0.8) {
+        a.wander += rnd(-0.9, 0.9);
+      }
+      if (Math.abs(vx) + Math.abs(vy) > 0.05) a.wander = Math.atan2(vy, vx);
+      const charge = a.type === "elephant" && near < 85 ? 1.25 : 1;
+      a.x += vx * a.speed * charge * dt;
+      a.y += vy * a.speed * charge * dt;
+      if (a.type === "crocodile") damageBlockingStructure(a);
+      resolveWallCollision(a, a.type === "crab" ? 15 : a.type === "crocodile" ? 24 : 22);
+      const island = nearestIsland(a);
+      if (a.type === "crocodile" && a.homeIsland && dist(a, a.homeIsland) > a.homeIsland.r + 92) {
+        const back = angleTo(a, a.homeIsland);
+        a.x += Math.cos(back) * a.speed * 2.2 * dt;
+        a.y += Math.sin(back) * a.speed * 2.2 * dt;
+        a.wander = back;
+      } else if (a.type !== "crocodile" && island && dist(a, island) > island.r * 0.88) {
+        const back = angleTo(a, island);
+        a.x += Math.cos(back) * a.speed * 2 * dt;
+        a.y += Math.sin(back) * a.speed * 2 * dt;
+        a.wander = back;
+      }
+      if (near < (a.type === "crocodile" ? 34 : 28) && a.cd <= 0) {
+        hurt(a.dmg, `${cap(a.type)} hit you.`);
+        a.cd = a.type === "crocodile" ? 1.25 : a.type === "elephant" ? 1.4 : 0.9;
+      }
+    }
+    state.animals = state.animals.filter((a) => !a.dead);
+  }
+
+  function damageBlockingStructure(a) {
+    if (a.cd > 0) return;
+    let target = null;
+    let bestD = 46;
+    for (const st of state.structures) {
+      if (st.base !== "island") continue;
+      if (a.homeIsland && dist(st, a.homeIsland) > a.homeIsland.r + 20) continue;
+      const d = dist(a, st) - footprintRadius(st.type);
+      if (d < bestD) {
+        bestD = d;
+        target = st;
+      }
+    }
+    if (!target) return;
+    target.hp -= 16;
+    a.cd = 1.1;
+    burst(target.x, target.y, "#87a85d", 8);
+    toast("Crocodile is tearing through your blocks.");
+    if (target.hp <= 0) {
+      state.structures = state.structures.filter((st) => st !== target);
+      if (activeCannon === target) activeCannon = null;
+    }
+  }
+
+  function updateShark(dt) {
+    const p = state.player;
+    const land = islandAt(p);
+    for (const s of state.sharks) {
+      s.bite = Math.max(0, s.bite - dt);
+      s.flee = Math.max(0, s.flee - dt);
+      s.aggro = Math.max(0, s.aggro - dt);
+      s.finBob += dt * 2.4;
+      if (Math.random() < dt * 0.25) s.wander += rnd(-0.65, 0.65);
+      const aggro = s.aggressive || s.aggro > 0;
+      const target = aggro ? sharkTarget(s, land) : null;
+      let a = target ? (s.flee > 0 ? angleTo(target, s) : angleTo(s, target)) : s.wander;
+      a = steerAroundIslands(s, a);
+      if (s.serverControlled && Number.isFinite(s.serverX) && Number.isFinite(s.serverY)) {
+        const serverAim = angleTo(s, { x: s.serverX, y: s.serverY });
+        a += shortAngle(serverAim - a) * 0.55;
+      }
+      const spd = s.serverControlled ? 112 : s.flee > 0 ? 125 : aggro ? 105 : 42;
+      s.x += Math.cos(a) * spd * dt;
+      s.y += Math.sin(a) * spd * dt;
+      if (s.serverControlled && Number.isFinite(s.serverX) && Number.isFinite(s.serverY)) {
+        const gapToServer = Math.hypot(s.serverX - s.x, s.serverY - s.y);
+        const pull = clamp(dt * (gapToServer > 420 ? 1.8 : 0.55), 0, 0.28);
+        s.x += (s.serverX - s.x) * pull;
+        s.y += (s.serverY - s.y) * pull;
+        s.wander = Number.isFinite(s.serverFacing) ? s.serverFacing : a;
+      } else {
+        s.wander = a;
+      }
+      for (const other of state.sharks) {
+        if (other === s) continue;
+        const gap = dist(s, other);
+        if (gap > 0 && gap < 120) {
+          s.x += ((s.x - other.x) / gap) * (120 - gap) * 0.18 * dt;
+          s.y += ((s.y - other.y) / gap) * (120 - gap) * 0.18 * dt;
+        }
+      }
+      keepSharkOffLand(s);
+      resolveWallCollision(s, 28);
+      if (aggro && !land && !isOnRaft(p) && dist(s, p) < 46 && s.bite <= 0) {
+        hurt(SHARK_BITE_DAMAGE, "The shark bit you.");
+        s.bite = 1.3;
+      }
+      const victim = nearestRaftTile(s) || state.raft[0];
+      const victimCenter = victim ? raftTileCenter(victim) : null;
+      if (aggro && victimCenter && dist(s, victimCenter) < 70 && s.bite <= 0) {
+        damageRaftBlock(victim, SHARK_RAFT_DAMAGE);
+        s.bite = 1.65;
+        toast("Angry shark is chewing the raft.");
+        if (victim.hp <= 0) breakRaftTile(victim);
+      }
+    }
+  }
+
+  function sharkTarget(shark, localLand) {
+    const targetId = shark.serverTargetId;
+    if (targetId) {
+      if (targetId === serverPlayerId || targetId === localPeerId) return localLand ? sharkRetreatPoint(localLand, shark) : state.player;
+      const remote = remotePlayers.find((player) => player.id === targetId && player.health > 0);
+      if (remote) return remote;
+    }
+    if (localLand) return sharkRetreatPoint(localLand, shark);
+    if (shark.serverControlled && !targetId) return null;
+    return state.player;
+  }
+
+  function islandAt(p) {
+    return state.islands.find((island) => Math.hypot(p.x - island.x, p.y - island.y) <= island.r * ISLAND_WALK_SCALE);
+  }
+
+  function sharkWaterPoint(island, s) {
+    const a = angleTo(island, s);
+    return {
+      x: island.x + Math.cos(a) * (island.r + 90),
+      y: island.y + Math.sin(a) * (island.r + 90)
+    };
+  }
+
+  function sharkRetreatPoint(island, s) {
+    const a = angleTo(island, s);
+    return {
+      x: island.x + Math.cos(a) * (island.r + 460),
+      y: island.y + Math.sin(a) * (island.r + 460)
+    };
+  }
+
+  function steerAroundIslands(entity, desiredAngle) {
+    let angle = desiredAngle;
+    for (const island of state.islands) {
+      const d = dist(entity, island);
+      const look = {
+        x: entity.x + Math.cos(angle) * 135,
+        y: entity.y + Math.sin(angle) * 135
+      };
+      const aboutToHit = Math.hypot(look.x - island.x, look.y - island.y) < island.r + 88;
+      if (d > island.r + 230 && !aboutToHit) continue;
+      const away = angleTo(island, entity);
+      const side = shortAngle(angle - away) >= 0 ? 1 : -1;
+      const tangent = away + side * Math.PI / 2;
+      const target = d < island.r + 72 ? away : tangent;
+      angle += shortAngle(target - angle) * (aboutToHit ? 0.85 : 0.42);
+    }
+    return angle;
+  }
+
+  function keepSharkOffLand(s) {
+    for (const island of state.islands) {
+      const d = dist(s, island);
+      const min = island.r + 42;
+      if (d < min) {
+        const a = angleTo(island, s);
+        s.x = island.x + Math.cos(a) * min;
+        s.y = island.y + Math.sin(a) * min;
+        s.flee = Math.max(s.flee, 0.45);
+      }
+    }
+  }
+
+  function damageRaftBlock(rt, amount) {
+    const st = structureOnTile(rt);
+    if (st) {
+      st.hp -= amount;
+      burst(st.x, st.y, st.type === "torch" ? "#ffb44c" : "#ff7482", 7);
+      if (st.hp <= 0) {
+        state.structures = state.structures.filter((item) => item !== st);
+        toast(`${label(st.type)} broke.`);
+      }
+      return;
+    }
+    rt.hp -= amount;
+  }
+
+  function nearestRaftTile(from) {
+    let best = null;
+    let bestD = Infinity;
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      const c = { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+      const d = dist(from, c);
+      if (d < bestD) {
+        best = rt;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function raftTileCenter(rt) {
+    const r = raftTileRect(rt);
+    return { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+  }
+
+  function breakRaftTile(rt) {
+    const doomed = state.structures.filter((st) => st.base === "raft" && raftAt(st.x, st.y) === rt);
+    state.structures = state.structures.filter((st) => !doomed.includes(st));
+    if (doomed.includes(activeCannon)) activeCannon = null;
+    state.raft = state.raft.filter((tile) => tile !== rt);
+    burst(raftTileRect(rt).x + TILE / 2, raftTileRect(rt).y + TILE / 2, "#d89a54", 14);
+  }
+
+  function structureOnTile(rt) {
+    return state.structures.find((st) => st.base === "raft" && raftAt(st.x, st.y) === rt);
+  }
+
+  function nearestRaftEdge(from = state.player) {
+    let best = { x: state.raftOffset.x, y: state.raftOffset.y };
+    let bestD = Infinity;
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      const pts = [
+        { x: r.x + TILE / 2, y: r.y },
+        { x: r.x + TILE / 2, y: r.y + TILE },
+        { x: r.x, y: r.y + TILE / 2 },
+        { x: r.x + TILE, y: r.y + TILE / 2 }
+      ];
+      for (const pt of pts) {
+        const d = dist(pt, from);
+        if (d < bestD) {
+          bestD = d;
+          best = pt;
+        }
+      }
+    }
+    return best;
+  }
+
+  function updateStructures(dt) {
+    for (const st of state.structures) {
+      if (st.type === "grill" && st.timer > 0) {
+        st.timer -= dt;
+        if (st.timer <= 0) {
+          st.timer = 0;
+          st.ready = true;
+          toast("Grill has cooked fish ready.");
+        }
+      }
+      if (st.type === "waterMaker" && st.timer > 0) {
+        st.timer -= dt;
+        if (st.timer <= 0) {
+          st.timer = 0;
+          st.ready = true;
+          toast("Water maker filled the flask.");
+        }
+      }
+      if (st.type === "plantPot" && st.timer > 0) {
+        st.timer -= dt;
+        if (st.timer <= 0) {
+          st.ready = true;
+          st.timer = 0;
+          toast("Tomatoes are ready to harvest.");
+        }
+      }
+      if (st.type === "cannon") st.cooldown = Math.max(0, (st.cooldown || 0) - dt);
+    }
+  }
+
+  function updateProjectiles(dt) {
+    for (const shot of state.projectiles) {
+      shot.age = (shot.age || 0) + dt;
+      shot.life -= dt;
+      shot.x += shot.vx * dt;
+      shot.y += shot.vy * dt;
+      if (shot.life <= 0 || hitsWall(shot, 7)) {
+        shot.dead = true;
+      }
+      if (!shot.dead && shot.type === "musketBall" && shot.age > 0.04) {
+        shot.dead = damageDirectShot(shot);
+      }
+      if (!shot.dead && shot.type === "cannonball" && shot.age > 0.06) {
+        const hitAnimal = state.animals.some((a) => !a.dead && dist(a, shot) < 20);
+        const hitShark = state.sharks.some((s) => dist(s, shot) < 35);
+        const armedForBlocks = shot.age > 0.18;
+        const hitStructure = armedForBlocks && state.structures.some((st) => dist(st, shot) < footprintRadius(st.type) + 8);
+        const hitRaft = armedForBlocks && state.raft.some((rt) => {
+          const r = raftTileRect(rt);
+          return shot.x > r.x && shot.x < r.x + r.w && shot.y > r.y && shot.y < r.y + r.h;
+        });
+        const hitRemoteWorld = armedForBlocks && cannonballHitsRemoteWorld(shot);
+        if (hitAnimal || hitShark || hitStructure || hitRaft || hitRemoteWorld) shot.dead = true;
+      }
+      if (shot.dead && !shot.exploded && shot.type === "cannonball") {
+        shot.exploded = true;
+        explodeCannonball(shot);
+      } else if (shot.dead && !shot.exploded && shot.type === "musketBall") {
+        shot.exploded = true;
+        burst(shot.x, shot.y, "#d2d7d9", 6);
+      }
+    }
+    state.projectiles = state.projectiles.filter((shot) => !shot.dead);
+  }
+
+  function cannonballHitsRemoteWorld(shot) {
+    for (const world of remoteWorlds.values()) {
+      if ((world.structures || []).some((st) => dist(st, shot) < footprintRadius(st.type) + 8)) return true;
+      if ((world.raft || []).some((rt) => {
+        const r = remoteRaftTileRect(world, rt);
+        return shot.x > r.x && shot.x < r.x + r.w && shot.y > r.y && shot.y < r.y + r.h;
+      })) return true;
+    }
+    return false;
+  }
+
+  function fireCannon(cannon) {
+    if (!cannon || cannon.hp <= 0) return;
+    if (cannon.cooldown > 0) return toast("Cannon is reloading.");
+    if (!spendStamina(12)) return;
+    const angle = (cannon.angle || 0) + (cannon.aimOffset || 0);
+    cannon.cooldown = 1.45;
+    const shot = {
+      type: "cannonball",
+      x: cannon.x + Math.cos(angle) * 36,
+      y: cannon.y + Math.sin(angle) * 36,
+      vx: Math.cos(angle) * 430,
+      vy: Math.sin(angle) * 430,
+      age: 0,
+      life: 1.28,
+      damage: 42,
+      radius: 52
+    };
+    state.projectiles.push(shot);
+    queueProjectileCommand(shot);
+    syncRemoteStructure(cannon);
+    burst(cannon.x + Math.cos(angle) * 32, cannon.y + Math.sin(angle) * 32, "#ffe0a3", 9);
+  }
+
+  function fireMusket() {
+    const p = state.player;
+    if (musketCooldown > 0) return toast(`Musket reloading: ${Math.ceil(musketCooldown)}s.`);
+    if (!spendStamina(14)) return;
+    useItemDurability();
+    const angle = angleTo(p, mouseWorld());
+    musketCooldown = 7;
+    const shot = {
+      type: "musketBall",
+      x: p.x + Math.cos(angle) * 38,
+      y: p.y + Math.sin(angle) * 38,
+      vx: Math.cos(angle) * 560,
+      vy: Math.sin(angle) * 560,
+      age: 0,
+      life: 1.05,
+      damage: 21,
+      radius: 8
+    };
+    state.projectiles.push(shot);
+    queueProjectileCommand(shot);
+    burst(p.x + Math.cos(angle) * 34, p.y + Math.sin(angle) * 34, "#ffe7a8", 8);
+  }
+
+  function damageDirectShot(shot) {
+    for (const a of state.animals) {
+      if (a.dead || a.submerged || dist(a, shot) > 24) continue;
+      a.hp -= shot.damage;
+      a.hit = 0.25;
+      if (a.hp <= 0) killAnimal(a);
+      gainXp(3);
+      return true;
+    }
+    for (const s of state.sharks) {
+      if (dist(s, shot) > 34) continue;
+      s.hp -= shot.damage;
+      s.aggro = 18;
+      s.flee = 0.5;
+      if (s.hp <= 0) {
+        addRes("sharkMeat", 3);
+        gainXp(45);
+        respawnShark(s);
+        toast("Musket sank a shark. Shark meat acquired.");
+      }
+      return true;
+    }
+    for (const st of [...state.structures]) {
+      if (dist(st, shot) > footprintRadius(st.type) + 7) continue;
+      st.hp -= Math.max(6, Math.round(shot.damage * 0.45));
+      if (st.hp <= 0) {
+        state.structures = state.structures.filter((item) => item !== st);
+        if (activeCannon === st) activeCannon = null;
+      }
+      return true;
+    }
+    if (damageRemoteStructureShot(shot)) return true;
+    const hitRemote = remotePlayers.find((other) => other && other.health > 0 && dist(other, shot) < 22);
+    if (hitRemote) {
+      hitRemote.health = Math.max(0, (hitRemote.health || 100) - shot.damage);
+      queuePlayerHit(hitRemote.id, shot.damage);
+      toast(`Shot ${hitRemote.name || "player"}.`);
+      return true;
+    }
+    return false;
+  }
+
+  function explodeCannonball(shot) {
+    burst(shot.x, shot.y, "#31333a", 18);
+    burst(shot.x, shot.y, "#ffb45d", 16);
+    for (const a of state.animals) {
+      if (a.dead || dist(a, shot) > shot.radius) continue;
+      a.hp -= shot.damage;
+      a.hit = 0.25;
+      if (a.hp <= 0) killAnimal(a);
+    }
+    for (const s of state.sharks) {
+      if (dist(s, shot) > shot.radius + 12) continue;
+      s.hp -= shot.damage;
+      s.aggro = 16;
+      s.flee = 0.8;
+      if (s.hp <= 0) {
+        addRes("sharkMeat", 3);
+        gainXp(45);
+        respawnShark(s);
+        toast("Cannon sank a shark. Shark meat acquired.");
+      }
+    }
+    for (const st of [...state.structures]) {
+      if (dist(st, shot) > shot.radius + footprintRadius(st.type)) continue;
+      st.hp -= shot.damage;
+      if (st.hp <= 0) {
+        state.structures = state.structures.filter((item) => item !== st);
+        if (activeCannon === st) activeCannon = null;
+      }
+    }
+    for (const rt of [...state.raft]) {
+      const r = raftTileRect(rt);
+      const c = { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+      if (dist(c, shot) > shot.radius + TILE * 0.35) continue;
+      rt.hp -= Math.round(shot.damage * 0.75);
+      if (rt.hp <= 0) breakRaftTile(rt);
+    }
+    damageRemoteWorldsInExplosion(shot);
+    for (const other of remotePlayers) {
+      if (!other || other.health <= 0 || dist(other, shot) > shot.radius) continue;
+      other.health = Math.max(0, (other.health || 100) - shot.damage);
+      queuePlayerHit(other.id, shot.damage);
+    }
+    gainXp(4);
+  }
+
+  function damageRemoteStructureShot(shot) {
+    for (const [ownerId, world] of remoteWorlds) {
+      for (const st of [...(world.structures || [])]) {
+        if (dist(st, shot) > footprintRadius(st.type) + 7) continue;
+        const damage = Math.max(4, Math.round(shot.damage * 0.3));
+        st.hp -= damage;
+        queueWorldCommand(ownerId, { type: "damageStructure", structureId: st.id, damage });
+        if (st.hp <= 0) removeRemoteStructureLocal(world, st);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function damageRemoteWorldsInExplosion(shot) {
+    for (const [ownerId, world] of remoteWorlds) {
+      for (const st of [...(world.structures || [])]) {
+        if (dist(st, shot) > shot.radius + footprintRadius(st.type)) continue;
+        st.hp -= shot.damage;
+        queueWorldCommand(ownerId, { type: "damageStructure", structureId: st.id, damage: shot.damage });
+        if (st.hp <= 0) removeRemoteStructureLocal(world, st);
+      }
+      for (const rt of [...(world.raft || [])]) {
+        const c = remoteTileCenter(world, rt);
+        if (dist(c, shot) > shot.radius + TILE * 0.35) continue;
+        const damage = Math.round(shot.damage * 0.75);
+        rt.hp -= damage;
+        queueWorldCommand(ownerId, { type: "damageRaftTile", gx: rt.gx, gy: rt.gy, damage });
+        if (rt.hp <= 0) removeRemoteRaftTileLocal(world, rt);
+      }
+    }
+  }
+
+  function updateWorldRespawns(dt) {
+    for (const island of state.islands) {
+      for (const tree of island.trees) {
+        if (!tree.dead) continue;
+        tree.respawn = Math.max(0, (tree.respawn || 0) - dt);
+        if (tree.respawn <= 0) {
+          const p = openIslandSpot(island, 0.78, 24);
+          tree.x = p.x;
+          tree.y = p.y;
+          tree.hp = tree.maxHp || 40;
+          tree.dead = false;
+        }
+      }
+      for (const loot of island.loot) {
+        if (!loot.dead || loot.type !== "tomato") continue;
+        loot.respawn = Math.max(0, (loot.respawn || 0) - dt);
+        if (loot.respawn <= 0) {
+          const p = openIslandSpot(island, 0.86, 18);
+          loot.x = p.x;
+          loot.y = p.y;
+          loot.dead = false;
+        }
+      }
+    }
+    for (const pending of state.animalRespawns) pending.time -= dt;
+    const ready = state.animalRespawns.filter((pending) => pending.time <= 0);
+    state.animalRespawns = state.animalRespawns.filter((pending) => pending.time > 0);
+    for (const pending of ready) {
+      const island = pending.island || nearestIsland(state.player);
+      const spot = pending.type === "crocodile" ? waterPointAroundIsland(island, rnd(38, 84)) : openIslandSpot(island, 0.82, 28);
+      state.animals.push(animal(pending.type, spot, island));
+    }
+    const playerIsland = islandAt(state.player);
+    if (playerIsland) {
+      state.crocTimer -= dt;
+      if (state.crocTimer <= 0) {
+        const crocsHere = state.animals.filter((a) => a.type === "crocodile" && a.homeIsland === playerIsland && !a.dead).length;
+        if (crocsHere < 1 && Math.random() < 0.42) {
+          state.animals.push(animal("crocodile", waterPointAroundIsland(playerIsland, rnd(34, 76)), playerIsland));
+          toast("A crocodile is swimming in from the shore.");
+        }
+        state.crocTimer = rnd(100, 210);
+      }
+    } else {
+      state.crocTimer = Math.max(10, state.crocTimer);
+    }
+  }
+
+  function waterPointAroundIsland(island, extra = 54) {
+    const a = rnd(0, TAU);
+    const r = island.r + extra;
+    return { x: island.x + Math.cos(a) * r, y: island.y + Math.sin(a) * r };
+  }
+
+  function openIslandSpot(island, scale, radius) {
+    for (let i = 0; i < 30; i++) {
+      const p = pointOnIsland(island, scale);
+      const occupiedByStructure = state.structures.some((st) => dist(st, p) < footprintRadius(st.type) + radius);
+      const occupiedByTree = island.trees.some((tree) => !tree.dead && dist(tree, p) < radius + 18);
+      const occupiedByAnimal = state.animals.some((a) => !a.dead && dist(a, p) < radius + 18);
+      const inWreck = island.shipwreck && dist(island.shipwreck, p) < SHIPWRECK_CLEAR_RADIUS;
+      if (!occupiedByStructure && !occupiedByTree && !occupiedByAnimal && !inWreck) return p;
+    }
+    return pointOnIsland(island, scale);
+  }
+
+  function updateParticles(dt) {
+    for (const p of state.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+    }
+    state.particles = state.particles.filter((p) => p.life > 0);
+  }
+
+  function spendStamina(cost, notify = true) {
+    const p = state.player;
+    if (p.stamina <= 0 || p.stamina < cost) {
+      p.stamina = clamp(p.stamina, 0, 100);
+      if (notify) toast("Too exhausted to act. Rest for a moment.");
+      return false;
+    }
+    p.stamina = clamp(p.stamina - cost, 0, 100);
+    return true;
+  }
+
+  function recoverStamina(amount) {
+    state.player.stamina = clamp(state.player.stamina + amount, 0, 100);
+  }
+
+  function selectedHotbarRef() {
+    return HOTBAR_SWAP_SLOTS.includes(selected) ? { area: "hotbar", index: selected } : null;
+  }
+
+  function useItemDurability(ref = selectedHotbarRef(), amount = 1) {
+    const item = getSlot(ref);
+    const spec = item && toolSpec(item.id);
+    if (!item || !spec?.durability) return true;
+    item.durability = clamp((item.durability ?? spec.durability) - amount, 0, item.maxDurability || spec.durability);
+    if (item.durability <= 0) {
+      setSlot(ref, null);
+      toast(`${label(item.id)} broke.`);
+    } else {
+      setSlot(ref, item);
+    }
+    syncManagedCountsFromSlots();
+    renderHotbar();
+    renderInventory();
+    return item.durability > 0;
+  }
+
+  function useSelected() {
+    if (!gameStarted) return;
+    if (!state.player.alive) return;
+    updateMouseWorld();
+    if (activeCannon) return fireCannon(activeCannon);
+    if (state.player.stamina <= 0) return toast("Too exhausted to act. Rest for a moment.");
+    const id = hotbar[selected]?.id || "empty";
+    if (buildMode) return placeBuild();
+    if (id === "rod") return useRod();
+    const spec = toolSpec(id);
+    if (spec && ["axe", "spear", "hammer"].includes(spec.base)) return swing(id);
+    if (id === "musket") return fireMusket();
+    if (id === "bandage") return useBandage();
+    if (FOOD_ITEMS.includes(id)) {
+      if (!spendStamina(2)) return;
+      if (!eatSpecificFood(id)) toast(`No ${label(id)}.`);
+      return;
+    }
+    if (id === "flask" || id === "waterFlask") return drinkWater();
+    if (isBuildRecipe(id)) {
+      buildChoice = id;
+      buildMode = true;
+      return placeBuild();
+    }
+  }
+
+  function useRod() {
+    if (cast) return;
+    if (!spendStamina(4)) return;
+    useItemDurability();
+    const p = state.player;
+    const a = angleTo(p, mouseWorld());
+    cast = { x: p.x, y: p.y, tx: p.x + Math.cos(a) * 330, ty: p.y + Math.sin(a) * 330, t: 0, hooked: false, catch: null };
+  }
+
+  function swing(kind) {
+    const p = state.player;
+    if (p.attackCd > 0) return;
+    const spec = toolSpec(kind);
+    if (!spec || !["axe", "spear", "hammer"].includes(spec.base)) return;
+    const baseKind = spec.base;
+    const tierStep = tierIndex(spec.tier);
+    if (!spendStamina(baseKind === "spear" ? 9 + tierStep * 0.5 : 8 + tierStep * 0.5)) return;
+    useItemDurability();
+    p.attackCd = baseKind === "spear" ? clamp(0.48 - tierStep * 0.04, 0.32, 0.48) : clamp(0.62 - tierStep * 0.05, 0.42, 0.62);
+    toolAnim = { kind: baseKind, t: p.attackCd, duration: p.attackCd };
+    const reach = (baseKind === "spear" ? 82 : 58) + tierStep * (baseKind === "spear" ? 5 : 3);
+    const baseDamage = baseKind === "spear" ? 28 : baseKind === "axe" ? 20 : 12;
+    const damage = Math.round(baseDamage * spec.power + p.strength * 3);
+    const targetAngle = angleTo(p, mouseWorld());
+    burst(p.x + Math.cos(targetAngle) * 34, p.y + Math.sin(targetAngle) * 34, baseKind === "hammer" ? "#b8d4de" : "#fff3c9", 6);
+
+    for (const a of state.animals) {
+      if (dist(p, a) < reach && Math.abs(shortAngle(targetAngle - angleTo(p, a))) < 0.9) {
+        a.hp -= damage;
+        a.hit = 0.2;
+        gainXp(2);
+        if (a.hp <= 0) killAnimal(a);
+        return;
+      }
+    }
+    const shark = nearestShark(p, reach + 8);
+    if (shark) {
+      shark.hp -= damage;
+      shark.flee = 2.2;
+      shark.aggro = 14;
+      toast("The shark backs off.");
+      if (shark.hp <= 0) {
+        addRes("sharkMeat", 3);
+        gainXp(45);
+        respawnShark(shark);
+        toast("Shark defeated. Shark meat acquired.");
+      }
+      return;
+    }
+    if (damageRemotePlayer(reach, targetAngle, damage)) return;
+    if (baseKind === "axe" && damagePlacedItem(reach, targetAngle, Math.round(damage * 0.42))) return;
+    if (baseKind === "axe") chopTree(reach, targetAngle, damage);
+    if (baseKind === "hammer") repairTile(reach, spec.power);
+  }
+
+  function damageRemotePlayer(reach, targetAngle, damage) {
+    const p = state.player;
+    let best = null;
+    let bestD = Infinity;
+    for (const other of remotePlayers) {
+      if (!other || other.health <= 0 || !other.id) continue;
+      const d = dist(p, other);
+      if (d < reach + 14 && Math.abs(shortAngle(targetAngle - angleTo(p, other))) < 0.9 && d < bestD) {
+        best = other;
+        bestD = d;
+      }
+    }
+    if (!best) return false;
+    best.health = Math.max(0, (best.health || 100) - damage);
+    queuePlayerHit(best.id, damage);
+    burst(best.x, best.y, "#ff8f75", 10);
+    gainXp(3);
+    toast(`Hit ${best.name || "player"}.`);
+    return true;
+  }
+
+  function damagePlacedItem(reach, targetAngle, damage) {
+    const p = state.player;
+    let best = null;
+    let bestD = Infinity;
+    for (const st of state.structures) {
+      const d = dist(p, st);
+      if (d < reach + footprintRadius(st.type) && Math.abs(shortAngle(targetAngle - angleTo(p, st))) < 0.95 && d < bestD) {
+        best = st;
+        bestD = d;
+      }
+    }
+    if (best) {
+      best.hp -= damage;
+      burst(best.x, best.y, "#ffb08a", 8);
+      if (best.hp <= 0) {
+        state.structures = state.structures.filter((st) => st !== best);
+        toast(`${label(best.type)} chopped down.`);
+      } else {
+        toast(`${label(best.type)} damaged.`);
+      }
+      gainXp(2);
+      return true;
+    }
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      const c = { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+      const d = dist(p, c);
+      if (d < reach + TILE * 0.45 && Math.abs(shortAngle(targetAngle - angleTo(p, c))) < 0.8) {
+        rt.hp -= damage;
+        burst(c.x, c.y, "#d89a54", 8);
+        if (rt.hp <= 0) {
+          breakRaftTile(rt);
+          toast("Raft tile chopped apart.");
+        } else {
+          toast("Raft tile damaged.");
+        }
+        gainXp(1);
+        return true;
+      }
+    }
+    return damageRemotePlacedItem(reach, targetAngle, damage);
+  }
+
+  function remoteTileCenter(world, rt) {
+    const r = remoteRaftTileRect(world, rt);
+    return { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+  }
+
+  function removeRemoteStructureLocal(world, st) {
+    world.structures = (world.structures || []).filter((item) => item !== st);
+    if (activeCannon === st) activeCannon = null;
+  }
+
+  function removeRemoteRaftTileLocal(world, rt) {
+    const r = remoteRaftTileRect(world, rt);
+    const doomed = (world.structures || []).filter((st) => st.base === "raft" && st.x > r.x && st.x < r.x + r.w && st.y > r.y && st.y < r.y + r.h);
+    world.structures = (world.structures || []).filter((st) => !doomed.includes(st));
+    world.raft = (world.raft || []).filter((tile) => tile !== rt);
+    if (doomed.includes(activeCannon)) activeCannon = null;
+  }
+
+  function damageRemotePlacedItem(reach, targetAngle, damage) {
+    const p = state.player;
+    let best = null;
+    let bestD = Infinity;
+    for (const [ownerId, world] of remoteWorlds) {
+      for (const st of world.structures || []) {
+        if (!st || st.hp <= 0) continue;
+        const d = dist(p, st);
+        if (d < reach + footprintRadius(st.type) && Math.abs(shortAngle(targetAngle - angleTo(p, st))) < 0.95 && d < bestD) {
+          best = { kind: "structure", ownerId, world, target: st };
+          bestD = d;
+        }
+      }
+      for (const rt of world.raft || []) {
+        const c = remoteTileCenter(world, rt);
+        const d = dist(p, c);
+        if (d < reach + TILE * 0.45 && Math.abs(shortAngle(targetAngle - angleTo(p, c))) < 0.8 && d < bestD) {
+          best = { kind: "tile", ownerId, world, target: rt, center: c };
+          bestD = d;
+        }
+      }
+    }
+    if (!best) return false;
+    if (best.kind === "structure") {
+      const st = best.target;
+      st.hp -= damage;
+      queueWorldCommand(best.ownerId, { type: "damageStructure", structureId: st.id, damage });
+      burst(st.x, st.y, "#ffb08a", 8);
+      if (st.hp <= 0) removeRemoteStructureLocal(best.world, st);
+      toast(`${label(st.type)} damaged.`);
+    } else {
+      const rt = best.target;
+      rt.hp -= damage;
+      queueWorldCommand(best.ownerId, { type: "damageRaftTile", gx: rt.gx, gy: rt.gy, damage });
+      burst(best.center.x, best.center.y, "#d89a54", 8);
+      if (rt.hp <= 0) removeRemoteRaftTileLocal(best.world, rt);
+      toast("Enemy raft tile damaged.");
+    }
+    gainXp(2);
+    return true;
+  }
+
+  function shortAngle(a) {
+    return Math.atan2(Math.sin(a), Math.cos(a));
+  }
+
+  function nearestShark(p, maxDist = Infinity) {
+    let best = null;
+    let bestD = maxDist;
+    for (const shark of state.sharks) {
+      const d = dist(p, shark);
+      if (d < bestD) {
+        best = shark;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function respawnShark(shark) {
+    const aggressive = Math.random() < SHARK_AGGRESSION_CHANCE;
+    const p = randomOceanPoint(aggressive ? 380 : 700, state.player, state.islands);
+    shark.x = p.x;
+    shark.y = p.y;
+    shark.hp = SHARK_HP;
+    shark.bite = 0;
+    shark.flee = 0;
+    shark.aggressive = aggressive;
+    shark.aggro = shark.aggressive ? 99 : 0;
+    shark.wander = rnd(0, TAU);
+  }
+
+  function killAnimal(a) {
+    a.dead = true;
+    const drops = a.type === "crab" ? 1 : a.type === "pig" ? 2 : 4;
+    addRes("meat", drops);
+    if (a.type !== "crab") addRes("scrap", 1);
+    if (a.homeIsland && a.type === "crab") state.animalRespawns.push({ type: a.type, island: a.homeIsland, time: rnd(300, 480) });
+    if (a.homeIsland && a.type === "crocodile") state.animalRespawns.push({ type: a.type, island: a.homeIsland, time: rnd(45, 75) });
+    gainXp(a.xp);
+    burst(a.x, a.y, "#ff8f75", 16);
+    toast(`${cap(a.type)} hunted. Raw meat added.`);
+  }
+
+  function chopTree(reach, targetAngle, damage) {
+    const p = state.player;
+    for (const island of state.islands) {
+      for (const tree of island.trees) {
+        if (tree.dead) continue;
+        if (dist(p, tree) < reach + 20 && Math.abs(shortAngle(targetAngle - angleTo(p, tree))) < 0.85) {
+          tree.hp -= damage;
+          burst(tree.x, tree.y, "#75ca57", 8);
+          if (tree.hp <= 0) {
+            tree.dead = true;
+            tree.respawn = rnd(360, 600);
+            addRes("wood", 5);
+            addRes("leaves", 4);
+            addRes("coconut", 2);
+            gainXp(8);
+            toast("Coconut palm chopped. Wood and coconuts collected.");
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  function repairTile(reach, power = 1) {
+    const p = state.player;
+    let closestStructure = null;
+    let closestStructureD = Infinity;
+    for (const st of state.structures) {
+      const d = dist(p, st);
+      if (d < reach && d < closestStructureD && st.hp < st.maxHp) {
+        closestStructure = st;
+        closestStructureD = d;
+      }
+    }
+    if (closestStructure) {
+      if (state.resources.wood < 2) return toast("Need 2 wood to repair.");
+      state.resources.wood -= 2;
+      closestStructure.hp = clamp(closestStructure.hp + Math.round(35 * power), 0, closestStructure.maxHp);
+      return toast(`${label(closestStructure.type)} repaired.`);
+    }
+
+    let best = null;
+    let bestD = Infinity;
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      const c = { x: r.x + TILE / 2, y: r.y + TILE / 2 };
+      const d = dist(p, c);
+      if (d < reach && d < bestD) {
+        best = rt;
+        bestD = d;
+      }
+    }
+    if (!best) return;
+    if (state.resources.wood < 2) return toast("Need 2 wood to repair.");
+    state.resources.wood -= 2;
+    best.hp = clamp(best.hp + Math.round(30 * power), 0, best.maxHp);
+    toast("Raft tile repaired.");
+  }
+
+  function interact() {
+    if (!gameStarted) return;
+    if (!state.player.alive) return;
+    if (!spendStamina(2)) return;
+    const p = state.player;
+    for (const d of state.debris) {
+      if (dist(p, d) < 84) {
+        collectDebris(d);
+        return;
+      }
+    }
+    for (const island of state.islands) {
+      for (const loot of island.loot) {
+        if (!loot.dead && dist(p, loot) < 46) {
+          loot.dead = true;
+          if (loot.type === "tomato") loot.respawn = 300;
+          addRes(loot.type, loot.type === "tomato" ? 2 : 1);
+          gainXp(3);
+          toast(`Picked up ${loot.type}.`);
+          return;
+        }
+      }
+      const wreck = island.shipwreck;
+      if (wreck && dist(p, wreck) < SHIPWRECK_INTERACT_RADIUS) {
+        for (const loot of wreck.loot) {
+          if (!loot.dead && dist(p, loot) < 42) {
+            loot.dead = true;
+            addRes(loot.type, loot.qty || 1);
+            gainXp(5);
+            toast(`Shipwreck loot: ${loot.qty || 1} ${label(loot.type).toLowerCase()}.`);
+            return;
+          }
+        }
+      }
+    }
+    for (const st of state.structures) {
+      if (dist(p, st) < 56) {
+        operateStructure(st);
+        return;
+      }
+    }
+    const remoteStructure = nearestRemoteStructure(p, 56);
+    if (remoteStructure) {
+      operateStructure(remoteStructure.structure);
+      return;
+    }
+    toast("Nothing close enough to interact with.");
+  }
+
+  function operateStructure(st) {
+    if (st.type === "cannon") {
+      activeCannon = activeCannon === st ? null : st;
+      return toast(activeCannon ? "Cannon ready. A/D traverse, click to fire." : "Cannon released.");
+    }
+    if (st.type === "grill") {
+      if (st.ready) {
+        st.ready = false;
+        addRes(st.cooking === "rawFish" ? "cookedFish" : "cookedMeat", 1);
+        st.cooking = null;
+        gainXp(5);
+        syncRemoteStructure(st);
+        return toast("Collected cooked food.");
+      }
+      const cookable = state.resources.rawFish > 0 ? "rawFish" : state.resources.sharkMeat > 0 ? "sharkMeat" : state.resources.meat > 0 ? "meat" : null;
+      if (st.timer <= 0 && cookable) {
+        if (FOOD_ITEMS.includes(cookable)) removePlayerItem(cookable, 1);
+        else state.resources[cookable]--;
+        st.cooking = cookable;
+        st.timer = GRILL_TIME;
+        st.maxTimer = GRILL_TIME;
+        st.ready = false;
+        renderHotbar();
+        syncRemoteStructure(st);
+        return toast(`${label(cookable)} is cooking.`);
+      }
+      return toast("Need raw fish or raw meat for the grill.");
+    }
+    if (st.type === "waterMaker") {
+      if (st.ready) {
+        let returned = false;
+        if (HOTBAR_SWAP_SLOTS.includes(selected) && hotbar[selected].id === "empty") {
+          returned = setHotbarItem(selected, slot("waterFlask", 1));
+          syncManagedCountsFromSlots();
+        } else {
+          returned = addPlayerItem("waterFlask", 1, "hotbar");
+        }
+        if (!returned) {
+          st.ready = true;
+          st.hasGlass = true;
+          return toast("Need room for the filled flask.");
+        }
+        st.ready = false;
+        st.hasGlass = false;
+        gainXp(4);
+        renderHotbar();
+        syncRemoteStructure(st);
+        return toast("Filled water flask returned.");
+      }
+      if (hotbar[selected]?.id !== "flask") return toast("Select the water flask to use the water maker.");
+      if (st.timer <= 0 && getSlot({ area: "hotbar", index: selected })?.id === "flask") {
+        removePlayerItem("flask", 1, { area: "hotbar", index: selected });
+        st.hasGlass = true;
+        st.timer = WATER_TIME;
+        st.maxTimer = WATER_TIME;
+        st.ready = false;
+        renderHotbar();
+        syncRemoteStructure(st);
+        return toast("Water maker is filling your flask.");
+      }
+      return toast("Need an empty water flask.");
+    }
+    if (st.type === "plantPot") {
+      if (st.ready) {
+        st.ready = false;
+        st.planted = false;
+        addRes("tomato", 2);
+        gainXp(5);
+        syncRemoteStructure(st);
+        return toast("Tomatoes harvested.");
+      }
+      if (st.timer <= 0 && managedItemCount("tomato") > 0) {
+        removePlayerItem("tomato", 1);
+        st.planted = true;
+        st.ready = false;
+        st.timer = TOMATO_GROW_TIME;
+        st.maxTimer = TOMATO_GROW_TIME;
+        syncRemoteStructure(st);
+        return toast("Tomato planted.");
+      }
+      if (st.timer > 0) return toast("Tomatoes are still growing.");
+      return toast("Need a tomato to plant.");
+    }
+    if (st.type === "chest") {
+      openInventory(st);
+      return toast("Chest opened.");
+    }
+  }
+
+  function structureServerPatch(st) {
+    return {
+      timer: st.timer || 0,
+      maxTimer: st.maxTimer || 0,
+      ready: Boolean(st.ready),
+      hasGlass: Boolean(st.hasGlass),
+      planted: Boolean(st.planted),
+      cooking: st.cooking || null,
+      aimOffset: st.aimOffset || 0,
+      cooldown: st.cooldown || 0,
+      storage: st.type === "chest" ? chestSlots(st) : null
+    };
+  }
+
+  function syncRemoteStructure(st) {
+    if (!st?.remoteOwnerId || !st.id) return;
+    queueWorldCommand(st.remoteOwnerId, { type: "patchStructure", structureId: st.id, patch: structureServerPatch(st) });
+  }
+
+  function craft(name, holdAfterCraft = false) {
+    if (!gameStarted) return false;
+    if (!spendStamina(3)) return false;
+    const recipe = recipes[name];
+    if (!recipe) return false;
+    if (!recipeVisible(name)) {
+      toast("Craft the previous tier first.");
+      return false;
+    }
+    if ((name === "bandage" || isBuildRecipe(name)) && !playerHasInventorySpaceFor(name)) {
+      toast("Backpack is full.");
+      return false;
+    }
+    if (isHotbarCraftRecipe(name) && !playerHasItemSpaceFor(name)) {
+      toast("Backpack and hotbar are full.");
+      return false;
+    }
+    if (!devMode) {
+      for (const [res, qty] of Object.entries(recipe)) {
+        if ((state.resources[res] || 0) < qty) {
+          toast(`Need ${qty} ${res}.`);
+          return false;
+        }
+      }
+      for (const [res, qty] of Object.entries(recipe)) state.resources[res] -= qty;
+    }
+    if (name === "bandage") {
+      if (!addPlayerItem("bandage", 1)) return toast("Backpack is full.");
+      toast("Bandage crafted.");
+    } else if (isHotbarCraftRecipe(name)) {
+      if (!addPlayerItem(name, 1, "hotbar")) return toast("Backpack and hotbar are full.");
+      markToolUnlocked(name);
+      putItemInHotbar(name, true);
+      buildMode = false;
+      heldItem = name;
+      toast(`${label(name)} crafted.`);
+    } else {
+      if (!addPlayerItem(name, 1)) return toast("Backpack is full.");
+      buildChoice = name;
+      buildMode = true;
+      heldItem = name;
+      renderHotbar();
+      toast(`${label(name)} ready to place.`);
+    }
+    if (name === "bandage" && holdAfterCraft) selectHeldTool("bandage");
+    gainXp(7);
+    renderHotbar();
+    renderRecipes();
+    return true;
+  }
+
+  function placeBuild() {
+    updateMouseWorld();
+    if (!isBuildRecipe(buildChoice)) {
+      if (isCraftOnlyRecipe(buildChoice)) {
+        craft(buildChoice, false);
+        return;
+      }
+      return toast(`${label(buildChoice)} cannot be placed.`);
+    }
+    if (!spendStamina(6)) return;
+    if (!buildMode) buildMode = true;
+    const spot = buildPlacementPoint();
+    const craftedNow = ensureBuildReady(buildChoice);
+    if (!craftedNow) return;
+    if (buildChoice === "raft") {
+      if (state.raft.length === 0) {
+        if (isOnIsland(spot)) return toast("Start a new raft in open water.");
+        state.raftOffset.x = spot.x - TILE / 2;
+        state.raftOffset.y = spot.y - TILE / 2;
+        state.raft.push(tile(0, 0, "deck"));
+        consumeBuild(buildChoice);
+        toast("New raft started.");
+        gainXp(6);
+        return;
+      }
+      const gx = Math.round((spot.x - state.raftOffset.x - TILE / 2) / TILE);
+      const gy = Math.round((spot.y - state.raftOffset.y - TILE / 2) / TILE);
+      if (state.raft.some((rt) => rt.gx === gx && rt.gy === gy)) return toast("That raft tile already exists.");
+      const adjacent = state.raft.some((rt) => Math.abs(rt.gx - gx) + Math.abs(rt.gy - gy) === 1);
+      if (!adjacent) return toast("New raft tiles must touch your raft.");
+      state.raft.push(tile(gx, gy, "deck"));
+      consumeBuild(buildChoice);
+      toast("Raft expanded.");
+      gainXp(6);
+      return;
+    }
+    const site = buildSiteAt(spot.x, spot.y);
+    if (!site) return toast("Place blocks fully on your raft or on island ground.");
+    const angle = state.player.facing + buildAngle;
+    const candidate = createStructure(buildChoice, spot.x, spot.y, angle, site.kind);
+    if (state.structures.some((s) => placementFootprintsOverlap(candidate, s))) return toast("That spot is occupied.");
+    state.structures.push(candidate);
+    consumeBuild(buildChoice);
+    toast(`${label(buildChoice)} placed.`);
+    gainXp(8);
+  }
+
+  function ensureBuildReady(name) {
+    if (managedItemCount(name) > 0) return true;
+    if (!playerHasInventorySpaceFor(name)) {
+      toast("Backpack is full.");
+      return false;
+    }
+    if (!canAfford(name)) {
+      toast(`${label(name)} selected. Need ${recipeText(name)} to craft it.`);
+      return false;
+    }
+    if (!devMode) for (const [res, qty] of Object.entries(recipes[name])) state.resources[res] -= qty;
+    if (!addPlayerItem(name, 1)) return false;
+    gainXp(7);
+    renderHotbar();
+    renderRecipes();
+    return true;
+  }
+
+  function buildPlacementPoint() {
+    const p = state.player;
+    const reach = buildChoice === "raft" ? TILE * 0.88 : 54;
+    return {
+      x: p.x + Math.cos(p.facing) * reach,
+      y: p.y + Math.sin(p.facing) * reach
+    };
+  }
+
+  function createStructure(type, x, y, angle = 0, base = "raft") {
+    const maxHp = blockHp[type] || 80;
+    return { type, x, y, angle, base, hp: maxHp, maxHp, timer: 0, maxTimer: 0, ready: false, hasGlass: false, planted: false, aimOffset: 0, cooldown: 0, storage: type === "chest" ? emptySlots(CHEST_INV_CAP) : null };
+  }
+
+  function footprint(type) {
+    return blockFootprints[type] || { w: STRUCTURE_RADIUS * 2, h: STRUCTURE_RADIUS * 2 };
+  }
+
+  function placementFootprint(type) {
+    const f = footprint(type);
+    return { w: f.w * PLACEMENT_FOOTPRINT_SCALE, h: f.h * PLACEMENT_FOOTPRINT_SCALE };
+  }
+
+  function footprintRadius(type) {
+    const f = footprint(type);
+    return Math.hypot(f.w, f.h) / 2;
+  }
+
+  function placementFootprintRadius(type) {
+    const f = placementFootprint(type);
+    return Math.hypot(f.w, f.h) / 2;
+  }
+
+  function footprintsOverlap(a, b) {
+    const aCorners = footprintCorners(a);
+    const bCorners = footprintCorners(b);
+    const axes = [...rectAxes(aCorners), ...rectAxes(bCorners)];
+    return axes.every((axis) => projectionsOverlap(projectCorners(aCorners, axis), projectCorners(bCorners, axis)));
+  }
+
+  function placementFootprintsOverlap(a, b) {
+    const aCorners = footprintCorners(a, placementFootprint);
+    const bCorners = footprintCorners(b, placementFootprint);
+    const axes = [...rectAxes(aCorners), ...rectAxes(bCorners)];
+    return axes.every((axis) => projectionsOverlap(projectCorners(aCorners, axis), projectCorners(bCorners, axis)));
+  }
+
+  function footprintCorners(obj, footprintFn = footprint) {
+    const f = footprintFn(obj.type);
+    const hw = f.w / 2;
+    const hh = f.h / 2;
+    const angle = obj.angle || 0;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
     return [
-      { x: Math.cos(rot), z: -Math.sin(rot) },
-      { x: Math.sin(rot), z: Math.cos(rot) },
-    ];
-  };
-  const project = (points, axis) => {
+      { x: -hw, y: -hh },
+      { x: hw, y: -hh },
+      { x: hw, y: hh },
+      { x: -hw, y: hh }
+    ].map((p) => ({
+      x: obj.x + p.x * cos - p.y * sin,
+      y: obj.y + p.x * sin + p.y * cos
+    }));
+  }
+
+  function rectAxes(corners) {
+    const axes = [];
+    for (let i = 0; i < 2; i++) {
+      const p1 = corners[i];
+      const p2 = corners[(i + 1) % corners.length];
+      const ex = p2.x - p1.x;
+      const ey = p2.y - p1.y;
+      const len = Math.hypot(ex, ey) || 1;
+      axes.push({ x: -ey / len, y: ex / len });
+    }
+    return axes;
+  }
+
+  function projectCorners(corners, axis) {
     let min = Infinity;
     let max = -Infinity;
-    points.forEach((point) => {
-      const value = point.x * axis.x + point.z * axis.z;
-      min = Math.min(min, value);
-      max = Math.max(max, value);
-    });
+    for (const p of corners) {
+      const v = p.x * axis.x + p.y * axis.y;
+      min = Math.min(min, v);
+      max = Math.max(max, v);
+    }
     return { min, max };
-  };
-  const aCorners = corners(a);
-  const bCorners = corners(b);
-  return axes(a).concat(axes(b)).every((axis) => {
-    const ap = project(aCorners, axis);
-    const bp = project(bCorners, axis);
-    return Math.min(ap.max, bp.max) - Math.max(ap.min, bp.min) > pad;
-  });
-}
-
-function snapBuildByFootprints(island, point, type, rotation) {
-  const previewFootprints = buildPlacementFootprints(type, point, rotation);
-  if (!previewFootprints.length) return null;
-  let best = null;
-  const rotationChoices = [rotation];
-  let nearestPiece = null;
-  let nearestDistance = Infinity;
-  buildingPieces.forEach((piece) => {
-    if (piece.island !== island.name) return;
-    const distance = Math.hypot(point.x - piece.x, point.z - piece.z);
-    if (distance >= nearestDistance) return;
-    nearestPiece = piece;
-    nearestDistance = distance;
-  });
-  if (!nearestPiece) return null;
-  [nearestPiece].forEach((piece) => {
-    const existingFootprints = buildPlacementFootprints(piece.type, piece, piece.rotation || 0);
-    if (!existingFootprints.length) return;
-    rotationChoices.forEach((candidateRotation) => {
-      const candidateFootprints = buildPlacementFootprints(type, point, candidateRotation);
-      existingFootprints.forEach((existingFootprint) => {
-        const existingPoints = buildFootprintSnapPoints(existingFootprint);
-        candidateFootprints.forEach((candidateFootprint) => {
-          const candidatePoints = buildFootprintSnapPoints(candidateFootprint);
-          existingPoints.forEach((existingPoint) => {
-            candidatePoints.forEach((candidatePoint) => {
-              const snapped = {
-                x: point.x + existingPoint.x - candidatePoint.x,
-                z: point.z + existingPoint.z - candidatePoint.z,
-              };
-              const moved = Math.hypot(snapped.x - point.x, snapped.z - point.z);
-              const snappedFootprint = {
-                ...candidateFootprint,
-                x: candidateFootprint.x + snapped.x - point.x,
-                z: candidateFootprint.z + snapped.z - point.z,
-              };
-              if (buildFootprintsOverlap(snappedFootprint, existingFootprint)) return;
-              const edgeMatch = existingPoint.kind === "edge" && candidatePoint.kind === "edge";
-              const vertexMatch = existingPoint.kind === "vertex" && candidatePoint.kind === "vertex";
-              const kindBonus = edgeMatch ? 0 : vertexMatch ? 0.42 : 0.72;
-              const score = moved + kindBonus;
-              if (best && score >= best.score) return;
-              best = { point: snapped, rotation: candidateRotation, score };
-            });
-          });
-        });
-      });
-    });
-  });
-  return best;
-}
-
-function snapBuildPlacement(island, point, type, rotation) {
-  const result = { point, rotation };
-  if (!state.buildSnap || type === "flag") return result;
-  const stack = buildStackSupportAt(island, point, type, rotation);
-  if (stack) {
-    point.x = stack.x;
-    point.y = stack.y;
-    point.z = stack.z;
-    result.rotation = stack.rotation;
-    result.stack = stack;
-    if (type === "roof") return result;
-    rotation = result.rotation;
   }
-  const footprintSnap = snapBuildByFootprints(island, point, type, rotation);
-  if (footprintSnap) {
-    point.x = footprintSnap.point.x;
-    point.z = footprintSnap.point.z;
-    result.rotation = footprintSnap.rotation;
-    return result;
+
+  function projectionsOverlap(a, b) {
+    return a.max >= b.min && b.max >= a.min;
   }
-  return result;
-}
 
-function cardinalBuildLookRotation() {
-  const look = new THREE.Vector3();
-  camera.getWorldDirection(look);
-  look.y = 0;
-  const yaw = look.lengthSq() > 0.0001
-    ? Math.atan2(look.x, look.z)
-    : character.rotation.y;
-  return Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2);
-}
-
-function buildRotationForType(type) {
-  if (type === "flag") return 0;
-  return cardinalBuildLookRotation() + state.buildRotationOffset;
-}
-
-function rotateSelectedBuildItem() {
-  if (!state.selectedBuildItem) {
-    toast("Select a building piece first.");
-    return;
+  function solidWalls() {
+    return state.structures.filter((st) => st.type === "wall");
   }
-  state.buildRotationOffset = (state.buildRotationOffset - Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
-  updateBuildPreview(true);
-  toast("Building rotated.");
-}
 
-function renderInventory() {
-  if (!ui.inventoryBody) return;
-  ui.inventoryPanel?.classList.toggle("hidden", !state.inventoryOpen);
-  if (ui.snapBuild) ui.snapBuild.checked = state.buildSnap;
-  const rows = BUILD_ITEM_ORDER.map((id) => {
-    const item = BUILD_ITEMS[id];
-    const count = buildInventoryCount(id);
-    const selected = state.selectedBuildItem === id;
-    return `<div class="inventory-item${selected ? " selected" : ""}"><div><h3>${item.name} <span class="price">x${count}</span></h3><p>${item.description}</p></div><button data-build-select="${id}" ${count <= 0 ? "disabled" : ""}>${selected ? t("selected") : t("select")}</button></div>`;
-  }).join("");
-  const selected = state.selectedBuildItem ? `${buildItemName(state.selectedBuildItem)} selected.` : t("noneSelected");
-  ui.inventoryBody.innerHTML = `<p class="stats">${selected} ${t("placeHint")}</p>${rows}`;
-}
-
-function setInventoryOpen(open) {
-  state.inventoryOpen = Boolean(open);
-  renderInventory();
-}
-
-function worldFaceNormal(hit) {
-  if (!hit?.face?.normal || !hit.object?.matrixWorld) return new THREE.Vector3(0, 1, 0);
-  return hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-}
-
-function buildAimBuildingSurface(island, type) {
-  if (type === "flag") return null;
-  const hits = [];
-  buildingPieces.forEach((piece) => {
-    if (piece.island !== island.name || !buildingPieceIsMine(piece)) return;
-    if (!buildingSupportsPlacement(piece.type, type)) return;
-    const hit = raycaster.intersectObject(piece.group, true)[0];
-    if (!hit || hit.distance > BUILD_PLACE_MAX_DISTANCE) return;
-    const normal = worldFaceNormal(hit);
-    const topY = buildingSupportTopY(piece, type);
-    const closeToTop = Number.isFinite(topY) && Math.abs(hit.point.y - topY) < 0.36;
-    if (type !== "roof" && normal.y < 0.32 && !closeToTop) return;
-    hits.push({ piece, point: hit.point.clone(), distance: hit.distance });
-  });
-  hits.sort((a, b) => a.distance - b.distance);
-  const best = hits[0];
-  return best ? { point: best.point, supportPiece: best.piece } : null;
-}
-
-function buildAimPointForIsland(island, type) {
-  raycaster.setFromCamera(mouse, camera);
-  const buildingAim = buildAimBuildingSurface(island, type);
-  if (buildingAim) return buildingAim;
-  const hits = raycaster
-    .intersectObject(island.group, true)
-    .filter((hit) => hit.distance <= BUILD_PLACE_MAX_DISTANCE && islandSurfaceContains(island, hit.point, 0.02));
-  for (const hit of hits) {
-    const groundY = islandGroundY(island, hit.point);
-    if (groundY === null) continue;
-    if (Math.abs(hit.point.y - groundY) < 2.6 || hit.face?.normal?.y > 0.18) {
-      return { point: new THREE.Vector3(hit.point.x, groundY, hit.point.z) };
+  function resolveWallCollision(entity, radius) {
+    for (const wall of solidWalls()) {
+      const f = footprint("wall");
+      const cos = Math.cos(-(wall.angle || 0));
+      const sin = Math.sin(-(wall.angle || 0));
+      const dx = entity.x - wall.x;
+      const dy = entity.y - wall.y;
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      const hx = f.w / 2;
+      const hy = f.h / 2;
+      const closestX = clamp(lx, -hx, hx);
+      const closestY = clamp(ly, -hy, hy);
+      const diffX = lx - closestX;
+      const diffY = ly - closestY;
+      let d = Math.hypot(diffX, diffY);
+      if (d > 0 && d < radius) {
+        const push = radius - d;
+        const nx = diffX / d;
+        const ny = diffY / d;
+        const wx = nx * Math.cos(wall.angle || 0) - ny * Math.sin(wall.angle || 0);
+        const wy = nx * Math.sin(wall.angle || 0) + ny * Math.cos(wall.angle || 0);
+        entity.x += wx * push;
+        entity.y += wy * push;
+      } else if (d === 0 && Math.abs(lx) <= hx && Math.abs(ly) <= hy) {
+        const pushX = hx - Math.abs(lx);
+        const pushY = hy - Math.abs(ly);
+        const localNx = pushX < pushY ? (lx < 0 ? -1 : 1) : 0;
+        const localNy = pushX < pushY ? 0 : ly < 0 ? -1 : 1;
+        const wx = localNx * Math.cos(wall.angle || 0) - localNy * Math.sin(wall.angle || 0);
+        const wy = localNx * Math.sin(wall.angle || 0) + localNy * Math.cos(wall.angle || 0);
+        entity.x += wx * (Math.min(pushX, pushY) + radius);
+        entity.y += wy * (Math.min(pushX, pushY) + radius);
+      }
     }
   }
-  const topPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -island.landY);
-  const planePoint = new THREE.Vector3();
-  if (raycaster.ray.intersectPlane(topPlane, planePoint)) {
-    const groundY = islandGroundY(island, planePoint);
-    if (groundY !== null && islandSurfaceContains(island, planePoint, 0.02)) {
-      return { point: new THREE.Vector3(planePoint.x, groundY, planePoint.z) };
+
+  function hitsWall(p, radius) {
+    const test = { x: p.x, y: p.y };
+    resolveWallCollision(test, radius);
+    return Math.hypot(test.x - p.x, test.y - p.y) > 0.1;
+  }
+
+  function consumeBuild(name) {
+    removePlayerItem(name, 1, HOTBAR_SWAP_SLOTS.includes(selected) ? { area: "hotbar", index: selected } : null);
+    if (!managedItemCount(name)) {
+      const next = Object.keys(pendingBuild).find((key) => pendingBuild[key] > 0);
+      if (next) buildChoice = next;
+      else buildMode = false;
     }
+    renderRecipes();
+    renderHotbar();
   }
-  return null;
-}
 
-function buildPlacementFootprints(type, point, rotation) {
-  const base = { x: point.x, z: point.z, rot: rotation || 0 };
-  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH }];
-  if (type === "cornerWall") {
-    return [
-      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH },
-      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE },
-    ];
+  function rotateBuild() {
+    if (!gameStarted || !spendStamina(1)) return;
+    buildAngle = (buildAngle + Math.PI / 12) % TAU;
+    buildMode = true;
+    renderHotbar();
+    toast(`Build angle: ${Math.round((buildAngle * 180) / Math.PI)} degrees.`);
   }
-  if (type === "door") {
-    return [
-      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
-      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
-    ];
+
+  function cycleBuildChoice() {
+    if (!gameStarted || !spendStamina(1)) return;
+    const choices = craftCycleChoices();
+    const current = choices.includes(buildChoice) ? choices.indexOf(buildChoice) : -1;
+    buildChoice = choices[(current + 1) % choices.length];
+    buildMode = true;
+    heldItem = buildChoice;
+    renderHotbar();
+    renderRecipes();
+    toast(`Build selection: ${label(buildChoice)} (${pendingBuild[buildChoice] || 0} ready).`);
   }
-  if (type === "table") return [{ ...base, w: 2.35, d: 1.35 }];
-  if (type === "flag") return [{ ...base, w: 1.0, d: 1.0 }];
-  return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_GRID_SIZE }];
-}
 
-function buildPlacementValid(island, type, point, rotation) {
-  if (!Number.isFinite(point.x) || !Number.isFinite(point.z) || !Number.isFinite(point.y)) return false;
-  if (!islandSurfaceContains(island, point, 0.02)) return false;
-  const surfaceY = buildPlacementSurfaceYAt(island, point, type, rotation);
-  if (surfaceY === null || Math.abs(point.y - surfaceY) > 0.72) return false;
-  if (pointBlockedOnIsland(island, point, { ignoreSupportForType: type })) return false;
-  return true;
-}
-
-function buildPlacementForSelected() {
-  const type = state.selectedBuildItem;
-  if (!BUILD_ITEMS[type]) return { valid: false, reason: "none" };
-  if (buildInventoryCount(type) <= 0) {
-    return { type, valid: false, reason: "inventory" };
+  function cycleFoodChoice() {
+    if (!gameStarted || !spendStamina(1)) return;
+    const foods = availableFoods();
+    if (!foods.length) return toast("No food to select.");
+    const current = selectedFood && foods.includes(selectedFood) ? foods.indexOf(selectedFood) : -1;
+    selectedFood = foods[(current + 1) % foods.length];
+    putItemInHotbar(selectedFood, true);
+    toast(`Food selected: ${label(selectedFood)}.`);
   }
-  const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
-  if (!island || state.mode !== "land") return { type, valid: false, reason: "island" };
-  const aimed = buildAimPointForIsland(island, type);
-  if (!aimed) return { type, island, valid: false, reason: "aim" };
-  const point = aimed.point.clone();
-  if (!islandSurfaceContains(island, point, 0.02)) return { type, island, point, valid: false, reason: "surface" };
-  let rotation = buildRotationForType(type);
-  const snapped = snapBuildPlacement(island, point, type, rotation);
-  rotation = snapped.rotation;
-  const surfaceY = buildPlacementSurfaceYAt(island, point, type, rotation);
-  if (surfaceY === null) return { type, island, point, rotation, valid: false, reason: "surface" };
-  point.y = surfaceY;
-  if (type === "flag") {
-    if (!island.claimable || !island.unnamed) return { type, island, point, rotation, valid: false, reason: "claimFirst" };
-    if (islandClaimFor(island)) return { type, island, point, rotation, valid: false, reason: "alreadyClaimed" };
-  } else if (!playerOwnsIsland(island)) {
-    return { type, island, point, rotation, valid: false, reason: "ownedIslandOnly" };
+
+  function buildSiteAt(x, y) {
+    const radius = placementFootprintRadius(buildChoice);
+    const rt = raftAt(x, y);
+    if (rt) {
+      const r = raftTileRect(rt);
+      const raftPadding = Math.max(6, radius * 0.45);
+      const fits = x > r.x + raftPadding && x < r.x + TILE - raftPadding && y > r.y + raftPadding && y < r.y + TILE - raftPadding;
+      return fits ? { kind: "raft", tile: rt } : null;
+    }
+    const island = state.islands.find((item) => Math.hypot(x - item.x, y - item.y) <= item.r + 4 - radius * 0.15);
+    if (island) return { kind: "island", island };
+    return null;
   }
-  const valid = buildPlacementValid(island, type, point, rotation);
-  return { type, island, point, rotation, valid, reason: valid ? "" : "placement" };
-}
 
-function hideBuildPreview() {
-  if (buildPreview) buildPreview.visible = false;
-}
-
-function ensureBuildPreview(type) {
-  if (buildPreview && buildPreviewType === type) return buildPreview;
-  if (buildPreview) {
-    scene.remove(buildPreview);
-    buildPreview.traverse((child) => {
-      if (child.geometry?.dispose) child.geometry.dispose();
-      if (child.material?.dispose) child.material.dispose();
+  function raftAt(x, y) {
+    return state.raft.find((rt) => {
+      const r = raftTileRect(rt);
+      return x > r.x && x < r.x + TILE && y > r.y && y < r.y + TILE;
     });
   }
-  buildPreviewType = type;
-  buildPreview = makeBuildingMesh({ type, x: 0, y: 0, z: 0, rotation: 0 });
-  buildPreview.traverse((child) => {
-    if (!child.isMesh) return;
-    child.material = new THREE.MeshBasicMaterial({
-      color: 0x78ffc0,
-      transparent: true,
-      opacity: 0.54,
-      wireframe: true,
-      depthWrite: false,
-      depthTest: false,
-      fog: false,
-    });
-    child.renderOrder = 20;
-  });
-  buildPreview.visible = false;
-  scene.add(buildPreview);
-  return buildPreview;
-}
 
-function updateBuildPreview(force = false) {
-  const type = state.selectedBuildItem;
-  if (!BUILD_ITEMS[type] || buildInventoryCount(type) <= 0 || state.mode !== "land") {
-    hideBuildPreview();
-    return;
-  }
-  const now = performance.now();
-  if (!force && now - lastBuildPreviewAt < 70) return;
-  lastBuildPreviewAt = now;
-  const placement = buildPlacementForSelected();
-  if (!placement.point || !placement.island?.unnamed || !placement.island?.claimable) {
-    hideBuildPreview();
-    return;
-  }
-  const preview = ensureBuildPreview(type);
-  preview.visible = true;
-  preview.position.copy(placement.point).add(new THREE.Vector3(0, 0.04, 0));
-  preview.rotation.y = placement.rotation || 0;
-  const color = placement.valid ? 0x78ffc0 : 0xff624f;
-  preview.traverse((child) => {
-    if (child.isMesh && child.material?.color) child.material.color.setHex(color);
-  });
-}
-
-function placeSelectedBuildItem() {
-  const placement = buildPlacementForSelected();
-  const type = placement.type;
-  if (!BUILD_ITEMS[type]) return;
-  if (placement.reason === "inventory") {
-    state.selectedBuildItem = null;
-    hideBuildPreview();
-    renderInventory();
-    return toast(t("noBuildItem"));
-  }
-  if (!placement.valid) {
-    if (placement.reason === "claimFirst") return toast(t("claimFirst"));
-    if (placement.reason === "alreadyClaimed") return toast(t("alreadyClaimed"));
-    if (placement.reason === "ownedIslandOnly") return toast(t("ownedIslandOnly"));
-    return toast(t("tooFarBuild"));
-  }
-  const { island, point, rotation } = placement;
-  const claimName = type === "flag"
-    ? cleanIslandClaimName(prompt(t("claimNamePrompt"), `${captainName()}'s Isle`))
-    : "";
-  const piece = {
-    id: crypto.randomUUID(),
-    island: island.name,
-    type,
-    x: point.x,
-    y: point.y,
-    z: point.z,
-    rotation,
-    owner: captainId,
-    clientId: captainId,
-    sessionId: playerId,
-    ownerName: captainName(),
-    claimName,
-  };
-  if (multiplayer.serverWorld) {
-    if (!sendMultiplayer({ type: "placeBuilding", piece })) toast("Building server disconnected.");
-    return;
-  }
-  if (type === "flag") {
-    const claim = { island: island.name, name: claimName, owner: captainId, clientId: captainId, sessionId: playerId, ownerName: captainName() };
-    applyIslandClaim(claim);
-    sendMultiplayer({ type: "claimIsland", ...claim });
-    toast(t("islandClaimed", { island: claimName }));
-  }
-  upsertBuildingPiece(piece);
-  sendMultiplayer({ type: "placeBuilding", piece });
-  state.inventory[type] = buildInventoryCount(type) - 1;
-  if (state.inventory[type] <= 0) state.selectedBuildItem = null;
-  renderInventory();
-  renderShop();
-  updateHud();
-  toast(t("buildPlaced", { item: buildItemName(type) }));
-}
-
-function removeLookedAtBuilding() {
-  if (state.mode !== "land") return;
-  const findTarget = (pointer, maxDistance) => {
-    raycaster.setFromCamera(pointer, camera);
-    return buildingPieces
-      .map((piece) => {
-        const hit = raycaster.intersectObject(piece.group, true)[0];
-        return hit ? { piece, distance: hit.distance } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.distance - b.distance)
-      .find((hit) => hit.distance < maxDistance)?.piece || null;
-  };
-  const target = findTarget(mouse, BUILD_PLACE_MAX_DISTANCE) || findTarget(new THREE.Vector2(0, 0), 30);
-  if (!target) return toast("Aim at one of your buildings to remove it.");
-  if (!buildingPieceIsMine(target)) return toast(t("ownedIslandOnly"));
-  if (multiplayer.serverWorld) {
-    sendMultiplayer({ type: "removeBuilding", id: target.id });
-    return;
-  }
-  removeBuildingPiece(target);
-  state.inventory[target.type] = buildInventoryCount(target.type) + 1;
-  if (target.type === "flag") {
-    islandClaimNames.delete(target.island);
-    buildingPieces
-      .filter((piece) => piece.island === target.island && buildingPieceIsMine(piece))
-      .forEach((piece) => {
-        state.inventory[piece.type] = buildInventoryCount(piece.type) + 1;
-        removeBuildingPiece(piece);
-      });
-    refreshIslandLabels();
-  }
-  renderInventory();
-  renderShop();
-  updateHud();
-  sendMultiplayer({ type: "buildingRemoved", id: target.id });
-}
-
-function islandGroundY(island, point) {
-  if (island.dockBox) {
-    const dx = point.x - island.dockBox.x;
-    const dz = point.z - island.dockBox.z;
-    const rot = island.dockBox.rot || 0;
-    const cos = Math.cos(-rot);
-    const sin = Math.sin(-rot);
-    const localX = dx * cos - dz * sin;
-    const localZ = dx * sin + dz * cos;
-    if (Math.abs(localX) <= island.dockBox.w * 0.5 && Math.abs(localZ) <= island.dockBox.d * 0.5) return 1.72;
-  }
-  const dockDistance = dist2(point, island.dock);
-  if (!island.surfaceLobes?.length && dockDistance < 7.2) return 1.72;
-  let y = null;
-  if (island.surfaceLobes?.length) {
-    island.surfaceLobes.forEach((lobe, index) => {
-      const normalized = islandLobeNormalized(island, lobe, point);
-      if (normalized > 1) return;
-      const lobeEdge = Math.sqrt(normalized);
-      const edgeSlope = clamp((lobeEdge - 0.76) / 0.22, 0, 1);
-      const lobeY = island.landY + index * 0.035 - edgeSlope * 0.48;
-      y = y === null ? lobeY : Math.max(y, lobeY);
-    });
-    if (y === null) return null;
-  } else {
-    const distance = dist2(point, island.group.position);
-    if (distance > island.radius - 0.6) return null;
-    const edgeSlope = clamp((distance - island.radius * 0.62) / (island.radius * 0.34), 0, 1);
-    y = island.landY - edgeSlope * 0.82;
-  }
-  (island.walkPlatforms || []).forEach((platform) => {
-    const dx = point.x - platform.x;
-    const dz = point.z - platform.z;
-    const rot = platform.rot || 0;
-    const cos = Math.cos(-rot);
-    const sin = Math.sin(-rot);
-    const localX = dx * cos - dz * sin;
-    const localZ = dx * sin + dz * cos;
-    if (Math.abs(localX) <= platform.w * 0.5 && Math.abs(localZ) <= platform.d * 0.5) {
-      const currentY = Number.isFinite(point.y) ? point.y : y;
-      if (platform.y - currentY > (platform.maxRise ?? 1.35)) return;
-      y = Math.max(y, platform.y);
-    }
-  });
-  (island.terrainFeatures || []).forEach((feature) => {
-    const d = dist2(point, feature);
-    if (d > feature.r * 1.08 && !(feature.peaks || []).some((peak) => dist2(point, peak) < peak.r * 1.08)) return;
-    if (d < feature.r * 1.08) {
-      const climb = Math.pow(1 - d / (feature.r * 1.08), 1.45);
-      y = Math.max(y, island.landY + climb * feature.h * 0.38);
-    }
-    (feature.peaks || []).forEach((peak) => {
-      const peakDistance = dist2(point, peak);
-      if (peakDistance > peak.r * 1.04) return;
-      const coneSlope = clamp(1 - peakDistance / (peak.r * 1.04), 0, 1);
-      y = Math.max(y, island.landY + coneSlope * peak.h * 0.94);
-    });
-  });
-  y = buildingSurfaceYAt(island, point, y);
-  return y;
-}
-
-function pointBlockedOnIsland(island, point, options = {}) {
-  if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
-  if (pointBlockedByBuildings(island, point, options)) return true;
-  return island.collisionBoxes?.some((box) => {
-    const pointY = Number.isFinite(point.y) ? point.y : 0;
-    if (box.minY !== undefined && pointY < box.minY) return false;
-    if (box.maxY !== undefined && pointY > box.maxY) return false;
-    if (box.walkableTopY !== undefined && point.y >= box.walkableTopY) return false;
-    const pad = box.pad ?? 0.45;
-    const dx = point.x - box.x;
-    const dz = point.z - box.z;
-    const rot = box.rot || 0;
-    const cos = Math.cos(-rot);
-    const sin = Math.sin(-rot);
-    const localX = dx * cos - dz * sin;
-    const localZ = dx * sin + dz * cos;
-    return Math.abs(localX) < box.w * 0.5 + pad && Math.abs(localZ) < box.d * 0.5 + pad;
-  });
-}
-
-function walkableGroundY(island, point) {
-  const y = islandGroundY(island, point);
-  if (y === null || pointBlockedOnIsland(island, point)) return null;
-  return y;
-}
-
-function pointInAnyIsland(point, margin = 0) {
-  return islands.some((island) => islandFootprintContains(island, point, margin));
-}
-
-function islandSwimBlockAt(point, margin = 0) {
-  return islands.find((island) => islandFootprintContains(island, point, Math.max(0, margin - 0.8))) || null;
-}
-
-function pushSwimmerAwayFromIsland(island, dt) {
-  if (!island || !character) return;
-  const away = character.position.clone().sub(island.group.position);
-  away.y = 0;
-  if (away.lengthSq() < 0.0001) {
-    away.set(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
-  }
-  const distance = Math.max(0.001, away.length());
-  const targetDistance = island.radius + 0.75;
-  if (distance >= targetDistance) return;
-  const push = Math.min(targetDistance - distance, 0.65 + dt * 18);
-  character.position.add(away.normalize().multiplyScalar(push));
-}
-
-function starterIslandCenter() {
-  return islands[0]?.group?.position || new THREE.Vector3(islandData[0].x, 0, islandData[0].z);
-}
-
-function nearStarterIsland(point, margin = CENTER_BOT_CLEAR_RADIUS) {
-  const center = starterIslandCenter();
-  return dist2(point, center) < margin;
-}
-
-function randomWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
-  const point = new THREE.Vector3();
-  for (let i = 0; i < 80; i++) {
-    point.set((Math.random() - 0.5) * range * 2, SHIP_WATERLINE_Y, (Math.random() - 0.5) * range * 2);
-    if (dist2(point, state.position) >= minFromStart && !pointInAnyIsland(point, 12)) return point.clone();
-  }
-  return new THREE.Vector3(range * 0.65, SHIP_WATERLINE_Y, range * 0.65);
-}
-
-function randomNorthernWaterPoint(range = MAP_LIMIT * 0.9, minFromStart = 0) {
-  const point = new THREE.Vector3();
-  const minZ = Math.max(-range, WHALE_NORTH_MIN_Z);
-  const maxZ = Math.min(range, WHALE_NORTH_MAX_Z);
-  for (let i = 0; i < 100; i++) {
-    point.set((Math.random() - 0.5) * range * 2, SHIP_WATERLINE_Y, minZ + Math.random() * Math.max(8, maxZ - minZ));
-    if (dist2(point, state.position) >= minFromStart && !pointInAnyIsland(point, 16)) return point.clone();
-  }
-  return new THREE.Vector3(range * 0.15, SHIP_WATERLINE_Y, WHALE_NORTH_CENTER_Z);
-}
-
-function pointInWhaleNorthZone(point, pad = 0) {
-  return point.z >= WHALE_NORTH_MIN_Z - pad && point.z <= WHALE_NORTH_MAX_Z + pad;
-}
-
-function whaleZoneReturnDirection(position) {
-  const target = new THREE.Vector3(position.x * 0.45, 0, clamp(position.z, WHALE_NORTH_MIN_Z + 34, WHALE_NORTH_MAX_Z - 34));
-  target.z = WHALE_NORTH_CENTER_Z;
-  const toZone = target.sub(position);
-  toZone.y = 0;
-  if (toZone.lengthSq() < 0.01) toZone.set(0, 0, WHALE_NORTH_CENTER_Z > position.z ? 1 : -1);
-  return Math.atan2(toZone.x, toZone.z);
-}
-
-function randomTravelWaterPoint(range = MAP_LIMIT * 0.92) {
-  const point = new THREE.Vector3();
-  for (let i = 0; i < 90; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = range * (0.42 + Math.random() * 0.55);
-    point.set(Math.sin(angle) * radius, SHIP_WATERLINE_Y, Math.cos(angle) * radius);
-    if (!pointInAnyIsland(point, 22) && !nearStarterIsland(point, CENTER_BOT_CLEAR_RADIUS)) return point.clone();
-  }
-  return randomWaterPoint(range, 92);
-}
-
-function initWindCurrents() {
-  windCurrents.length = 0;
-  for (let i = 0; i < WIND_MARKER_COUNT; i++) {
-    const angle = (i / WIND_MARKER_COUNT) * Math.PI * 2 + Math.sin(i * 7.1) * 0.55;
-    const radius = MAP_LIMIT * (0.18 + (i % 6) * 0.12);
-    const x = Math.cos(angle) * radius + Math.sin(i * 1.9) * 28;
-    const z = Math.sin(angle) * radius + Math.cos(i * 2.3) * 28;
-    const dir = angle + Math.PI * 0.42 + Math.sin(i * 3.4) * 0.85;
-    windCurrents.push({
-      x: clamp(x, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.9),
-      z: clamp(z, -MAP_LIMIT * 0.9, MAP_LIMIT * 0.9),
-      radius: 86 + (i % 4) * 24,
-      strength: 1.4 + (i % 5) * 0.45,
-      dir,
-      vector: new THREE.Vector3(Math.sin(dir), 0, Math.cos(dir)),
-    });
-  }
-}
-
-function windAt(position) {
-  const result = new THREE.Vector3();
-  windCurrents.forEach((wind) => {
-    const dx = position.x - wind.x;
-    const dz = position.z - wind.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance > wind.radius) return;
-    const falloff = Math.pow(1 - distance / wind.radius, 1.35);
-    result.add(wind.vector.clone().multiplyScalar(wind.strength * falloff));
-  });
-  return result;
-}
-
-function landingPointForShip(island, shipPosition) {
-  const center = island.group.position;
-  const baseAngle = Math.atan2(shipPosition.x - center.x, shipPosition.z - center.z);
-  const offsets = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, Math.PI];
-  const distances = island.surfaceLobes?.length
-    ? [0.62, 0.54, 0.46, 0.72, 0.36, 0.28].map((fraction) => island.radius * fraction)
-    : [island.radius - 4.1];
-  for (const offset of offsets) {
-    const angle = baseAngle + offset;
-    for (const distance of distances) {
-      const point = new THREE.Vector3(
-        center.x + Math.sin(angle) * distance,
-        0,
-        center.z + Math.cos(angle) * distance,
-      );
-      const y = walkableGroundY(island, point);
-      if (y !== null) return { point, y };
-    }
-  }
-  const fallback = island.surfaceLobes?.length
-    ? center.clone()
-    : island.dock.clone().add(new THREE.Vector3(0, 0, -4));
-  return { point: fallback, y: islandGroundY(island, fallback) || island.landY };
-}
-
-function collidesWithShipAt(point, ownType = state.shipType) {
-  const ownRadius = shipHitRadius(ownType);
-  for (const bot of bots) {
-    if (dist2(point, bot.group.position) < (ownRadius + shipHitRadius(bot.shipType)) * 0.72) return true;
-  }
-  for (const remote of remotePlayers.values()) {
-    if (remote.group.visible && dist2(point, remote.group.position) < (ownRadius + shipHitRadius(remote.shipType)) * 0.72) return true;
-  }
-  return false;
-}
-
-function shipSeparationDistance(typeA, typeB) {
-  return (shipHitRadius(typeA) + shipHitRadius(typeB)) * 0.72;
-}
-
-function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.5, bShare = 0.5) {
-  const dx = posA.x - posB.x;
-  const dz = posA.z - posB.z;
-  const distance = Math.hypot(dx, dz);
-  const minDistance = shipSeparationDistance(typeA, typeB);
-  if (distance >= minDistance || minDistance <= 0) return false;
-  const normal = distance > 0.001
-    ? new THREE.Vector3(dx / distance, 0, dz / distance)
-    : new THREE.Vector3(Math.sin(clock.elapsedTime * 8.17), 0, Math.cos(clock.elapsedTime * 8.17)).normalize();
-  const overlap = minDistance - distance;
-  const massA = shipWeight(typeA);
-  const massB = shipWeight(typeB);
-  const aMotion = aShare / massA;
-  const bMotion = bShare / massB;
-  const totalMotion = Math.max(0.000001, aMotion + bMotion);
-  const correction = Math.max(0, overlap - 0.08) * 0.68;
-  posA.add(normal.clone().multiplyScalar(correction * (aMotion / totalMotion)));
-  posB.add(normal.clone().multiplyScalar(-correction * (bMotion / totalMotion)));
-
-  const invMassA = velA && aShare > 0 ? aShare / massA : 0;
-  const invMassB = velB && bShare > 0 ? bShare / massB : 0;
-  const totalInvMass = invMassA + invMassB;
-  if (totalInvMass > 0) {
-    const velocityA = velA ? velA.dot(normal) : 0;
-    const velocityB = velB ? velB.dot(normal) : 0;
-    const relativeNormalSpeed = velocityA - velocityB;
-    const biasSpeed = clamp(Math.max(0, overlap - 0.12) * 0.42, 0, 1.9);
-    let normalImpulse = 0;
-    if (relativeNormalSpeed < biasSpeed) {
-      const restitution = relativeNormalSpeed < -5 ? 0.12 : 0.02;
-      normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / totalInvMass, 0, 900);
-      if (velA) velA.add(normal.clone().multiplyScalar(normalImpulse * invMassA));
-      if (velB) velB.add(normal.clone().multiplyScalar(-normalImpulse * invMassB));
-    }
-    if (normalImpulse > 0) {
-      const relativeVelocity = new THREE.Vector3();
-      if (velA) relativeVelocity.add(velA);
-      if (velB) relativeVelocity.sub(velB);
-      const tangent = relativeVelocity.sub(normal.clone().multiplyScalar(relativeVelocity.dot(normal)));
-      const tangentSpeed = tangent.length();
-      if (tangentSpeed > 0.001) {
-        const frictionImpulse = Math.min(tangentSpeed / totalInvMass, normalImpulse * 0.42);
-        tangent.multiplyScalar(-frictionImpulse / tangentSpeed);
-        if (velA) velA.add(tangent.clone().multiplyScalar(invMassA));
-        if (velB) velB.add(tangent.clone().multiplyScalar(-invMassB));
-      }
-    }
-    if (velA) velA.multiplyScalar(0.985);
-    if (velB) velB.multiplyScalar(0.985);
-  }
-  return true;
-}
-
-function ramKey(a, b) {
-  return [a.id, b.id].sort().join(":");
-}
-
-function entityForward(entity) {
-  const rotation = entity.rotation ?? entity.group?.rotation?.y ?? 0;
-  return new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation));
-}
-
-function applyRamDamage(a, b) {
-  if (!a?.target || !b?.target || !a.velocity || !b.velocity) return;
-  const key = ramKey(a, b);
-  if ((ramCooldowns.get(key) || 0) > clock.elapsedTime) return;
-  const normal = a.position.clone().sub(b.position);
-  normal.y = 0;
-  if (normal.lengthSq() < 0.001) return;
-  normal.normalize();
-  const relativeVelocity = a.velocity.clone().sub(b.velocity);
-  const closing = -relativeVelocity.dot(normal);
-  if (closing < 2.2) return;
-  const baseWeight = shipWeight("skiff");
-  const base = 40 * clamp(closing / 15, 0.22, 2.2);
-  const aNose = entityForward(a).dot(normal.clone().multiplyScalar(-1));
-  const bNose = entityForward(b).dot(normal);
-  let damageToA = base * Math.sqrt(shipWeight(b.type) / baseWeight) * 0.42;
-  let damageToB = base * Math.sqrt(shipWeight(a.type) / baseWeight) * 0.42;
-  if (aNose > 0.58 && Math.abs(bNose) < 0.42) {
-    damageToB *= 1.35;
-    damageToA *= 0.55;
-  } else if (bNose > 0.58 && Math.abs(aNose) < 0.42) {
-    damageToA *= 1.35;
-    damageToB *= 0.55;
-  }
-  if (a.type === "whaler") damageToA *= getShipStats("whaler").ramTakenScale || 0.5;
-  if (b.type === "whaler") damageToB *= getShipStats("whaler").ramTakenScale || 0.5;
-  if (damageToA > 3 && a.canDamage !== false) damageTarget(a.target, damageToA);
-  if (damageToB > 3 && b.canDamage !== false) damageTarget(b.target, damageToB);
-  ramCooldowns.set(key, clock.elapsedTime + 1.15);
-}
-
-function pushShipOutOfIslands(position, shipType, velocity = null, padding = 4) {
-  const radius = shipHitRadius(shipType) * 0.55 + padding;
-  let pushed = false;
-  islands.forEach((island) => {
-    const dx = position.x - island.group.position.x;
-    const dz = position.z - island.group.position.z;
-    const distance = Math.hypot(dx, dz);
-    const minDistance = island.radius + radius;
-    if (distance >= minDistance) return;
-    const normal = distance > 0.001
-      ? new THREE.Vector3(dx / distance, 0, dz / distance)
-      : new THREE.Vector3(1, 0, 0);
-    position.x = island.group.position.x + normal.x * minDistance;
-    position.z = island.group.position.z + normal.z * minDistance;
-    if (velocity) {
-      const inward = velocity.dot(normal);
-      if (inward < 0) velocity.add(normal.multiplyScalar(-inward * 1.05));
-      velocity.multiplyScalar(0.62);
-    }
-    pushed = true;
-  });
-  return pushed;
-}
-
-function krakenHeadWorldPosition() {
-  if (!krakenBoss?.group) return null;
-  return krakenBoss.group.localToWorld(new THREE.Vector3(0, 0, -6.55));
-}
-
-function pushShipOutOfKraken(position, shipType, velocity = null, padding = 1) {
-  if (!krakenBoss?.alive || !krakenBoss.group?.visible) return false;
-  const center = krakenHeadWorldPosition();
-  if (!center) return false;
-  const minDistance = 7.5 + shipHitRadius(shipType) * 0.72 + padding;
-  const dx = position.x - center.x;
-  const dz = position.z - center.z;
-  const distance = Math.hypot(dx, dz);
-  if (distance >= minDistance) return false;
-  const normal = distance > 0.001
-    ? new THREE.Vector3(dx / distance, 0, dz / distance)
-    : new THREE.Vector3(1, 0, 0);
-  position.x = center.x + normal.x * minDistance;
-  position.z = center.z + normal.z * minDistance;
-  if (velocity) {
-    const inward = velocity.dot(normal);
-    if (inward < 0) velocity.add(normal.clone().multiplyScalar(-inward * 1.35));
-    velocity.multiplyScalar(0.58);
-  }
-  return true;
-}
-
-function resolveShipContacts() {
-  if (state.mode === "ship" && playerShip) {
-    bots.forEach((bot) => {
-      if (separateShipPositions(playerShip.position, state.shipType, state.velocity, bot.group.position, bot.shipType, bot.velocity, 0.42, 0.58)) {
-        bot.agroUntil = Math.max(bot.agroUntil || 0, clock.elapsedTime + 1.2);
-        applyRamDamage(
-          { id: "player", target: state, position: playerShip.position, velocity: state.velocity, type: state.shipType, rotation: state.rotation },
-          { id: bot.localId || bot.serverId, target: bot, position: bot.group.position, velocity: bot.velocity, type: bot.shipType, rotation: bot.rotation ?? bot.group.rotation.y },
-        );
-      }
-    });
-    remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0);
-    });
-    remotePlayers.forEach((remote) => {
-      if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
-    });
-    pushShipOutOfIslands(playerShip.position, state.shipType, state.velocity, 3);
-    pushShipOutOfKraken(playerShip.position, state.shipType, state.velocity, 1.2);
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
-    state.position.copy(playerShip.position);
-  }
-  for (let i = 0; i < bots.length; i++) {
-    const bot = bots[i];
-    pushShipOutOfIslands(bot.group.position, bot.shipType, bot.velocity, 5);
-    pushShipOutOfKraken(bot.group.position, bot.shipType, bot.velocity, 1);
-    for (let j = i + 1; j < bots.length; j++) {
-      if (separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5)) {
-        applyRamDamage(
-          { id: bot.localId || bot.serverId, target: bot, position: bot.group.position, velocity: bot.velocity, type: bot.shipType, rotation: bot.rotation ?? bot.group.rotation.y },
-          { id: bots[j].localId || bots[j].serverId, target: bots[j], position: bots[j].group.position, velocity: bots[j].velocity, type: bots[j].shipType, rotation: bots[j].rotation ?? bots[j].group.rotation.y },
-        );
-      }
-    }
-    remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0);
-    });
-  }
-  remotePlayers.forEach((remote) => {
-    if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
-  });
-}
-
-const DEFAULT_HULL_TUNING = { stern: 0.46, bow: 0.05, mid: 0.96, fullness: 0.72, bowLift: 0.18, sternLift: 0.09, keel: 0.6 };
-const HULL_TUNING = {
-  skiff: { stern: 0.42, bow: 0.04, mid: 0.92, fullness: 0.72, bowLift: 0.2, sternLift: 0.1, keel: 0.55 },
-  dart: { stern: 0.22, bow: 0.025, mid: 0.78, fullness: 0.58, bowLift: 0.28, sternLift: 0.06, keel: 0.5 },
-  storm: { stern: 0.28, bow: 0.025, mid: 0.82, fullness: 0.6, bowLift: 0.26, sternLift: 0.06, keel: 0.5 },
-  clipper: { stern: 0.22, bow: 0.02, mid: 0.84, fullness: 0.55, bowLift: 0.24, sternLift: 0.05, keel: 0.55 },
-  schooner: { stern: 0.28, bow: 0.03, mid: 0.86, fullness: 0.6, bowLift: 0.22, sternLift: 0.06, keel: 0.52 },
-  dhow: { stern: 0.2, bow: 0.02, mid: 0.78, fullness: 0.56, bowLift: 0.34, sternLift: 0.04, keel: 0.52 },
-  xebec: { stern: 0.2, bow: 0.02, mid: 0.82, fullness: 0.55, bowLift: 0.32, sternLift: 0.06, keel: 0.52 },
-  lugger: { stern: 0.3, bow: 0.04, mid: 0.84, fullness: 0.62, bowLift: 0.2, sternLift: 0.08, keel: 0.52 },
-  brig: { stern: 0.55, bow: 0.05, mid: 0.98, fullness: 0.72, bowLift: 0.16, sternLift: 0.1, keel: 0.62 },
-  cog: { stern: 0.72, bow: 0.08, mid: 1.02, fullness: 0.88, bowLift: 0.14, sternLift: 0.16, keel: 0.58 },
-  junk: { stern: 0.66, bow: 0.1, mid: 1.0, fullness: 0.85, bowLift: 0.12, sternLift: 0.12, keel: 0.52 },
-  fluyt: { stern: 0.78, bow: 0.08, mid: 1.08, fullness: 0.95, bowLift: 0.12, sternLift: 0.1, keel: 0.66 },
-  galleon: { stern: 0.72, bow: 0.06, mid: 1.08, fullness: 0.9, bowLift: 0.18, sternLift: 0.15, keel: 0.76 },
-  carrack: { stern: 0.78, bow: 0.08, mid: 1.1, fullness: 0.95, bowLift: 0.16, sternLift: 0.2, keel: 0.72 },
-  manowar: { stern: 0.72, bow: 0.06, mid: 1.12, fullness: 0.92, bowLift: 0.15, sternLift: 0.12, keel: 0.82 },
-  frigate: { stern: 0.52, bow: 0.04, mid: 1.0, fullness: 0.72, bowLift: 0.18, sternLift: 0.08, keel: 0.7 },
-  turtle: { stern: 0.82, bow: 0.12, mid: 1.12, fullness: 1.05, bowLift: 0.08, sternLift: 0.08, keel: 0.6 },
-  treasure: { stern: 0.82, bow: 0.1, mid: 1.14, fullness: 1.0, bowLift: 0.12, sternLift: 0.16, keel: 0.72 },
-  longship: { stern: 0.05, bow: 0.04, mid: 0.68, fullness: 0.55, bowLift: 0.3, sternLift: 0.24, keel: 0.45 },
-  galley: { stern: 0.08, bow: 0.03, mid: 0.72, fullness: 0.52, bowLift: 0.26, sternLift: 0.16, keel: 0.44 },
-  cat: { stern: 0.18, bow: 0.04, mid: 0.65, fullness: 0.55, bowLift: 0.18, sternLift: 0.08, keel: 0.34 },
-  ironclad: { stern: 0.76, bow: 0.14, mid: 1.08, fullness: 1.05, bowLift: 0.05, sternLift: 0.05, keel: 0.48 },
-};
-
-function hullProfile(profile = "skiff") {
-  return { ...DEFAULT_HULL_TUNING, ...(HULL_TUNING[profile] || {}) };
-}
-
-function hullMesh(length, width, height, material = mats.hull, profile = "skiff") {
-  const tuning = hullProfile(profile);
-  const vertices = [];
-  const indices = [];
-  const stationCount = 10;
-  const sectionCount = 7;
-  const addVertex = (x, y, z) => {
-    vertices.push(x, y, z);
-    return vertices.length / 3 - 1;
-  };
-  for (let i = 0; i < stationCount; i++) {
-    const t = i / (stationCount - 1);
-    const z = length * (0.52 - t * 1.1);
-    const midCurve = Math.pow(Math.sin(t * Math.PI), tuning.fullness);
-    const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
-    const beam = width * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
-    const topHalf = beam * 0.48;
-    const chineHalf = beam * (0.38 + 0.08 * midCurve);
-    const bilgeHalf = beam * (0.18 + 0.04 * midCurve);
-    const bowLift = Math.pow(t, 2.2) * tuning.bowLift * height;
-    const sternLift = Math.pow(1 - t, 2.4) * tuning.sternLift * height;
-    const deckY = height * (0.92 + 0.08 * Math.sin(t * Math.PI)) + bowLift + sternLift;
-    const chineY = height * (0.35 + 0.06 * midCurve);
-    const bilgeY = height * (0.08 + 0.04 * midCurve);
-    const keelY = -height * (0.08 + tuning.keel * (0.18 + 0.82 * midCurve));
-    [
-      [-topHalf, deckY, z],
-      [-chineHalf, chineY, z],
-      [-bilgeHalf, bilgeY, z],
-      [0, keelY, z],
-      [bilgeHalf, bilgeY, z],
-      [chineHalf, chineY, z],
-      [topHalf, deckY, z],
-    ].forEach((point) => addVertex(...point));
-  }
-  for (let i = 0; i < stationCount - 1; i++) {
-    for (let j = 0; j < sectionCount - 1; j++) {
-      const a = i * sectionCount + j;
-      const b = i * sectionCount + j + 1;
-      const c = (i + 1) * sectionCount + j;
-      const d = (i + 1) * sectionCount + j + 1;
-      indices.push(a, c, b, b, c, d);
-    }
-    const leftTop = i * sectionCount;
-    const rightTop = i * sectionCount + sectionCount - 1;
-    const nextLeftTop = (i + 1) * sectionCount;
-    const nextRightTop = (i + 1) * sectionCount + sectionCount - 1;
-    indices.push(leftTop, rightTop, nextLeftTop, rightTop, nextRightTop, nextLeftTop);
-  }
-  const sternCenter = addVertex(0, height * 0.34, length * 0.52);
-  const bowCenter = addVertex(0, height * (0.42 + tuning.bowLift), -length * 0.58);
-  for (let j = 0; j < sectionCount - 1; j++) {
-    indices.push(sternCenter, j + 1, j);
-    const bowStart = (stationCount - 1) * sectionCount;
-    indices.push(bowCenter, bowStart + j, bowStart + j + 1);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  const renderMaterial = material.clone();
-  renderMaterial.side = THREE.DoubleSide;
-  renderMaterial.needsUpdate = true;
-  const mesh = new THREE.Mesh(geo, renderMaterial);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function addHullEndCaps(group, length, width, scale, material = mats.hull, profile = "skiff") {
-  const sternZ = length * 0.515 * scale;
-  const bowZ = -length * 0.565 * scale;
-  const sternWidth = Math.max(width * scale * 0.42, hullSideXAt(length, width, scale, sternZ, 1.12, profile) * 2.05);
-  const bowWidth = Math.max(width * scale * 0.22, hullSideXAt(length, width, scale, bowZ, 1.3, profile) * 1.9);
-  const stern = new THREE.Mesh(new THREE.BoxGeometry(sternWidth, 0.76 * scale, 0.18 * scale), material);
-  stern.position.set(0, 0.72 * scale, sternZ);
-  stern.castShadow = true;
-  stern.receiveShadow = true;
-  group.add(stern);
-  const sternCap = new THREE.Mesh(new THREE.BoxGeometry(sternWidth * 0.92, 0.12 * scale, 0.26 * scale), mats.hullDark);
-  sternCap.position.set(0, 1.12 * scale, sternZ + 0.03 * scale);
-  sternCap.castShadow = true;
-  group.add(sternCap);
-  const bow = new THREE.Mesh(new THREE.BoxGeometry(bowWidth, 0.52 * scale, 0.14 * scale), material);
-  bow.position.set(0, 0.66 * scale, bowZ);
-  bow.castShadow = true;
-  bow.receiveShadow = true;
-  group.add(bow);
-}
-
-function addMastBase(group, z, scale) {
-  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.24 * scale, 0.12 * scale, 10), mats.hullDark);
-  collar.position.set(0, 1.34 * scale, z);
-  collar.castShadow = true;
-  group.add(collar);
-}
-
-function addSail(group, x, z, scale, color = 0xfff4da) {
-  const mastX = 0;
-  const mastZ = z * MAST_SPACING_SCALE;
-  const mastBottom = 1.42 * scale;
-  const mastHeight = 4.6 * scale * MAST_SIZE_SCALE;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale * 1.12, 0.14 * scale * 1.12, mastHeight, 7), mats.dark);
-  mast.position.set(mastX, mastBottom + mastHeight * 0.5, mastZ);
-  mast.castShadow = true;
-  group.add(mast);
-  addMastBase(group, mastZ, scale);
-  const sail = foreAftLateenPanel(2.9 * scale, 3.65 * scale, color, 0.12 * scale);
-  sail.position.set(0.04 * scale, mastBottom + mastHeight * 0.44, mastZ + 0.08 * scale);
-  group.add(sail);
-  addRope(
-    group,
-    new THREE.Vector3(mastX, mastBottom + mastHeight * 0.83, mastZ + 1.25 * scale),
-    new THREE.Vector3(mastX, 2.3 * scale, mastZ - 1.25 * scale),
-    scale,
-    0.045,
-  );
-  addRope(
-    group,
-    new THREE.Vector3(mastX, 2.28 * scale, mastZ + 1.1 * scale),
-    new THREE.Vector3(mastX, 2.12 * scale, mastZ - 1.2 * scale),
-    scale,
-    0.036,
-  );
-  const mastTop = mastBottom + mastHeight;
-  addRope(group, new THREE.Vector3(mastX, mastTop, mastZ), new THREE.Vector3(-1.05 * scale, 1.55 * scale, mastZ + 1.25 * scale), scale, 0.015);
-  addRope(group, new THREE.Vector3(mastX, mastTop, mastZ), new THREE.Vector3(1.05 * scale, 1.55 * scale, mastZ + 1.25 * scale), scale, 0.015);
-  addRope(group, new THREE.Vector3(mastX, mastTop, mastZ), new THREE.Vector3(0, 1.5 * scale, mastZ - 1.7 * scale), scale, 0.014);
-}
-
-function addSquareSail(group, x, z, scale, color = 0xfff4da, tiers = 1) {
-  const mastX = 0;
-  const mastZ = z * MAST_SPACING_SCALE;
-  const mastBottom = 1.42 * scale;
-  const mastHeight = (4.6 + tiers * 0.55) * scale * MAST_SIZE_SCALE;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale * 1.12, 0.16 * scale * 1.12, mastHeight, 7), mats.dark);
-  mast.position.set(mastX, mastBottom + mastHeight * 0.5, mastZ);
-  mast.castShadow = true;
-  group.add(mast);
-  addMastBase(group, mastZ, scale);
-  for (let i = 0; i < tiers; i++) {
-    const y = mastBottom + (1.78 + i * 1.2) * scale * MAST_SIZE_SCALE;
-    const sailWidth = (2.5 - i * 0.28) * scale;
-    const sailHeight = (1.16 - i * 0.06) * scale;
-    const sail = clothPanel(sailWidth, sailHeight, color, 0.16 * scale);
-    sail.position.set(mastX, y, mastZ - 0.05 * scale);
-    group.add(sail);
-    const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, (2.55 - i * 0.2) * scale, 6), mats.dark);
-    yard.rotation.z = Math.PI / 2;
-    yard.position.set(mastX, y + 0.5 * scale, mastZ - 0.08 * scale);
-    group.add(yard);
-    for (let seam = -1; seam <= 1; seam += 2) {
-      addRope(
-        group,
-        new THREE.Vector3(mastX - sailWidth * 0.45, y + seam * sailHeight * 0.18, mastZ - 0.11 * scale),
-        new THREE.Vector3(mastX + sailWidth * 0.45, y + seam * sailHeight * 0.18, mastZ - 0.11 * scale),
-        scale,
-        0.014,
-      );
-    }
-    for (let seam = -1; seam <= 1; seam += 2) {
-      addRope(
-        group,
-        new THREE.Vector3(mastX + seam * sailWidth * 0.18, y - sailHeight * 0.43, mastZ - 0.12 * scale),
-        new THREE.Vector3(mastX + seam * sailWidth * 0.18, y + sailHeight * 0.43, mastZ - 0.12 * scale),
-        scale,
-        0.011,
-      );
-    }
-    const mastTop = mastBottom + mastHeight;
-    addRope(group, new THREE.Vector3(mastX, mastTop, mastZ), new THREE.Vector3(mastX - (1.25 - i * 0.1) * scale, y + 0.45 * scale, mastZ), scale * 0.82, 0.014);
-    addRope(group, new THREE.Vector3(mastX, mastTop, mastZ), new THREE.Vector3(mastX + (1.25 - i * 0.1) * scale, y + 0.45 * scale, mastZ), scale * 0.82, 0.014);
-  }
-}
-
-function addRope(group, start, end, scale = 1, radius = 0.022, material = mats.rope) {
-  const rope = new THREE.Mesh(new THREE.CylinderGeometry(radius * scale, radius * scale, 1, 6), material);
-  setCylinderBetween(rope, start, end);
-  group.add(rope);
-  return rope;
-}
-
-function sailMaterial(color) {
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.96, metalness: 0, side: THREE.DoubleSide });
-}
-
-function clothPanel(width, height, color, belly = 0.16) {
-  const vertices = [];
-  const indices = [];
-  for (let y = 0; y < 3; y++) {
-    for (let x = 0; x < 3; x++) {
-      const u = x / 2;
-      const v = y / 2;
-      const curve = Math.sin(u * Math.PI) * Math.sin(v * Math.PI) * belly;
-      vertices.push((u - 0.5) * width, (v - 0.5) * height, curve);
-    }
-  }
-  for (let y = 0; y < 2; y++) {
-    for (let x = 0; x < 2; x++) {
-      const a = y * 3 + x;
-      indices.push(a, a + 1, a + 3, a + 1, a + 4, a + 3);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  const sail = new THREE.Mesh(geo, sailMaterial(color));
-  sail.castShadow = true;
-  return sail;
-}
-
-function lateenPanel(width, height, color, belly = 0.14) {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute([
-    width * 0.38, height * 0.52, 0,
-    -width * 0.55, -height * 0.44, 0,
-    width * 0.5, -height * 0.34, 0,
-    width * 0.06, -height * 0.06, belly,
-  ], 3));
-  geo.setIndex([0, 1, 3, 0, 3, 2, 1, 2, 3]);
-  geo.computeVertexNormals();
-  const sail = new THREE.Mesh(geo, sailMaterial(color));
-  sail.castShadow = true;
-  return sail;
-}
-
-function foreAftLateenPanel(length, height, color, belly = 0.12) {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute([
-    belly, height * 0.52, length * 0.48,
-    -belly * 0.45, -height * 0.42, -length * 0.55,
-    -belly * 0.25, -height * 0.34, length * 0.34,
-    belly, -height * 0.05, -length * 0.04,
-  ], 3));
-  geo.setIndex([0, 1, 3, 0, 3, 2, 1, 2, 3]);
-  geo.computeVertexNormals();
-  const sail = new THREE.Mesh(geo, sailMaterial(color));
-  sail.castShadow = true;
-  return sail;
-}
-
-function addCabin(group, x, z, width, depth, scale, color = 0x6b432b) {
-  const px = x;
-  const pz = z;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(width * scale, 1.0 * scale, depth * scale), mat(color));
-  cabin.position.set(px, 1.82 * scale, pz);
-  cabin.castShadow = true;
-  group.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry((width + 0.35) * scale, 0.22 * scale, (depth + 0.28) * scale), mat(0x2f3342));
-  roof.position.set(px, 2.43 * scale, pz);
-  roof.castShadow = true;
-  group.add(roof);
-  for (let side of [-1, 1]) {
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.34 * scale, 0.38 * scale), mats.gold);
-    window.position.set(px + side * (width * 0.52) * scale, 1.86 * scale, pz);
-    group.add(window);
-  }
-}
-
-function addSternGallery(group, length, width, scale, color) {
-  const gallery = new THREE.Mesh(new THREE.BoxGeometry(width * 0.64 * scale, 0.72 * scale, 0.28 * scale), mat(color));
-  gallery.position.set(0, 1.55 * scale, length * 0.41 * scale);
-  gallery.castShadow = true;
-  group.add(gallery);
-  for (let i = -1; i <= 1; i++) {
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.34 * scale, 0.26 * scale, 0.05 * scale), mats.gold);
-    window.position.set(i * width * 0.18 * scale, 1.58 * scale, length * 0.49 * scale);
-    group.add(window);
-  }
-  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035 * scale, 0.035 * scale, width * 0.72 * scale, 7), mats.wood);
-  rail.rotation.z = Math.PI / 2;
-  rail.position.set(0, 1.92 * scale, length * 0.5 * scale);
-  group.add(rail);
-}
-
-function addCannonPorts(group, count, width, length, scale, profile = "skiff") {
-  for (let i = 0; i < count; i++) {
-    const z = (-length * 0.28 + (i / Math.max(1, count - 1)) * length * 0.55) * scale;
-    for (let side of [-1, 1]) {
-      const port = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.28 * scale, 0.32 * scale), mats.dark);
-      const sideX = side * hullSideXAt(length, width, scale, z, 0.98, profile);
-      port.position.set(sideX, 1.25 * scale, z);
-      group.add(port);
-      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.08 * scale, 0.5 * scale, 8), mats.dark);
-      muzzle.rotation.z = Math.PI / 2;
-      muzzle.position.set(sideX + side * 0.18 * scale, 1.25 * scale, z);
-      group.add(muzzle);
-    }
-  }
-}
-
-function addOars(group, count, width, length, scale, profile = "skiff") {
-  for (let i = 0; i < count; i++) {
-    const z = (-length * 0.28 + i * length * 0.56 / Math.max(1, count - 1)) * scale;
-    for (let side of [-1, 1]) {
-      const rowlockX = side * hullSideXAt(length, width, scale, z, 1.02, profile);
-      const rowlock = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.08 * scale, 0.16 * scale), mats.hullDark);
-      rowlock.position.set(rowlockX, 1.22 * scale, z);
-      group.add(rowlock);
-      const grip = new THREE.Vector3(rowlockX, 1.18 * scale, z);
-      const bladePoint = new THREE.Vector3(rowlockX + side * 1.65 * scale, 0.82 * scale, z);
-      addRope(group, grip, bladePoint, scale, 0.035, mats.wood);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.38 * scale, 0.05 * scale, 0.18 * scale), mats.wood);
-      blade.position.copy(bladePoint);
-      blade.rotation.z = -0.22 * side;
-      group.add(blade);
-    }
-  }
-}
-
-function addHullDetailLines(group, length, width, scale, tier, profile = "skiff") {
-  const rows = 2 + Math.min(3, tier);
-  for (let side of [-1, 1]) {
-    for (let row = 0; row < rows; row++) {
-      const y = (0.55 + row * 0.23) * scale;
-      addHullSideLine(
-        group,
-        length,
-        width,
-        scale,
-        side,
-        y,
-        -length * 0.34 * scale,
-        length * 0.34 * scale,
-        mats.rope,
-        0.014,
-        0.72 - row * 0.035,
-        profile,
-      );
-    }
-    const ribCount = 4 + tier;
-    for (let i = 0; i < ribCount; i++) {
-      const t = i / Math.max(1, ribCount - 1);
-      const z = (-length * 0.33 + t * length * 0.66) * scale;
-      const lowerX = side * hullSideXAt(length, width, scale, z, 0.68, profile);
-      const upperX = side * hullSideXAt(length, width, scale, z, 0.94, profile);
-      addRope(group, new THREE.Vector3(lowerX, 0.36 * scale, z), new THREE.Vector3(upperX, 1.26 * scale, z), scale, 0.022);
-    }
-  }
-}
-
-function addDeckFittings(group, length, width, scale, tier, color, profile = "skiff") {
-  const hatch = hullMesh(1.0 * scale, 0.72 * scale, 0.12 * scale, mats.hullDark, "skiff");
-  hatch.position.set(0, 1.28 * scale, -0.35 * scale);
-  hatch.scale.z = 0.72;
-  group.add(hatch);
-  const cargoCount = 1 + Math.min(3, tier);
-  for (let i = 0; i < cargoCount; i++) {
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * scale, 0.2 * scale, 0.44 * scale, 8), mats.wood);
-    barrel.rotation.z = Math.PI / 2;
-    barrel.position.set(((i % 2) ? 0.52 : -0.52) * width * 0.22 * scale, 1.38 * scale, (0.18 + i * 0.52) * scale);
-    group.add(barrel);
-  }
-  const coil = new THREE.Mesh(new THREE.TorusGeometry(0.22 * scale, 0.035 * scale, 8, 18), mats.rope);
-  coil.rotation.x = Math.PI / 2;
-  coil.position.set(width * 0.17 * scale, 1.42 * scale, -length * 0.16 * scale);
-  group.add(coil);
-  const anchor = new THREE.Mesh(new THREE.TorusGeometry(0.22 * scale, 0.045 * scale, 8, 16, Math.PI * 1.3), mats.dark);
-  anchor.position.set(-hullSideXAt(length, width, scale, -length * 0.34 * scale, 0.96, profile), 1.12 * scale, -length * 0.34 * scale);
-  anchor.rotation.set(Math.PI / 2, 0, 0.45);
-  group.add(anchor);
-  if (tier >= 2) {
-    for (let side of [-1, 1]) {
-      const lanternX = side * hullSideXAt(length, width, scale, length * 0.3 * scale, 0.86, profile);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025 * scale, 0.03 * scale, 0.42 * scale, 6), mats.dark);
-      post.position.set(lanternX, 1.52 * scale, length * 0.3 * scale);
-      group.add(post);
-      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.14 * scale, 8, 6), mats.gold);
-      lantern.position.set(lanternX, 1.72 * scale, length * 0.3 * scale);
-      group.add(lantern);
-    }
-  }
-  if (tier >= 3) {
-    const crest = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.22 * scale, 0.08 * scale, 16), mat(color));
-    crest.rotation.x = Math.PI / 2;
-    crest.position.set(0, 1.72 * scale, length * 0.38 * scale);
-    group.add(crest);
-  }
-}
-
-function addShipNightLights(group, length, width, scale, tier, profile = "skiff") {
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xffbd55,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    fog: false,
-  });
-  const haloMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffb34a,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    fog: false,
-    side: THREE.DoubleSide,
-  });
-  const halo = new THREE.Mesh(new THREE.CircleGeometry(1, 48), haloMaterial);
-  halo.rotation.x = -Math.PI / 2;
-  halo.position.set(0, 0.075 * scale, 0.05 * length * scale);
-  halo.scale.set(width * 1.45 * scale, length * 0.84 * scale, 1);
-  group.add(halo);
-  const positions = [
-    { x: -hullSideXAt(length, width, scale, length * 0.24 * scale, 0.88, profile), z: length * 0.24 * scale },
-    { x: hullSideXAt(length, width, scale, length * 0.24 * scale, 0.88, profile), z: length * 0.24 * scale },
-  ];
-  if (tier >= 2) positions.push({ x: 0, z: -length * 0.34 * scale });
-  if (tier >= 4) positions.push({ x: 0, z: length * 0.38 * scale });
-  positions.forEach((pos) => {
-    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.11 * scale, 9, 7), material);
-    lantern.position.set(pos.x, 1.72 * scale, pos.z);
-    lantern.userData.shipNightGlow = true;
-    group.add(lantern);
-    const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * scale, 0.08 * scale, 0.22 * scale, 6), mats.dark);
-    cage.position.set(pos.x, 1.72 * scale, pos.z);
-    group.add(cage);
-  });
-  const light = new THREE.PointLight(0xffb33e, 0, (16 + tier * 2.8) * scale, 1.35);
-  light.position.set(0, 1.92 * scale, length * 0.1 * scale);
-  group.add(light);
-  shipNightLights.push({
-    group,
-    material,
-    haloMaterial,
-    haloOpacity: 0.14 + Math.min(0.08, tier * 0.012),
-    lights: [light],
-    baseIntensity: 1.35 + Math.min(0.9, tier * 0.14),
-  });
-}
-
-function addBowspritAndRudder(group, length, width, scale, tier) {
-  const bowsprit = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.075 * scale, (1.5 + tier * 0.22) * scale, 7), mats.wood);
-  bowsprit.rotation.x = Math.PI / 2.25;
-  bowsprit.position.set(0, 1.2 * scale, -length * 0.5 * scale);
-  group.add(bowsprit);
-  const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.62 * scale, 0.42 * scale), mats.hullDark);
-  rudder.position.set(0, 0.64 * scale, length * 0.48 * scale);
-  group.add(rudder);
-}
-
-function deckWidthAt(length, width, scale, z, profile = "skiff") {
-  return hullSideXAt(length, width, scale, z, 0.72, profile) * 2;
-}
-
-function hullSideXAt(length, width, scale, z, inset = 1, profile = "skiff") {
-  const tuning = hullProfile(profile);
-  const localZ = z / scale;
-  const t = clamp((0.52 - localZ / length) / 1.1, 0, 1);
-  const midCurve = Math.pow(Math.max(0.001, Math.sin(t * Math.PI)), tuning.fullness);
-  const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
-  const beam = width * scale * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
-  return beam * 0.45 * inset;
-}
-
-function addHullSideLine(group, length, width, scale, side, y, zStart, zEnd, material, radius = 0.026, inset = 0.98, profile = "skiff") {
-  const points = [];
-  const segments = 7;
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const z = zStart + (zEnd - zStart) * t;
-    points.push(new THREE.Vector3(side * hullSideXAt(length, width, scale, z, inset, profile), y, z));
-  }
-  for (let i = 1; i < points.length; i++) {
-    addRope(group, points[i - 1], points[i], scale, radius, material);
-  }
-}
-
-function addDeckPlanking(group, length, width, scale, tier, profile = "skiff") {
-  const deckLength = length * 0.62 * scale;
-  const deckY = 1.32 * scale;
-  const plankCount = 3 + Math.min(3, tier);
-  for (let i = 0; i < plankCount; i++) {
-    const x = (i - (plankCount - 1) / 2) * width * 0.12 * scale;
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.026 * scale, 0.025 * scale, deckLength), mats.hullDark);
-    plank.position.set(x, deckY, 0);
-    group.add(plank);
-  }
-  const beamCount = 4 + Math.min(4, tier);
-  for (let i = 0; i < beamCount; i++) {
-    const t = i / Math.max(1, beamCount - 1);
-    const z = (-deckLength * 0.42 + t * deckLength * 0.84);
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(deckWidthAt(length, width, scale, z, profile), 0.025 * scale, 0.045 * scale), mats.hullDark);
-    beam.position.set(0, deckY + 0.015 * scale, z);
-    group.add(beam);
-  }
-}
-
-function addHullPaintBands(group, length, width, scale, spec, tier, profile = "skiff") {
-  const bandLength = length * (tier >= 3 ? 0.74 : 0.62) * scale;
-  const bandRows = tier >= 3 ? [0.78, 1.04] : [0.9];
-  for (let side of [-1, 1]) {
-    bandRows.forEach((row, index) => {
-      addHullSideLine(
-        group,
-        length,
-        width,
-        scale,
-        side,
-        row * scale,
-        -bandLength * 0.5,
-        bandLength * 0.5,
-        mat(index ? spec.color : 0x2f241e),
-        0.022,
-        index ? 0.94 : 0.9,
-        profile,
-      );
-    });
-  }
-}
-
-function mastPlan(type, length) {
-  if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
-  if (type === "whaler") return [-length * 0.22, length * 0.03];
-  if (type === "ballooner") return [-length * 0.27, -length * 0.02];
-  if (type === "grandfrigate") return [-length * 0.3, -length * 0.06, length * 0.09];
-  if (type === "windrunner") return [-length * 0.32, -length * 0.08, length * 0.08];
-  if (["sloop", "storm", "dart", "lugger", "dogger", "tartane", "chassemaree"].includes(type)) return [-length * 0.18, length * 0.11];
-  if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee", "sixthrate", "postship"].includes(type)) {
-    return [-length * 0.3, -length * 0.04, length * 0.1];
-  }
-  return [-length * 0.24, length * 0.1];
-}
-
-function addStandingRigging(group, type, length, width, scale, tier) {
-  if (["cat"].includes(type)) return;
-  const topY = (4.25 + Math.min(1.2, tier * 0.22)) * scale;
-  const deckY = 1.42 * scale;
-  mastPlan(type, length).forEach((mastZ) => {
-    const z = mastZ * scale * MAST_SPACING_SCALE;
-    for (let side of [-1, 1]) {
-      const railX = side * width * 0.44 * scale;
-      addRope(group, new THREE.Vector3(0, topY, z), new THREE.Vector3(railX, deckY, z - length * 0.18 * scale), scale, 0.013);
-      addRope(group, new THREE.Vector3(0, topY, z), new THREE.Vector3(railX, deckY, z + length * 0.16 * scale), scale, 0.013);
-    }
-  });
-}
-
-function addAttachedPennant(group, length, scale, color, tier) {
-  const z = length * 0.38 * scale;
-  const poleHeight = (1.05 + Math.min(0.4, tier * 0.08)) * scale;
-  const deckY = 1.52 * scale;
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028 * scale, 0.036 * scale, poleHeight, 6), mats.dark);
-  pole.position.set(0, deckY + poleHeight * 0.5, z);
-  group.add(pole);
-  const flag = clothPanel(0.72 * scale, 0.36 * scale, color, 0.025 * scale);
-  flag.position.set(0.32 * scale, deckY + poleHeight * 0.78, z);
-  flag.rotation.z = -0.08;
-  group.add(flag);
-}
-
-function addRailCaps(group, length, width, scale, tier, profile = "skiff") {
-  const actualLength = length * scale;
-  const railLength = actualLength * 0.66;
-  for (let side of [-1, 1]) {
-    addHullSideLine(group, length, width, scale, side, 1.58 * scale, -railLength * 0.5, railLength * 0.5, mats.wood, 0.04, 1.0, profile);
-  }
-  if (tier >= 3) {
-    const sternRail = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72 * scale, 0.08 * scale, 0.08 * scale), mats.wood);
-    sternRail.position.set(0, 1.62 * scale, actualLength * 0.42);
-    group.add(sternRail);
-  }
-}
-
-function addWindowRow(group, width, z, y, scale, color = 0xd99928, count = 5) {
-  const rowWidth = width * scale * 0.56;
-  for (let i = 0; i < count; i++) {
-    const t = count === 1 ? 0.5 : i / (count - 1);
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.28 * scale, 0.2 * scale, 0.045 * scale), mat(color));
-    window.position.set((t - 0.5) * rowWidth, y, z);
-    group.add(window);
-  }
-}
-
-function addWhalerNetRig(group, side, scale) {
-  const rig = new THREE.Group();
-  rig.userData.whalerNetRig = true;
-  rig.userData.side = side;
-  rig.userData.scale = scale;
-  rig.userData.progress = 0;
-  rig.position.set(side * 1.92 * scale, 1.06 * scale, -0.1 * scale);
-
-  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, 4.85 * scale, 8), mats.wood);
-  hinge.rotation.x = Math.PI / 2;
-  hinge.castShadow = true;
-  rig.add(hinge);
-
-  const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.28 * scale, 0.32 * scale, 4.95 * scale), mats.dark);
-  bracket.position.set(-side * 0.08 * scale, 0.02 * scale, 0);
-  bracket.castShadow = true;
-  rig.add(bracket);
-
-  const frame = new THREE.Group();
-  frame.userData.whalerNetFrame = true;
-  rig.add(frame);
-
-  const netMaterial = new THREE.MeshBasicMaterial({ color: 0xd8d0bd, transparent: true, opacity: 0.44, wireframe: true });
-  const netPanel = new THREE.Mesh(new THREE.BoxGeometry(3.45 * scale, 0.34 * scale, 4.55 * scale), netMaterial);
-  netPanel.position.set(side * 1.72 * scale, -0.2 * scale, 0);
-  frame.add(netPanel);
-
-  const boomLength = 3.55 * scale;
-  [-2.28, 2.28].forEach((z) => {
-    const topBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.038 * scale, 0.038 * scale, boomLength, 7), mats.wood);
-    topBoom.rotation.z = Math.PI / 2;
-    topBoom.position.set(side * boomLength * 0.5, 0.08 * scale, z * scale);
-    topBoom.castShadow = true;
-    frame.add(topBoom);
-    const lowerBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, boomLength, 7), mats.rope);
-    lowerBoom.rotation.z = Math.PI / 2;
-    lowerBoom.position.set(side * boomLength * 0.5, -0.42 * scale, z * scale);
-    frame.add(lowerBoom);
-  });
-
-  const outerFloat = new THREE.Mesh(new THREE.CylinderGeometry(0.052 * scale, 0.052 * scale, 4.75 * scale, 8), mat(0xb98f5a));
-  outerFloat.rotation.x = Math.PI / 2;
-  outerFloat.position.set(side * 3.5 * scale, -0.28 * scale, 0);
-  outerFloat.castShadow = true;
-  frame.add(outerFloat);
-
-  addRope(frame, new THREE.Vector3(0, 0.12 * scale, -2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, -2.35 * scale), scale, 0.016);
-  addRope(frame, new THREE.Vector3(0, 0.12 * scale, 2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, 2.35 * scale), scale, 0.016);
-  group.add(rig);
-  updateWhalerNetRig(rig, 0);
-}
-
-function updateWhalerNetRig(rig, progress) {
-  const side = rig.userData.side || 1;
-  const scale = rig.userData.scale || 1;
-  rig.userData.progress = progress;
-  const frame = rig.children.find((child) => child.userData.whalerNetFrame);
-  if (!frame) return;
-  frame.scale.x = 0.08 + progress * 0.92;
-  frame.position.x = side * progress * 0.28 * scale;
-  frame.position.y = -progress * 0.12 * scale;
-  frame.rotation.z = side * (0.78 * (1 - progress));
-  frame.visible = progress > 0.015;
-}
-
-function updateWhalerNetVisuals(ship, extended, dt = 0.1) {
-  if (!ship) return;
-  const target = extended ? 1 : 0;
-  ship.traverse((obj) => {
-    if (!obj.userData?.whalerNetRig) return;
-    const current = obj.userData.progress || 0;
-    const next = current + (target - current) * clamp(dt * 4.8, 0, 1);
-    updateWhalerNetRig(obj, Math.abs(target - next) < 0.015 ? target : next);
-  });
-}
-
-function addLargeShipArchitecture(group, type, length, width, scale, spec, tier, profile = "skiff") {
-  const actualLength = length * scale;
-  const actualWidth = width * scale;
-  const sternZ = actualLength * 0.34;
-  const bowZ = -actualLength * 0.34;
-  const castleColor = ["galleon", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
-  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "treasure", "windrunner"]);
-  const hasInterior = interiorTypes.has(type);
-  const postShipCabin = type === "postship";
-  const sternWallMat = mat(castleColor);
-  if (hasInterior) {
-    sternWallMat.side = THREE.DoubleSide;
-    sternWallMat.needsUpdate = true;
-  }
-  const sternDeckHeight = postShipCabin ? 1.04 * scale : 0.7 * scale;
-  const sternDeckY = postShipCabin ? 1.74 * scale : 1.57 * scale;
-  const sternRoofY = postShipCabin ? 2.34 * scale : 2.01 * scale;
-  const sternDeck = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, sternDeckHeight, actualLength * 0.17), sternWallMat);
-  sternDeck.position.set(0, sternDeckY, sternZ);
-  sternDeck.castShadow = true;
-  group.add(sternDeck);
-  const sternRoofMat = hasInterior ? mats.hullDark.clone() : mats.hullDark;
-  if (hasInterior) {
-    sternRoofMat.side = THREE.DoubleSide;
-    sternRoofMat.needsUpdate = true;
-  }
-  const sternRoof = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.72, 0.16 * scale, actualLength * 0.19), sternRoofMat);
-  sternRoof.position.set(0, sternRoofY, sternZ);
-  sternRoof.castShadow = true;
-  group.add(sternRoof);
-  addWindowRow(group, width, sternZ + actualLength * 0.09, (postShipCabin ? 1.92 : 1.68) * scale, scale, 0xd99928, tier >= 5 ? 7 : 5);
-  if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
-  if (hasInterior) {
-    const doorZ = sternZ - actualLength * 0.087;
-    const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
-    const doorWidth = generousCabinDoor ? 0.96 : 0.76;
-    const doorHeight = postShipCabin ? 0.96 : 0.68;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, doorHeight * scale, 0.055 * scale), mats.dark);
-    door.position.set(0, (postShipCabin ? 1.62 : 1.48) * scale, doorZ - 0.012 * scale);
-    door.castShadow = false;
-    group.add(door);
-    const threshold = new THREE.Mesh(new THREE.BoxGeometry(0.86 * scale, 0.045 * scale, 0.2 * scale), mats.plank);
-    threshold.position.set(0, 1.18 * scale, doorZ - 0.08 * scale);
-    threshold.castShadow = true;
-    group.add(threshold);
-    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * (postShipCabin ? 0.54 : 0.46), 0.035 * scale, actualLength * (postShipCabin ? 0.105 : 0.08)), mats.plank);
-    interiorFloor.position.set(0, 1.23 * scale, sternZ - actualLength * 0.005);
-    interiorFloor.receiveShadow = true;
-    group.add(interiorFloor);
-    const table = new THREE.Mesh(new THREE.BoxGeometry(0.74 * scale, 0.14 * scale, 0.48 * scale), mat(0x6b482f));
-    table.position.set(0, 1.42 * scale, sternZ + actualLength * 0.012);
-    table.castShadow = true;
-    group.add(table);
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.32, 0.18 * scale, 0.16 * scale), mat(0x493425));
-    bench.position.set(0, 1.34 * scale, sternZ + actualLength * 0.05);
-    bench.castShadow = true;
-    group.add(bench);
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.3 * scale, 0.32 * scale), mats.crate);
-    crate.position.set(-actualWidth * 0.18, 1.4 * scale, sternZ - actualLength * 0.026);
-    crate.castShadow = true;
-    group.add(crate);
-    const innerMat = mat(0x5a4638);
-    innerMat.side = THREE.DoubleSide;
-    innerMat.needsUpdate = true;
-    const interiorWallHeight = postShipCabin ? 0.94 : 0.56;
-    const interiorWallY = postShipCabin ? 1.72 : 1.54;
-    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.54, interiorWallHeight * scale, 0.035 * scale), innerMat);
-    rearWall.position.set(0, interiorWallY * scale, sternZ + actualLength * 0.071);
-    group.add(rearWall);
-    for (const side of [-1, 1]) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, interiorWallHeight * scale, actualLength * 0.115), innerMat);
-      sideWall.position.set(side * actualWidth * 0.32, interiorWallY * scale, sternZ + actualLength * 0.002);
-      group.add(sideWall);
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09 * scale, 8, 6), mats.gold);
-      lamp.position.set(side * actualWidth * 0.25, (postShipCabin ? 2.02 : 1.72) * scale, sternZ - actualLength * 0.022);
-      group.add(lamp);
-    }
-    if (type === "postship") {
-      const chart = new THREE.Mesh(new THREE.BoxGeometry(0.46 * scale, 0.028 * scale, 0.34 * scale), mat(0xd8c28f));
-      chart.position.set(0.04 * scale, 1.51 * scale, sternZ + actualLength * 0.013);
-      chart.rotation.y = 0.14;
-      group.add(chart);
-      const writingDesk = new THREE.Mesh(new THREE.BoxGeometry(0.82 * scale, 0.16 * scale, 0.42 * scale), mat(0x6b482f));
-      writingDesk.position.set(-actualWidth * 0.11, 1.46 * scale, sternZ - actualLength * 0.022);
-      writingDesk.castShadow = true;
-      group.add(writingDesk);
-      const chair = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.34 * scale, 0.28 * scale), mat(0x493425));
-      chair.position.set(-actualWidth * 0.11, 1.37 * scale, sternZ - actualLength * 0.052);
-      chair.castShadow = true;
-      group.add(chair);
-      const seaChest = new THREE.Mesh(new THREE.BoxGeometry(0.46 * scale, 0.32 * scale, 0.32 * scale), mat(0x3e2b21));
-      seaChest.position.set(actualWidth * 0.19, 1.4 * scale, sternZ - actualLength * 0.03);
-      seaChest.castShadow = true;
-      group.add(seaChest);
-      for (const side of [-1, 1]) {
-        const bunk = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.16 * scale, 0.68 * scale), mat(0x493425));
-        bunk.position.set(side * actualWidth * 0.22, 1.36 * scale, sternZ + actualLength * 0.028);
-        bunk.castShadow = true;
-        group.add(bunk);
-        const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.42 * scale, 0.045 * scale, 0.52 * scale), mat(side < 0 ? 0x4051a8 : 0xb84f44));
-        blanket.position.set(side * actualWidth * 0.22, 1.47 * scale, sternZ + actualLength * 0.028);
-        group.add(blanket);
-      }
-      const aftShelf = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.36, 0.08 * scale, 0.12 * scale), mats.wood);
-      aftShelf.position.set(0, 1.98 * scale, sternZ + actualLength * 0.059);
-      aftShelf.castShadow = true;
-      group.add(aftShelf);
-      for (let i = -1; i <= 1; i++) {
-        const book = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.22 * scale, 0.11 * scale), mat(i === 0 ? 0xb84f44 : 0x4051a8));
-        book.position.set(i * 0.12 * scale, 2.13 * scale, sternZ + actualLength * 0.058);
-        group.add(book);
-      }
-      for (const side of [-1, 1]) {
-        const ceilingBeam = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.08 * scale, actualLength * 0.11), mats.wood);
-        ceilingBeam.position.set(side * actualWidth * 0.17, 2.2 * scale, sternZ + actualLength * 0.002);
-        ceilingBeam.castShadow = true;
-        group.add(ceilingBeam);
-      }
-    }
-  }
-
-  const quarterDepth = actualLength * 0.12;
-  for (let side of [-1, 1]) {
-    const quarter = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.16, 0.46 * scale, quarterDepth), mat(castleColor));
-    quarter.position.set(side * hullSideXAt(length, width, scale, sternZ, 0.9, profile), 1.5 * scale, sternZ + actualLength * 0.02);
-    quarter.castShadow = true;
-    group.add(quarter);
-    const quarterWindow = new THREE.Mesh(new THREE.BoxGeometry(0.045 * scale, 0.2 * scale, quarterDepth * 0.52), mats.gold);
-    quarterWindow.position.set(side * hullSideXAt(length, width, scale, sternZ, 1.02, profile), 1.54 * scale, sternZ + actualLength * 0.02);
-    group.add(quarterWindow);
-  }
-
-  const forecastle = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.48, 0.42 * scale, actualLength * 0.12), mat(castleColor));
-  forecastle.position.set(0, 1.42 * scale, bowZ);
-  forecastle.castShadow = true;
-  group.add(forecastle);
-  const forecastleRail = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.52, 0.08 * scale, actualLength * 0.13), mats.wood);
-  forecastleRail.position.set(0, 1.69 * scale, bowZ);
-  group.add(forecastleRail);
-
-  const rows = tier >= 5 ? [0.98, 1.2] : [1.06];
-  rows.forEach((row, rowIndex) => {
-    for (let side of [-1, 1]) {
-      for (let i = 0; i < 7 + rowIndex * 2; i++) {
-        const t = i / (6 + rowIndex * 2);
-        const z = -actualLength * 0.27 + t * actualLength * 0.54;
-        const port = new THREE.Mesh(new THREE.BoxGeometry(0.055 * scale, 0.17 * scale, 0.18 * scale), mats.dark);
-        const sideX = side * hullSideXAt(length, width, scale, z, 0.98, profile);
-        port.position.set(sideX, row * scale, z);
-        group.add(port);
-        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.062 * scale, 0.02 * scale, 0.23 * scale), mat(spec.color));
-        trim.position.set(sideX + side * 0.01 * scale, (row + 0.12) * scale, z);
-        group.add(trim);
-      }
-    }
-  });
-}
-
-function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, profile = "skiff") {
-  const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
-  const customCabinTypes = new Set([
-    "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
-    "galley", "galleon", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
-    "packet", "pink", "pinnace", "razee", "schooner", "sloop", "storm", "treasure",
-    "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner", "chassemaree",
-    "polacre", "sixthrate", "postship",
-  ]);
-  const customDeckTypes = new Set([
-    "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "ironclad",
-    "knarr", "manowar", "merchantman", "razee", "treasure",
-  ]);
-  const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
-  const gunDeckTypes = new Set([
-    "bombketch", "brig", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "manowar", "merchantman", "eastindiaman", "razee", "storm", "treasure",
-    "firstrate", "snow", "sixthrate", "postship",
-  ]);
-  addHullDetailLines(group, hullLength, hullWidth, scale, tier, profile);
-  addDeckPlanking(group, hullLength, hullWidth, scale, tier, profile);
-  addHullPaintBands(group, hullLength, hullWidth, scale, spec, tier, profile);
-  if (!customDeckTypes.has(type)) addDeckFittings(group, hullLength, hullWidth, scale, tier, spec.color, profile);
-  if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
-  addAttachedPennant(group, hullLength, scale, spec.color, tier);
-  addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if ((tier >= 4 && !["whaler", "ballooner"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
-    addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
-  }
-  if (gunDeckTypes.has(type) || tier >= 4) addCannonPorts(group, 1 + Math.min(5, tier), hullWidth, hullLength, scale, profile);
-  if (!customCabinTypes.has(type)) {
-    if (tier >= 2) addCabin(group, 0, hullLength * 0.22, Math.min(2.4, hullWidth * 0.68), 1.35 + tier * 0.18, scale, 0x7a5030);
-    if (tier >= 3) {
-      addCabin(group, 0, -hullLength * 0.24, Math.min(2.0, hullWidth * 0.58), 1.0, scale * 0.9, 0x604237);
-      addSternGallery(group, hullLength, hullWidth, scale, 0x5f4235);
-    }
-  }
-  if (tier >= 3) {
-    const figure = new THREE.Mesh(new THREE.ConeGeometry(0.2 * scale, 0.8 * scale, 8), mats.gold);
-    figure.rotation.x = Math.PI / 2;
-    figure.position.set(0, 1.22 * scale, -hullLength * 0.5 * scale);
-    group.add(figure);
-  }
-  if (type === "skiff" || type === "cat" || type === "longship") {
-    addOars(group, type === "longship" ? 7 : type === "cat" ? 4 : 3, hullWidth, hullLength, scale, profile);
-  }
-}
-
-function makeShip(type = "skiff", remote = false) {
-  const spec = getShipStats(type);
-  const group = new THREE.Group();
-  group.userData.shipType = type;
-  group.userData.hitRadius = shipHitRadius(type);
-  const scale = shipVisualScale(type);
-  const hullSize = {
-    shallop: [5.6, 1.85],
-    pinnace: [6.5, 1.75],
-    hoy: [5.7, 2.75],
-    dart: [7.7, 1.75],
-    clipper: [7.4, 2.35],
-    galleon: [7.2, 3.25],
-    brig: [6.9, 3.05],
-    brigantine: [7.2, 2.75],
-    cat: [5.8, 1.45],
-    turtle: [6.2, 3.55],
-    bombketch: [6.4, 3.4],
-    storm: [8.1, 2.25],
-    sloop: [7.4, 2.0],
-    dhow: [7.1, 2.25],
-    cog: [6.2, 3.05],
-    hoy: [5.9, 2.85],
-    dogger: [6.6, 2.2],
-    xebec: [8.3, 2.4],
-    tartane: [7.2, 2.15],
-    caravel: [6.9, 2.65],
-    pink: [6.6, 2.55],
-    ketch: [6.9, 2.5],
-    frigate: [8.2, 2.9],
-    corvette: [7.8, 2.65],
-    razee: [8.5, 3.0],
-    sixthrate: [8.0, 2.72],
-    postship: [8.3, 2.85],
-    grandfrigate: [8.9, 3.18],
-    windrunner: [9.4, 2.55],
-    carrack: [7.4, 3.5],
-    manowar: [8.4, 3.8],
-    fourthrate: [8.3, 3.65],
-    firstrate: [9.0, 4.0],
-    longship: [8.7, 1.7],
-    knarr: [6.5, 2.6],
-    lugger: [7.0, 2.15],
-    galley: [8.8, 2.2],
-    snow: [7.5, 2.8],
-    packet: [7.8, 2.45],
-    barquentine: [7.7, 2.55],
-    barque: [8.0, 2.8],
-    fluyt: [7.0, 3.4],
-    merchantman: [7.4, 3.45],
-    eastindiaman: [7.8, 3.55],
-    treasure: [8.0, 4.15],
-    ironclad: [7.8, 3.7],
-  }[type] || [6.5, 2.7];
-  const profile = spec.model || type;
-  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
-  const hullMaterial = darkHulled ? mats.hullDark : mats.hull;
-  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, hullMaterial, profile));
-  addHullEndCaps(group, hullSize[0], hullSize[1], scale, hullMaterial, profile);
-  [-1, 1].forEach((side) => {
-    addHullSideLine(
-      group,
-      hullSize[0],
-      hullSize[1],
-      scale,
-      side,
-      1.4 * scale,
-      -hullSize[0] * 0.31 * scale,
-      hullSize[0] * 0.31 * scale,
-      mat(spec.color),
-      0.035,
-      0.96,
-      profile,
-    );
-  });
-  const deck = hullMesh(hullSize[0] * 0.58 * scale, hullSize[1] * 0.62 * scale, 0.24 * scale, mats.wood, profile);
-  deck.position.y = 1.08 * scale;
-  deck.castShadow = true;
-  group.add(deck);
-
-  [-1, 1].forEach((side) => {
-    const railPath = [];
-    for (let i = 0; i < 5; i++) {
-      const t = i / 4;
-      const z = (-hullSize[0] * 0.27 + t * hullSize[0] * 0.54) * scale;
-      const x = side * hullSideXAt(hullSize[0], hullSize[1], scale, z, 0.98, profile);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * scale, 0.055 * scale, 0.52 * scale, 6), mats.wood);
-      post.position.set(x, 1.55 * scale, z);
-      post.castShadow = true;
-      group.add(post);
-      railPath.push(new THREE.Vector3(x, 1.81 * scale, z));
-    }
-    for (let i = 1; i < railPath.length; i++) {
-      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.04 * scale, 1, 6), mats.wood);
-      setCylinderBetween(rail, railPath[i - 1], railPath[i]);
-      rail.castShadow = true;
-      group.add(rail);
-    }
-  });
-  const stemPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.13 * scale, 1.25 * scale, 7), mat(spec.color));
-  stemPost.position.set(0, 1.1 * scale, (-hullSize[0] * 0.5) * scale);
-  stemPost.rotation.x = -0.28;
-  stemPost.castShadow = true;
-  group.add(stemPost);
-  const sternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.11 * scale, 1.05 * scale, 7), mats.hullDark);
-  sternPost.position.set(0, 1.06 * scale, (hullSize[0] * 0.47) * scale);
-  sternPost.rotation.x = 0.2;
-  sternPost.castShadow = true;
-  group.add(sternPost);
-  const keelLine = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, hullSize[0] * 0.78 * scale, 6), mats.dark);
-  keelLine.rotation.x = Math.PI / 2;
-  keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
-  group.add(keelLine);
-  if (type === "grandfrigate") {
-    addSquareSail(group, -0.85, -2.05, 0.96, 0xf2ead5, 2);
-    addSquareSail(group, 0, -0.35, 1.08, 0xf8efd8, 3);
-    addSquareSail(group, 0.82, 1.08, 0.78, 0xf2ead5, 2);
-  } else if (type === "windrunner") {
-    addSquareSail(group, -0.65, -2.25, 0.78, 0xfff3ce, 2);
-    addSquareSail(group, 0.1, -0.55, 0.92, 0xffdf9b, 2);
-    addSail(group, 0.58, 0.88, 0.7, 0xfff3ce);
-  } else if (type === "clipper") {
-    addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
-    addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
-  } else if (type === "brig" || type === "brigantine") {
-    addSquareSail(group, -0.45, -1.1, 0.9, 0xf2ead5, 2);
-    if (type === "brigantine") addSail(group, 0.55, 1.15, 0.86, 0xf8efd8);
-    else addSquareSail(group, 0.55, 1.15, 0.86, 0xf8efd8, 2);
-    const armor = hullMesh(5.2 * scale, 3.0 * scale, 0.16 * scale, mat(0x65717b), "brig");
-    armor.position.y = 1.02 * scale;
-    group.add(armor);
-  } else if (type === "junk") {
-    addSquareSail(group, -0.3, -0.7, 0.9, 0xf4e1b4, 3);
-    addSquareSail(group, 0.45, 0.82, 0.68, 0xf0dba2, 2);
-    const house = new THREE.Mesh(new THREE.BoxGeometry(1.8 * scale, 0.62 * scale, 1.18 * scale), mats.wood);
-    house.position.set(0, 1.55 * scale, 1.55 * scale);
-    house.castShadow = true;
-    group.add(house);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.25 * scale, 0.38 * scale, 1.45 * scale), mat(0xb7493f));
-    roof.position.set(0, 1.98 * scale, 1.55 * scale);
-    group.add(roof);
-  } else if (type === "galleon") {
-    addSquareSail(group, -0.7, -1.8, 0.95, 0xf6ead0, 2);
-    addSquareSail(group, 0.7, 0.15, 1.08, 0xf8df88, 3);
-    addSquareSail(group, 0, 1.42, 0.82, 0xf6ead0, 2);
-  } else if (type === "merchantman" || type === "eastindiaman") {
-    addSquareSail(group, -0.8, -1.75, 0.92, 0xf3e5c8, 2);
-    addSquareSail(group, 0.25, 0.15, 1.02, 0xf7edcf, 2);
-    addSquareSail(group, 0.9, 1.35, 0.74, 0xf3e5c8, 1);
-    addDeckFittings(group, hullSize[0], hullSize[1], scale, 3, spec.color, profile);
-  } else if (type === "shallop") {
-    addSail(group, 0, -0.1, 0.72, 0xf6ead0);
-    addOars(group, 3, hullSize[1], hullSize[0], scale, profile);
-  } else if (type === "pinnace") {
-    addSail(group, -0.22, -0.9, 0.72, 0xd9f8ff);
-    addSail(group, 0.28, 0.75, 0.62, 0xf7f0df);
-    addCabin(group, 0, 1.55, 1.35, 0.85, scale * 0.75, 0x76523d);
-  } else if (type === "dart") {
-    addSail(group, 0, 0, 0.75, 0xc8fbff);
-    addCabin(group, 0, 1.75, 1.25, 0.78, scale * 0.72, 0x4d5f62);
-  } else if (type === "schooner" || type === "packet" || type === "chassemaree") {
-    addSail(group, -0.35, -1.4, 0.82, 0xd8f5ff);
-    addSail(group, 0.35, 0.9, type === "chassemaree" ? 0.92 : 1.08, type === "chassemaree" ? 0xf5edd8 : 0xbfefff);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.35 * scale, 0.48 * scale, 0.95 * scale), mat(0x9ee8ff));
-    glass.position.set(0, 1.62 * scale, 1.75 * scale);
-    group.add(glass);
-    if (type === "packet") addSquareSail(group, -0.65, -2.0, 0.62, 0xf8efd8, 1);
-    if (type === "chassemaree") {
-      addDeckFittings(group, hullSize[0], hullSize[1], scale, 2, spec.color, profile);
-      const cargoRack = new THREE.Mesh(new THREE.BoxGeometry(1.6 * scale, 0.26 * scale, 0.72 * scale), mats.plank);
-      cargoRack.position.set(0, 1.53 * scale, -0.15 * scale);
-      group.add(cargoRack);
-    }
-  } else if (type === "cat") {
-    const outriggerA = hullMesh(5.7 * scale, 0.85 * scale, 0.65 * scale, mats.hull, "dart");
-    const outriggerB = hullMesh(5.7 * scale, 0.85 * scale, 0.65 * scale, mats.hull, "dart");
-    outriggerA.position.x = -2.2 * scale;
-    outriggerB.position.x = 2.2 * scale;
-    group.add(outriggerA, outriggerB);
-    addSail(group, 0, -0.15, 0.95, 0xffe1d0);
-  } else if (type === "dhow") {
-    addSail(group, 0.25, -0.25, 1.18, 0xffefbe);
-    const prow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 6, 14, Math.PI), mat(0xf0d05a));
-    prow.position.set(0, 1.32 * scale, -hullSize[0] * 0.48 * scale);
-    prow.rotation.x = Math.PI / 2;
-    group.add(prow);
-  } else if (type === "bombketch") {
-    addSquareSail(group, -0.4, -1.4, 0.74, 0xe7dcc4, 1);
-    addSail(group, 0.45, 1.0, 0.7, 0xf4ead8);
-    const mortarBed = new THREE.Mesh(new THREE.CylinderGeometry(0.62 * scale, 0.7 * scale, 0.36 * scale, 12), mat(0x3f3b35));
-    mortarBed.position.set(0, 1.72 * scale, -0.15 * scale);
-    group.add(mortarBed);
-    const mortar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.32 * scale, 0.7 * scale, 12), mats.dark);
-    mortar.rotation.x = -0.75;
-    mortar.position.set(0, 2.0 * scale, -0.25 * scale);
-    group.add(mortar);
-    addCabin(group, 0, 2.05, 1.9, 1.2, scale * 0.9, 0x58463a);
-  } else if (type === "turtle") {
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(1.85 * scale, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x456b4b));
-    shell.position.y = 1.22 * scale;
-    shell.scale.z = 1.55;
-    group.add(shell);
-    addSail(group, 0, 0.5, 0.72, 0xd8f0c8);
-  } else if (type === "sloop") {
-    addSail(group, -0.05, -0.9, 1.08, 0xd8f8ff);
-    addSail(group, 0.35, 0.92, 0.68, 0xf8f4e5);
-    addCabin(group, 0, 1.9, 1.35, 0.85, scale * 0.82, 0x624534);
-  } else if (type === "storm") {
-    addSail(group, -0.15, -1.05, 1.05, 0xc8cdfd);
-    addSail(group, 0.2, 0.88, 0.82, 0xf4f4ff);
-    addCabin(group, 0, 1.9, 1.45, 0.9, scale * 0.82, 0x4f4c65);
-  } else if (type === "cog" || type === "hoy") {
-    addSquareSail(group, 0, -0.2, 0.92, 0xf1e5c4, 1);
-    addCabin(group, 0, 1.45, 1.8, 0.82, scale * 0.78, 0x7a5030);
-    const highStern = new THREE.Mesh(new THREE.BoxGeometry(2.3 * scale, 0.85 * scale, 0.9 * scale), mat(0x7a5030));
-    highStern.position.set(0, 1.66 * scale, 2.72 * scale);
-    group.add(highStern);
-  } else if (type === "longship") {
-    addSquareSail(group, 0, -0.15, 0.78, 0xf4d2b8, 1);
-    const dragon = new THREE.Mesh(new THREE.ConeGeometry(0.28 * scale, 1.1 * scale, 8), mat(0xd8b24a));
-    dragon.rotation.x = Math.PI / 2.25;
-    dragon.position.set(0, 1.54 * scale, -4.08 * scale);
-    group.add(dragon);
-    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.34 * scale, 0.055 * scale, 8, 16, Math.PI), mats.hullDark);
-    tail.position.set(0, 1.46 * scale, 3.76 * scale);
-    tail.rotation.x = -Math.PI / 2;
-    group.add(tail);
-  } else if (type === "knarr") {
-    addSquareSail(group, 0, -0.25, 0.86, 0xead7a8, 1);
-    addCabin(group, 0, 1.85, 1.7, 1.0, scale * 0.8, 0x8b5a32);
-    addDeckFittings(group, hullSize[0], hullSize[1], scale, 2, spec.color, profile);
-  } else if (type === "lugger" || type === "dogger") {
-    addSail(group, -0.25, -1.2, 0.82, 0xe9f0dc);
-    addSail(group, 0.35, 1.05, 0.78, 0xdfe8cf);
-    const net = new THREE.Mesh(new THREE.TorusGeometry(0.42 * scale, 0.035 * scale, 8, 18), mats.rope);
-    net.rotation.x = Math.PI / 2;
-    net.position.set(-0.72 * scale, 1.6 * scale, 0.7 * scale);
-    group.add(net);
-  } else if (type === "polacre") {
-    addSquareSail(group, -0.6, -1.6, 0.78, 0xffead6, 1);
-    addSquareSail(group, 0.05, 0.0, 0.92, 0xfff4df, 2);
-    addSail(group, 0.72, 1.48, 0.72, 0xffead6);
-    addCabin(group, 0, 1.9, 1.9, 1.0, scale * 0.86, 0x7c4f35);
-  } else if (type === "xebec" || type === "tartane") {
-    addSail(group, -0.65, -1.65, 0.88, 0xffead6);
-    addSail(group, 0.15, 0.05, 1.08, 0xfff4df);
-    if (type === "xebec") addSail(group, 0.75, 1.75, 0.78, 0xffead6);
-    addOars(group, type === "xebec" ? 5 : 3, hullSize[1], hullSize[0], scale, profile);
-  } else if (type === "galley") {
-    addSail(group, -0.2, -0.65, 1.0, 0xf8e8bc);
-    addOars(group, 9, hullSize[1], hullSize[0], scale, profile);
-    const ram = new THREE.Mesh(new THREE.ConeGeometry(0.22 * scale, 1.6 * scale, 6), mats.gold);
-    ram.rotation.x = Math.PI / 2;
-    ram.position.set(0, 0.75 * scale, -4.35 * scale);
-    group.add(ram);
-  } else if (type === "caravel" || type === "pink" || type === "ketch") {
-    addSquareSail(group, -0.45, -1.2, 0.85, 0xf5ead3, 1);
-    addSail(group, 0.45, 0.8, 0.95, 0xf8efd8);
-    if (type === "ketch") addSail(group, 0.9, 1.34, 0.62, 0xf5ead3);
-    addCabin(group, 0, 2.05, 2.0, 1.15, scale * 0.9, 0x77513a);
-  } else if (type === "snow" || type === "barque" || type === "barquentine") {
-    addSquareSail(group, -0.45, -1.35, 0.9, 0xf4f0dd, 2);
-    if (type === "barquentine") addSail(group, 0.45, 0.8, 0.86, 0xe4edf7);
-    else addSquareSail(group, 0.45, 0.8, 0.84, 0xe4edf7, 2);
-    addSail(group, 0.75, 1.35, 0.62, 0xf4f0dd);
-  } else if (type === "fluyt") {
-    addSquareSail(group, -0.55, -1.35, 0.85, 0xf3e2c4, 2);
-    addSquareSail(group, 0.35, 0.65, 0.95, 0xf7ead2, 2);
-    addCabin(group, 0, 2.25, 2.45, 1.55, scale, 0x7a5030);
-    const cargoHouse = hullMesh(2.0 * scale, 2.1 * scale, 0.35 * scale, mats.plank, "fluyt");
-    cargoHouse.position.y = 1.55 * scale;
-    group.add(cargoHouse);
-  } else if (type === "frigate" || type === "corvette" || type === "razee" || type === "sixthrate" || type === "postship") {
-    const navyScale = type === "postship" ? 0.94 : type === "sixthrate" ? 0.88 : 1;
-    addSquareSail(group, -0.8, -1.8, 0.9 * navyScale, 0xf2ead5, type === "corvette" || type === "sixthrate" ? 2 : 3);
-    addSquareSail(group, 0, 0, 1.02 * navyScale, 0xf8efd8, type === "postship" || type === "frigate" || type === "razee" ? 3 : 2);
-    addSquareSail(group, 0.78, 1.28, type === "corvette" || type === "sixthrate" ? 0.68 : 0.78, 0xf2ead5, type === "corvette" || type === "sixthrate" ? 1 : 2);
-  } else if (type === "whaler") {
-    addSquareSail(group, -0.65, -1.55, 0.78, 0xe8eadf, 1);
-    addSail(group, 0.45, 0.8, 0.86, 0xf4efd9);
-    addCabin(group, 0, 2.0, 2.1, 1.05, scale * 0.88, 0x526069);
-    const tryworks = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.42 * scale, 0.8 * scale), mat(0x394047));
-    tryworks.position.set(-0.55 * scale, 1.72 * scale, -0.1 * scale);
-    group.add(tryworks);
-    const boat = hullMesh(1.75 * scale, 0.42 * scale, 0.25 * scale, mats.plank, "dart");
-    boat.position.set(1.0 * scale, 1.82 * scale, 0.35 * scale);
-    boat.rotation.z = 0.12;
-    group.add(boat);
-    const harpoonRack = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.12 * scale, 1.7 * scale), mats.dark);
-    harpoonRack.position.set(-1.1 * scale, 1.82 * scale, -1.1 * scale);
-    harpoonRack.rotation.y = 0.35;
-    group.add(harpoonRack);
-    addWhalerNetRig(group, -1, scale);
-    addWhalerNetRig(group, 1, scale);
-  } else if (type === "ballooner") {
-    addSquareSail(group, -0.62, -1.5, 0.78, 0xf2ead5, 1);
-    addSail(group, 0.28, 0.45, 0.84, 0xf8efd8);
-    addCabin(group, 0, 1.55, 1.75, 0.92, scale * 0.84, 0x7a5030);
-    const platform = new THREE.Mesh(new THREE.BoxGeometry(3.35 * scale, 0.16 * scale, 2.55 * scale), mats.plank);
-    platform.position.set(0, 1.74 * scale, hullSize[0] * 0.36 * scale);
-    platform.castShadow = true;
-    platform.receiveShadow = true;
-    group.add(platform);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.18 * scale, 0.045 * scale, 8, 28), mat(0xf3d178));
-    ring.position.set(0, 1.86 * scale, hullSize[0] * 0.36 * scale);
-    ring.rotation.x = Math.PI / 2;
-    group.add(ring);
-    for (const side of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.48 * scale, 2.65 * scale), mats.wood);
-      rail.position.set(side * 1.72 * scale, 2.02 * scale, hullSize[0] * 0.36 * scale);
-      group.add(rail);
-    }
-  } else if (type === "carrack") {
-    addSquareSail(group, -0.55, -1.6, 0.95, 0xf6ead0, 2);
-    addSquareSail(group, 0.55, 0.25, 1.04, 0xf8e7bb, 2);
-    addSail(group, 0, 1.32, 0.86, 0xf6ead0);
-  } else if (type === "manowar" || type === "fourthrate" || type === "firstrate") {
-    const sailBoost = type === "firstrate" ? 1.08 : type === "fourthrate" ? 0.96 : 1;
-    addSquareSail(group, -0.9, -2.1, 1.0 * sailBoost, 0xf6ead0, type === "fourthrate" ? 2 : 3);
-    addSquareSail(group, 0, -0.1, 1.08 * sailBoost, 0xf8e7bb, 3);
-    addSquareSail(group, 0.9, 1.42, 0.95 * sailBoost, 0xf6ead0, type === "firstrate" ? 3 : 2);
-  } else if (type === "treasure") {
-    addSquareSail(group, -0.85, -1.8, 1.05, 0xf5df9b, 3);
-    addSquareSail(group, 0.25, 0.1, 1.18, 0xf8e8aa, 3);
-    addSquareSail(group, 0.9, 1.46, 0.95, 0xf1d98d, 2);
-    const pagoda = new THREE.Mesh(new THREE.ConeGeometry(1.35 * scale, 0.75 * scale, 4), mat(0xd6a83c));
-    pagoda.position.set(0, 2.9 * scale, 2.55 * scale);
-    pagoda.rotation.y = Math.PI / 4;
-    group.add(pagoda);
-  } else if (type === "ironclad") {
-    const armorDeck = hullMesh(5.8 * scale, 3.0 * scale, 0.28 * scale, mat(0x4f555b), "ironclad");
-    armorDeck.position.y = 1.28 * scale;
-    group.add(armorDeck);
-    const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * scale, 0.78 * scale, 0.48 * scale, 14), mat(0x30363b));
-    turret.position.set(0, 1.78 * scale, -0.35 * scale);
-    group.add(turret);
-    const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.14 * scale, 1.8 * scale, 10), mats.dark);
-    gun.rotation.x = Math.PI / 2;
-    gun.position.set(0, 1.78 * scale, -1.45 * scale);
-    group.add(gun);
-    const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * scale, 0.28 * scale, 1.25 * scale, 10), mats.dark);
-    stack.position.set(0.72 * scale, 2.12 * scale, 1.0 * scale);
-    group.add(stack);
-  } else {
-    addSail(group, 0, 0.2, 0.86);
-  }
-  addHistoricalDetails(group, type, hullSize[0], hullSize[1], scale, spec, profile);
-  const hasBuiltInGuns = [
-    "bombketch", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "ironclad", "manowar", "merchantman", "eastindiaman", "razee", "storm",
-    "treasure", "firstrate", "snow", "brig", "sixthrate", "postship",
-  ].includes(type);
-  if (!hasBuiltInGuns) {
-    const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.2 * scale, 1.5 * scale, 8), mats.dark);
-    cannon.rotation.z = Math.PI / 2;
-    cannon.position.set(0, 1.58 * scale, -1.65 * scale);
-    group.add(cannon);
-  }
-  addShipNightLights(group, hullSize[0], hullSize[1], scale, shipTier(type), profile);
-  const visual = new THREE.Group();
-  while (group.children.length) visual.add(group.children[0]);
-  visual.rotation.y = Math.PI;
-  group.add(visual);
-  group.traverse((obj) => {
-    obj.castShadow = obj.castShadow || obj.isMesh;
-    obj.receiveShadow = obj.receiveShadow || obj.isMesh;
-  });
-  if (remote) group.scale.setScalar(0.86);
-  return group;
-}
-
-function makeCharacter() {
-  const group = new THREE.Group();
-  const skin = mat(0xc88b58);
-  const cloth = mat(0x2c5f80);
-  const trouser = mat(0x27364a);
-  const boot = mat(0x241a16);
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.9, 0.34), cloth);
-  torso.position.y = 1.25;
-  torso.castShadow = true;
-  group.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 9), skin);
-  head.position.y = 1.94;
-  head.castShadow = true;
-  group.add(head);
-  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.08, 12), mats.dark);
-  hatBrim.position.y = 2.18;
-  hatBrim.castShadow = true;
-  group.add(hatBrim);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.34, 8), mat(0xd9a028));
-  hat.position.y = 2.4;
-  hat.castShadow = true;
-  group.add(hat);
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.18), cloth);
-    arm.position.set(side * 0.43, 1.25, 0.02);
-    arm.rotation.z = side * 0.12;
-    arm.castShadow = true;
-    group.add(arm);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), skin);
-    hand.position.set(side * 0.46, 0.86, 0.03);
-    group.add(hand);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.72, 0.18), trouser);
-    leg.position.set(side * 0.16, 0.48, 0);
-    leg.castShadow = true;
-    group.add(leg);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.36), boot);
-    foot.position.set(side * 0.16, 0.06, 0.06);
-    foot.castShadow = true;
-    group.add(foot);
-  }
-  group.scale.setScalar(CHARACTER_SCALE);
-  group.visible = false;
-  scene.add(group);
-  return group;
-}
-
-function makeProjectile(owner, pos, dir, damage, range, options = {}) {
-  const ammo = CANNONBALL_TYPES[options.ammoType] || CANNONBALL_TYPES.basic;
-  const target = options.target
-    ? options.target.clone()
-    : pos.clone().add(dir.clone().normalize().multiplyScalar(range));
-  target.y = ammo.airburst ? 24 : 0;
-  const start = pos.clone();
-  start.y = 1.15;
-  const distance = Math.max(1, ammo.airburst ? start.distanceTo(target) : dist2(start, target));
-  const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(ammo.radius || 0.35, 10, 8),
-    new THREE.MeshStandardMaterial({ color: ammo.color || 0x2f3342, roughness: 0.84, metalness: 0.04 })
-  );
-  mesh.position.copy(start);
-  mesh.castShadow = true;
-  scene.add(mesh);
-  const trail = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]),
-    new THREE.LineBasicMaterial({ color: ammo.trail || 0xd9fbff, transparent: true, opacity: 0.62 })
-  );
-  scene.add(trail);
-  projectiles.push({
-    owner,
-    mesh,
-    trail,
-    trailPoints: [start.clone()],
-    start,
-    target,
-    dir: dir.clone().normalize(),
-    speed: CANNONBALL_SPEED,
-    traveled: 0,
-    distance,
-    damage,
-    targetKind: options.targetKind || "any",
-    ammoType: ammo.id,
-    airburst: Boolean(ammo.airburst),
-    fire: ammo.fire ? { ...ammo.fire } : null,
-    arcHeight: ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5),
-    createdWallAt: Date.now(),
-    maxWallAge: Math.max(2200, (distance / CANNONBALL_SPEED + 1.2) * 1000),
-  });
-}
-
-function removeProjectile(shot, impact = "none") {
-  if (!shot) return;
-  if (impact === "hit") {
-    if (shot.ammoType === "hotshot") makeFireImpactEffect(shot.mesh.position.clone(), shot.dir);
-    else makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
-  }
-  if (impact === "splash") makeSplashEffect(shot.target);
-  scene.remove(shot.mesh, shot.trail);
-  shot.mesh.geometry.dispose();
-  shot.mesh.material.dispose();
-  shot.trail.geometry.dispose();
-  shot.trail.material.dispose();
-  const index = projectiles.indexOf(shot);
-  if (index >= 0) projectiles.splice(index, 1);
-}
-
-function addImpactEffect(group, life = 0.7, options = {}) {
-  const initialAge = Math.max(0, Number(options.initialAge) || 0);
-  const now = Date.now();
-  scene.add(group);
-  impactEffects.push({
-    group,
-    life,
-    age: Math.min(initialAge, life),
-    bornWall: now - initialAge * 1000,
-    maxWallAge: Math.max(Number(options.maxWallAge) || 0, life * 1000 + 250),
-  });
-}
-
-function makeSplashEffect(position) {
-  const group = new THREE.Group();
-  group.position.set(position.x, 0.08, position.z);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.78, 24), ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.userData.baseScale = 1;
-  group.add(ring);
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.25;
-    const drop = new THREE.Mesh(
-      new THREE.SphereGeometry(0.11 + Math.random() * 0.07, 6, 5),
-      new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.88 })
-    );
-    drop.position.set(Math.cos(angle) * 0.25, 0.16, Math.sin(angle) * 0.25);
-    drop.userData.velocity = new THREE.Vector3(Math.cos(angle) * (2.2 + Math.random()), 3.2 + Math.random() * 1.4, Math.sin(angle) * (2.2 + Math.random()));
-    group.add(drop);
-  }
-  addImpactEffect(group, 0.68);
-}
-
-function addWaveHazard(position, options = {}) {
-  const delay = Math.max(0, Number(options.delay) || 0);
-  const life = options.life || 1.6;
-  waveHazards.push({
-    position: position.clone().setY(0),
-    born: clock.elapsedTime + delay,
-    bornWall: Date.now() + delay * 1000,
-    life,
-    radiusStart: options.radiusStart || 5,
-    radiusEnd: options.radiusEnd || 24,
-    thickness: options.thickness || 3,
-    dps: options.dps || 10,
-    force: options.force || 18,
-    damageShips: options.damageShips !== false,
-  });
-}
-
-function updateWaveHazards(dt) {
-  const nowWall = Date.now();
-  waveHazards.slice().forEach((hazard) => {
-    const clockAge = clock.elapsedTime - hazard.born;
-    const wallAge = Number.isFinite(hazard.bornWall) ? (nowWall - hazard.bornWall) / 1000 : clockAge;
-    const age = Math.max(clockAge, wallAge);
-    if (age < 0) return;
-    const t = clamp(age / hazard.life, 0, 1);
-    const radius = hazard.radiusStart + (hazard.radiusEnd - hazard.radiusStart) * t;
-    const applyTo = (target, position, velocity, type) => {
-      const d = dist2(position, hazard.position);
-      if (Math.abs(d - radius) > hazard.thickness + shipHitRadius(type) * 0.35) return;
-      const away = position.clone().sub(hazard.position);
-      away.y = 0;
-      if (away.lengthSq() < 0.001) away.set(1, 0, 0);
-      away.normalize();
-      if (hazard.damageShips) damageTarget(target, hazard.dps * dt);
-      if (velocity) velocity.add(away.multiplyScalar(hazard.force * dt));
-    };
-    if (firstPersonCharacterActive() && state.mode !== "land") {
-      const d = dist2(character.position, hazard.position);
-      if (Math.abs(d - radius) <= hazard.thickness + 0.5 && hazard.damageShips) {
-        damageCharacter(CHARACTER_MAX_HP, { message: "You were knocked out and respawned on deck." });
-      }
-    } else if (state.mode === "ship") applyTo(state, playerShip.position, state.velocity, state.shipType);
-    bots.forEach((bot) => applyTo(bot, bot.group.position, bot.velocity, bot.shipType));
-    if (age > hazard.life || (Number.isFinite(hazard.bornWall) && nowWall - hazard.bornWall > hazard.life * 1000 + 300)) waveHazards.splice(waveHazards.indexOf(hazard), 1);
-  });
-}
-
-function makeSplinterEffect(position, dir) {
-  const group = new THREE.Group();
-  group.position.copy(position);
-  const forward = dir.clone().normalize();
-  const side = new THREE.Vector3(forward.z, 0, -forward.x);
-  for (let i = 0; i < 13; i++) {
-    const shard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08 + Math.random() * 0.08, 0.08 + Math.random() * 0.08, 0.55 + Math.random() * 0.55),
-      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xd6a45d : 0x8b5a32, transparent: true, opacity: 0.95 })
-    );
-    shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    const spread = forward.clone().multiplyScalar(1.2 + Math.random() * 2.0)
-      .add(side.clone().multiplyScalar((Math.random() - 0.5) * 4.2))
-      .add(new THREE.Vector3(0, 1.1 + Math.random() * 2.4, 0));
-    shard.userData.velocity = spread;
-    shard.userData.spin = new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8);
-    group.add(shard);
-  }
-  const puff = new THREE.Mesh(
-    new THREE.SphereGeometry(0.55, 10, 8),
-    new THREE.MeshBasicMaterial({ color: 0xf2dfb7, transparent: true, opacity: 0.5 })
-  );
-  puff.userData.puff = true;
-  group.add(puff);
-  addImpactEffect(group, 0.78);
-}
-
-function makeFireImpactEffect(position, dir) {
-  const group = new THREE.Group();
-  group.position.copy(position);
-  const forward = dir.clone().normalize();
-  const side = new THREE.Vector3(forward.z, 0, -forward.x);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.38, 0.92, 28),
-    new THREE.MeshBasicMaterial({ color: 0xff3d1f, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.04;
-  group.add(ring);
-  for (let i = 0; i < 18; i++) {
-    const spark = new THREE.Mesh(
-      new THREE.SphereGeometry(0.08 + Math.random() * 0.08, 7, 5),
-      new THREE.MeshBasicMaterial({
-        color: i % 3 === 0 ? 0xfff0a6 : i % 2 === 0 ? 0xff8b28 : 0xd61f15,
-        transparent: true,
-        opacity: 0.95,
-      })
-    );
-    const spread = forward.clone().multiplyScalar(0.8 + Math.random() * 1.6)
-      .add(side.clone().multiplyScalar((Math.random() - 0.5) * 3.4))
-      .add(new THREE.Vector3(0, 1.3 + Math.random() * 2.1, 0));
-    spark.userData.velocity = spread;
-    spark.userData.spin = new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7);
-    group.add(spark);
-  }
-  const flash = new THREE.Mesh(
-    new THREE.SphereGeometry(0.72, 12, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff4b1f, transparent: true, opacity: 0.58 })
-  );
-  flash.userData.puff = true;
-  group.add(flash);
-  addImpactEffect(group, 0.72);
-}
-
-function makeLeviathanSkullGeometry() {
-  const sections = [
-    { z: -2.6, w: 2.75, top: 3.45, mid: 2.55, bottom: 1.28 },
-    { z: -4.5, w: 3.35, top: 4.0, mid: 2.7, bottom: 1.05 },
-    { z: -6.5, w: 2.72, top: 3.72, mid: 2.42, bottom: 0.9 },
-    { z: -8.7, w: 1.68, top: 3.1, mid: 2.04, bottom: 0.78 },
-    { z: -10.9, w: 0.72, top: 2.48, mid: 1.68, bottom: 0.68 },
-  ];
-  const vertices = [];
-  const indices = [];
-  sections.forEach((section) => {
-    const { z, w, top, mid, bottom } = section;
-    vertices.push(
-      0, top, z,
-      w * 0.56, top - 0.34, z,
-      w, mid, z,
-      w * 0.62, bottom + 0.2, z,
-      0, bottom, z,
-      -w * 0.62, bottom + 0.2, z,
-      -w, mid, z,
-      -w * 0.56, top - 0.34, z,
-    );
-  });
-  const ringSize = 8;
-  for (let i = 0; i < sections.length - 1; i++) {
-    const ring = i * ringSize;
-    const nextRing = (i + 1) * ringSize;
-    for (let j = 0; j < ringSize; j++) {
-      const next = (j + 1) % ringSize;
-      indices.push(ring + j, nextRing + j, ring + next);
-      indices.push(ring + next, nextRing + j, nextRing + next);
-    }
-  }
-  const backCenter = vertices.length / 3;
-  vertices.push(0, 2.45, sections[0].z);
-  for (let j = 0; j < ringSize; j++) indices.push(backCenter, j, (j + 1) % ringSize);
-  const frontCenter = vertices.length / 3;
-  const frontRing = (sections.length - 1) * ringSize;
-  const lastSection = sections[sections.length - 1];
-  vertices.push(0, lastSection.mid, lastSection.z);
-  for (let j = 0; j < ringSize; j++) indices.push(frontCenter, frontRing + ((j + 1) % ringSize), frontRing + j);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function makeLeviathanJawGeometry(upper = true) {
-  const sections = [
-    { z: 0.9, w: 1.86, h: upper ? 0.36 : 0.3 },
-    { z: -1.35, w: 1.52, h: upper ? 0.3 : 0.26 },
-    { z: -3.75, w: 0.88, h: upper ? 0.24 : 0.2 },
-    { z: -5.05, w: 0.3, h: upper ? 0.16 : 0.14 },
-  ];
-  const vertices = [];
-  const indices = [];
-  sections.forEach(({ z, w, h }) => {
-    vertices.push(
-      0, h, z,
-      w, h * 0.28, z,
-      w * 0.82, -h, z,
-      0, -h * 1.12, z,
-      -w * 0.82, -h, z,
-      -w, h * 0.28, z,
-    );
-  });
-  const ringSize = 6;
-  for (let i = 0; i < sections.length - 1; i++) {
-    const ring = i * ringSize;
-    const nextRing = (i + 1) * ringSize;
-    for (let j = 0; j < ringSize; j++) {
-      const next = (j + 1) % ringSize;
-      indices.push(ring + j, nextRing + j, ring + next);
-      indices.push(ring + next, nextRing + j, nextRing + next);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function makeLeviathanMesh() {
-  const group = new THREE.Group();
-  const hide = mat(0x6d4d4a, 0.92);
-  const darkHide = mat(0x3e2e31, 0.96);
-  const bellyMat = mat(0x8a6860, 0.92);
-  const reptileHide = new THREE.MeshStandardMaterial({ color: 0x6d4d4a, roughness: 0.96, metalness: 0.03, flatShading: true });
-  const reptileDark = new THREE.MeshStandardMaterial({ color: 0x3e2e31, roughness: 0.98, metalness: 0.02, flatShading: true });
-  const toothMat = mat(0xf0e2c6, 0.76);
-  const scarMat = new THREE.MeshStandardMaterial({ color: 0x4c3030, roughness: 0.82, metalness: 0.02 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffa126, emissive: 0xff6b00, emissiveIntensity: 1.85, roughness: 0.45, metalness: 0 });
-  const bodyPath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.0, -4.0, 6.8),
-    new THREE.Vector3(-0.4, -4.7, 15.5),
-    new THREE.Vector3(0.55, -5.7, 26.5),
-    new THREE.Vector3(-0.35, -7.1, 39.5),
-    new THREE.Vector3(0.1, -8.5, 51.0),
-  ], false, "catmullrom", 0.38);
-  const body = new THREE.Mesh(makeTaperedTubeGeometry(bodyPath, 4.35, 1.35, {
-    segments: 54,
-    radialSegments: 18,
-    oval: 0.92,
-  }), hide);
-  body.castShadow = true;
-  group.add(body);
-  const shoulderMass = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 12), hide);
-  shoulderMass.scale.set(3.85, 1.35, 4.9);
-  shoulderMass.position.set(0, -4.15, 8.2);
-  shoulderMass.castShadow = true;
-  group.add(shoulderMass);
-  const backRidgePath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.0, -1.2, 7.7),
-    new THREE.Vector3(-0.35, -1.85, 17.8),
-    new THREE.Vector3(0.38, -2.8, 29.8),
-    new THREE.Vector3(-0.25, -4.2, 43.5),
-  ], false, "catmullrom", 0.34);
-  const backRidge = new THREE.Mesh(makeTaperedTubeGeometry(backRidgePath, 1.25, 0.42, {
-    segments: 38,
-    radialSegments: 10,
-    oval: 0.5,
-  }), reptileDark);
-  backRidge.castShadow = true;
-  group.add(backRidge);
-  const bellyPath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.0, -5.15, 7.0),
-    new THREE.Vector3(-0.35, -6.05, 16.6),
-    new THREE.Vector3(0.48, -7.3, 28.2),
-    new THREE.Vector3(-0.18, -8.75, 42.5),
-  ], false, "catmullrom", 0.38);
-  const bodyBelly = new THREE.Mesh(makeTaperedTubeGeometry(bellyPath, 1.45, 0.42, {
-    segments: 36,
-    radialSegments: 10,
-    oval: 0.5,
-  }), bellyMat);
-  bodyBelly.castShadow = true;
-  group.add(bodyBelly);
-  const neckPath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.0, -5.0, 7.8),
-    new THREE.Vector3(0.7, -2.9, 4.2),
-    new THREE.Vector3(-0.55, -0.4, 0.2),
-    new THREE.Vector3(0.15, 1.65, -3.15),
-  ]);
-  const neck = new THREE.Mesh(new THREE.TubeGeometry(neckPath, 42, 2.15, 18, false), hide);
-  neck.scale.set(0.78, 1.0, 1.08);
-  neck.castShadow = true;
-  group.add(neck);
-  const throat = new THREE.Mesh(new THREE.TubeGeometry(neckPath, 42, 1.04, 12, false), bellyMat);
-  throat.position.y = -0.58;
-  throat.position.z = -0.32;
-  throat.scale.set(0.35, 0.34, 0.95);
-  group.add(throat);
-
-  const head = new THREE.Mesh(makeLeviathanSkullGeometry(), reptileHide);
-  head.scale.set(1.12, 1.04, 1.02);
-  head.castShadow = true;
-  group.add(head);
-
-  const brow = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.34, 0.95), reptileDark);
-  brow.position.set(0, 3.48, -7.14);
-  brow.rotation.x = -0.12;
-  brow.castShadow = true;
-  group.add(brow);
-
-  const snoutRidge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 5.4), reptileDark);
-  snoutRidge.position.set(0, 3.0, -8.15);
-  snoutRidge.rotation.x = -0.1;
-  snoutRidge.castShadow = true;
-  group.add(snoutRidge);
-
-  const upperJaw = new THREE.Mesh(makeLeviathanJawGeometry(true), reptileDark);
-  upperJaw.position.set(0, 1.72, -6.65);
-  upperJaw.rotation.x = 0.04;
-  upperJaw.scale.set(1.18, 1.0, 1.0);
-  upperJaw.userData.leviathanUpperJaw = true;
-  upperJaw.userData.baseRotationX = upperJaw.rotation.x;
-  upperJaw.castShadow = true;
-  group.add(upperJaw);
-  const lowerJaw = new THREE.Mesh(makeLeviathanJawGeometry(false), bellyMat);
-  lowerJaw.position.set(0, 0.82, -6.4);
-  lowerJaw.rotation.x = -0.16;
-  lowerJaw.scale.set(1.08, 0.95, 0.96);
-  lowerJaw.userData.leviathanLowerJaw = true;
-  lowerJaw.userData.baseRotationX = lowerJaw.rotation.x;
-  lowerJaw.castShadow = true;
-  group.add(lowerJaw);
-
-  for (let side of [-1, 1]) {
-    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(0.82, 12, 7), darkHide);
-    eyeSocket.scale.set(1.72, 0.42, 0.32);
-    eyeSocket.position.set(side * 2.18, 3.62, -7.82);
-    eyeSocket.rotation.y = side * 0.36;
-    eyeSocket.rotation.z = side * -0.2;
-    eyeSocket.castShadow = true;
-    group.add(eyeSocket);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 7), eyeMat);
-    eye.scale.set(1.35, 0.34, 0.18);
-    eye.position.set(side * 2.24, 3.6, -8.1);
-    eye.rotation.y = side * 0.34;
-    eye.rotation.z = side * -0.1;
-    group.add(eye);
-
-    const templePlate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 1.45), darkHide);
-    templePlate.position.set(side * 1.88, 4.18, -5.58);
-    templePlate.rotation.set(-0.32, side * 0.22, side * 0.14);
-    templePlate.castShadow = true;
-    group.add(templePlate);
-
-    const nostril = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.48), darkHide);
-    nostril.position.set(side * 0.54, 2.32, -10.42);
-    nostril.rotation.y = side * 0.18;
-    nostril.rotation.x = -0.18;
-    group.add(nostril);
-
-    for (let i = 0; i < 7; i++) {
-      const topTooth = new THREE.Mesh(new THREE.ConeGeometry(0.12 + i * 0.014, 0.78 + i * 0.07, 6), toothMat);
-      topTooth.position.set(side * (0.18 + i * 0.34), 1.42, -7.2 - i * 0.36);
-      topTooth.rotation.x = Math.PI;
-      topTooth.userData.leviathanUpperJaw = true;
-      topTooth.userData.baseRotationX = topTooth.rotation.x;
-      group.add(topTooth);
-      const bottomTooth = new THREE.Mesh(new THREE.ConeGeometry(0.11 + i * 0.012, 0.62 + i * 0.05, 6), toothMat);
-      bottomTooth.position.set(side * (0.2 + i * 0.32), 1.22, -6.96 - i * 0.3);
-      bottomTooth.rotation.x = 0.1;
-      bottomTooth.userData.leviathanLowerJaw = true;
-      bottomTooth.userData.baseRotationX = bottomTooth.rotation.x;
-      group.add(bottomTooth);
-    }
-
-    for (let i = 0; i < 3; i++) {
-      const gill = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46 - i * 0.035, 0.14), scarMat);
-      gill.position.set(side * 3.32, 2.16 - i * 0.36, -4.82 + i * 0.2);
-      gill.rotation.y = side * 0.86;
-      gill.rotation.z = side * 0.14;
-      group.add(gill);
-    }
-  }
-
-  for (let i = 0; i < 7; i++) {
-    const t = i / 6;
-    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.24 + Math.sin(t * Math.PI) * 0.28, 1.55 + Math.sin(t * Math.PI) * 1.15, 6), darkHide);
-    crest.position.set(0, 2.62 + t * 2.05, 2.8 - t * 9.2);
-    crest.rotation.x = Math.PI - 0.1;
-    crest.castShadow = true;
-    group.add(crest);
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const t = i / 7;
-    const side = i % 2 ? 1 : -1;
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5 - t * 0.14, 0.1, 0.42 + t * 0.12), reptileDark);
-    plate.position.set(side * (0.72 + Math.sin(t * Math.PI) * 0.9), 3.18 + Math.sin(t * Math.PI) * 0.35, -3.8 - t * 5.8);
-    plate.rotation.set(-0.16, side * 0.32, side * 0.12);
-    plate.castShadow = true;
-    group.add(plate);
-  }
-
-  for (let i = 0; i < 3; i++) {
-    const slash = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.78 + i * 0.12), scarMat);
-    slash.position.set((i % 2 ? 1 : -1) * (0.75 + i * 0.32), 3.0 + Math.sin(i) * 0.28, -5.7 - i * 0.52);
-    slash.rotation.set(0.2, (i % 2 ? 0.6 : -0.6), (i % 2 ? 0.45 : -0.45));
-    group.add(slash);
-  }
-
-  for (let i = 0; i < 10; i++) {
-    const t = i / 9;
-    const p = bodyPath.getPoint(t);
-    const spine = new THREE.Mesh(
-      new THREE.ConeGeometry(0.92 - t * 0.48, 3.3 - t * 1.55, 6),
-      darkHide
-    );
-    spine.position.copy(p);
-    spine.position.y += 3.75 - t * 1.75;
-    spine.rotation.x = Math.PI - 0.22 + Math.sin(t * Math.PI * 3) * 0.1;
-    spine.rotation.z = Math.sin(t * Math.PI * 2) * 0.22;
-    spine.castShadow = true;
-    group.add(spine);
-  }
-
-  const waterMask = new THREE.Mesh(new THREE.RingGeometry(3.8, 6.8, 36), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
-  waterMask.rotation.x = -Math.PI / 2;
-  waterMask.position.y = -2.8;
-  group.add(waterMask);
-
-  return group;
-}
-
-function setLeviathanJawOpen(group, open, crush = 0) {
-  const amount = clamp(open, 0, 1);
-  group.traverse((child) => {
-    if (child.userData?.leviathanUpperJaw) {
-      child.rotation.x = (child.userData.baseRotationX ?? child.rotation.x) - amount * 0.48 + crush * 0.1;
-    }
-    if (child.userData?.leviathanLowerJaw) {
-      child.rotation.x = (child.userData.baseRotationX ?? child.rotation.x) + amount * 0.78 - crush * 0.16;
-    }
-  });
-}
-
-function makeLeviathanMouthDebris(shipType = state.shipType) {
-  const group = new THREE.Group();
-  const ship = getShipStats(shipType);
-  const plankMat = mat(0x8b5a32);
-  const darkWood = mat(0x4d2f1d);
-  const sailMat = new THREE.MeshBasicMaterial({ color: ship.color || 0xd9c3a0, transparent: true, opacity: 0.86, side: THREE.DoubleSide });
-  for (let i = 0; i < 9; i++) {
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.4 + Math.random() * 1.2), i % 3 ? plankMat : darkWood);
-    plank.position.set((Math.random() - 0.5) * 3.0, (Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 2.0);
-    plank.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    plank.castShadow = true;
-    group.add(plank);
-  }
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 7), darkWood);
-  mast.position.set(-0.65, 0.15, -0.25);
-  mast.rotation.set(0.8, 0.35, -1.05);
-  mast.castShadow = true;
-  group.add(mast);
-  const sailGeo = new THREE.BufferGeometry();
-  sailGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-    0, 0.85, 0,
-    1.55, -0.45, 0.08,
-    -0.95, -0.72, -0.05,
-  ], 3));
-  sailGeo.setIndex([0, 1, 2]);
-  sailGeo.computeVertexNormals();
-  const sail = new THREE.Mesh(sailGeo, sailMat);
-  sail.position.set(0.15, 0.05, -0.55);
-  sail.rotation.set(-0.35, 0.4, 0.25);
-  group.add(sail);
-  group.visible = false;
-  return group;
-}
-
-function makeTaperedTubeGeometry(curve, baseRadius, tipRadius, options = {}) {
-  const segments = options.segments || 14;
-  const radialSegments = options.radialSegments || 7;
-  const oval = options.oval || 0.88;
-  const frames = curve.computeFrenetFrames(segments, false);
-  const vertices = [];
-  const indices = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const point = curve.getPointAt(t);
-    const radius = baseRadius + (tipRadius - baseRadius) * t;
-    const normal = frames.normals[i];
-    const binormal = frames.binormals[i];
-    for (let j = 0; j < radialSegments; j++) {
-      const angle = (j / radialSegments) * Math.PI * 2;
-      const radial = normal.clone().multiplyScalar(Math.cos(angle) * radius)
-        .add(binormal.clone().multiplyScalar(Math.sin(angle) * radius * oval));
-      vertices.push(point.x + radial.x, point.y + radial.y, point.z + radial.z);
-    }
-  }
-  for (let i = 0; i < segments; i++) {
-    const ring = i * radialSegments;
-    const nextRing = (i + 1) * radialSegments;
-    for (let j = 0; j < radialSegments; j++) {
-      const next = (j + 1) % radialSegments;
-      indices.push(ring + j, nextRing + j, ring + next);
-      indices.push(ring + next, nextRing + j, nextRing + next);
-    }
-  }
-  if (!options.openStart) {
-    const frontCenter = vertices.length / 3;
-    const start = curve.getPointAt(0);
-    vertices.push(start.x, start.y, start.z);
-    for (let j = 0; j < radialSegments; j++) {
-      indices.push(frontCenter, (j + 1) % radialSegments, j);
-    }
-  }
-  if (!options.openEnd) {
-    const backCenter = vertices.length / 3;
-    const end = curve.getPointAt(1);
-    vertices.push(end.x, end.y, end.z);
-    const backRing = segments * radialSegments;
-    for (let j = 0; j < radialSegments; j++) {
-      indices.push(backCenter, backRing + j, backRing + ((j + 1) % radialSegments));
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function makeTaperedTentacle(curve, baseRadius, tipRadius, material, options = {}) {
-  const group = new THREE.Group();
-  const tentacle = new THREE.Mesh(makeTaperedTubeGeometry(curve, baseRadius, tipRadius, options), material);
-  tentacle.castShadow = true;
-  group.add(tentacle);
-  if (options.suckerMat) {
-    const suckerTs = options.suckerTs || [0.32, 0.48, 0.64, 0.8];
-    suckerTs.forEach((t, index) => {
-      const point = curve.getPoint(t);
-      const size = Math.max(0.12, baseRadius * 0.38 - index * 0.04);
-      const sucker = new THREE.Mesh(new THREE.SphereGeometry(size, 7, 5), options.suckerMat);
-      sucker.position.copy(point);
-      sucker.position.y -= baseRadius * 0.62;
-      sucker.scale.y = 0.26;
-      group.add(sucker);
-    });
-  }
-  return group;
-}
-
-function makeKrakenCoreGeometry() {
-  const radialSegments = 20;
-  const rings = [
-    { z: -9.4, rx: 0.9, ry: 0.55, cy: 1.05 },
-    { z: -8.45, rx: 3.55, ry: 1.75, cy: 1.62 },
-    { z: -7.2, rx: 5.9, ry: 2.9, cy: 2.08 },
-    { z: -5.65, rx: 7.45, ry: 3.85, cy: 2.45 },
-    { z: -3.55, rx: 8.25, ry: 4.75, cy: 2.72 },
-    { z: -1.1, rx: 8.55, ry: 5.28, cy: 2.96 },
-    { z: 1.25, rx: 7.55, ry: 5.45, cy: 3.15 },
-    { z: 3.35, rx: 5.65, ry: 4.92, cy: 3.42 },
-    { z: 5.05, rx: 3.25, ry: 3.42, cy: 3.84 },
-    { z: 6.3, rx: 0.65, ry: 0.85, cy: 4.05 },
-  ];
-  const upper = new THREE.Color(0x941517);
-  const belly = new THREE.Color(0xc83d2e);
-  const dark = new THREE.Color(0x3d080b);
-  const vertices = [];
-  const colors = [];
-  const indices = [];
-
-  rings.forEach((ring, i) => {
-    const t = i / (rings.length - 1);
-    const shoulder = Math.sin(t * Math.PI);
-    for (let j = 0; j < radialSegments; j++) {
-      const angle = (j / radialSegments) * Math.PI * 2;
-      const c = Math.cos(angle);
-      const s = Math.sin(angle);
-      const surfaceRipple = 1
-        + Math.sin(angle * 3 + t * 5.3) * 0.028
-        + Math.sin(angle * 7 - t * 4.1) * 0.014;
-      const topLift = Math.max(0, s) * shoulder * 0.28;
-      const bottomFlatten = s < 0 ? 0.58 : 1;
-      const x = c * ring.rx * surfaceRipple;
-      const y = ring.cy + s * ring.ry * bottomFlatten + topLift;
-      const z = ring.z + Math.sin(angle * 2 + i * 0.45) * 0.1 * (0.35 + shoulder);
-      vertices.push(x, y, z);
-
-      const undersideBlend = clamp((-s - 0.14) / 0.86, 0, 1) * (0.92 - t * 0.18);
-      const ridgeBlend = Math.max(0, s - 0.76) * 0.42 + Math.max(0, Math.abs(c) - 0.86) * 0.16;
-      const color = upper.clone().lerp(belly, undersideBlend).lerp(dark, clamp(ridgeBlend, 0, 0.34));
-      colors.push(color.r, color.g, color.b);
-    }
-  });
-
-  for (let i = 0; i < rings.length - 1; i++) {
-    const ring = i * radialSegments;
-    const nextRing = (i + 1) * radialSegments;
-    for (let j = 0; j < radialSegments; j++) {
-      const next = (j + 1) % radialSegments;
-      indices.push(ring + j, nextRing + j, ring + next);
-      indices.push(ring + next, nextRing + j, nextRing + next);
-    }
-  }
-
-  const frontCenter = vertices.length / 3;
-  vertices.push(0, rings[0].cy, rings[0].z);
-  colors.push(upper.r, upper.g, upper.b);
-  for (let j = 0; j < radialSegments; j++) {
-    indices.push(frontCenter, j, (j + 1) % radialSegments);
-  }
-
-  const backCenter = vertices.length / 3;
-  const lastRing = rings[rings.length - 1];
-  vertices.push(0, lastRing.cy, lastRing.z);
-  colors.push(dark.r, dark.g, dark.b);
-  const backRing = (rings.length - 1) * radialSegments;
-  for (let j = 0; j < radialSegments; j++) {
-    indices.push(backCenter, backRing + ((j + 1) % radialSegments), backRing + j);
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function makeKrakenMesh() {
-  const group = new THREE.Group();
-  const lowMat = (color, options = {}) => new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.88,
-    metalness: 0.02,
-    flatShading: options.flatShading ?? false,
-    vertexColors: options.vertexColors || false,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true,
-    side: options.side || THREE.DoubleSide,
-  });
-  const bodyMat = lowMat(0xffffff, { vertexColors: true });
-  const skin = lowMat(0xb3201c);
-  const darkSkin = lowMat(0x3d080b);
-  const suckerMat = lowMat(0xf06a50);
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0xfff15a,
-    emissive: 0xffd400,
-    emissiveIntensity: 1.65,
-    roughness: 0.34,
-    metalness: 0,
-  });
-  const pupilMat = lowMat(0x16112a);
-
-  const core = new THREE.Mesh(makeKrakenCoreGeometry(), bodyMat);
-  core.castShadow = true;
-  group.add(core);
-
-  const mantleCap = new THREE.Mesh(new THREE.SphereGeometry(6.65, 24, 12), darkSkin);
-  mantleCap.scale.set(1.02, 0.34, 0.62);
-  mantleCap.position.set(0, 5.05, -1.25);
-  mantleCap.castShadow = true;
-  group.add(mantleCap);
-
-  for (let side of [-1, 1]) {
-    const sideMantle = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 9), skin);
-    sideMantle.scale.set(0.52, 0.42, 1.18);
-    sideMantle.position.set(side * 5.15, 2.55, -3.35);
-    sideMantle.rotation.z = side * -0.18;
-    sideMantle.castShadow = true;
-    group.add(sideMantle);
-  }
-
-  const faceBulge = new THREE.Mesh(new THREE.SphereGeometry(5.25, 22, 12), skin);
-  faceBulge.scale.set(1.03, 0.5, 0.5);
-  faceBulge.position.set(0, 2.25, -6.9);
-  faceBulge.castShadow = true;
-  group.add(faceBulge);
-
-  const cheekMantle = new THREE.Mesh(new THREE.SphereGeometry(5.8, 18, 10), darkSkin);
-  cheekMantle.scale.set(1.1, 0.18, 0.36);
-  cheekMantle.position.set(0, 1.3, -5.7);
-  cheekMantle.castShadow = true;
-  group.add(cheekMantle);
-
-  const beakUpper = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.55, 9), pupilMat);
-  beakUpper.position.set(0, 1.56, -9.0);
-  beakUpper.rotation.x = -Math.PI / 2;
-  beakUpper.scale.set(1.35, 0.72, 0.92);
-  beakUpper.castShadow = true;
-  group.add(beakUpper);
-  const beakLower = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.25, 9), pupilMat);
-  beakLower.position.set(0, 0.86, -8.72);
-  beakLower.rotation.x = Math.PI / 2;
-  beakLower.scale.set(1.15, 0.62, 0.85);
-  beakLower.castShadow = true;
-  group.add(beakLower);
-
-  const mouthShadow = new THREE.Mesh(new THREE.SphereGeometry(1.65, 12, 7), pupilMat);
-  mouthShadow.scale.set(1.35, 0.32, 0.32);
-  mouthShadow.position.set(0, 1.16, -8.78);
-  group.add(mouthShadow);
-
-  for (let side of [-1, 1]) {
-    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(1.08, 14, 8), darkSkin);
-    eyeSocket.scale.set(1.6, 0.58, 0.36);
-    eyeSocket.position.set(side * 2.85, 3.18, -8.48);
-    eyeSocket.rotation.y = side * 0.22;
-    eyeSocket.rotation.z = side * -0.08;
-    eyeSocket.castShadow = true;
-    group.add(eyeSocket);
-
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 8), eyeMat);
-    eye.scale.set(1.25, 0.52, 0.2);
-    eye.position.set(side * 2.9, 3.2, -8.96);
-    eye.rotation.y = side * 0.2;
-    group.add(eye);
-
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.76, 14, 8),
-      new THREE.MeshBasicMaterial({ color: 0xffe64d, transparent: true, opacity: 0.38 })
-    );
-    glow.scale.set(1.45, 0.6, 0.24);
-    glow.position.copy(eye.position);
-    glow.rotation.copy(eye.rotation);
-    group.add(glow);
-
-    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.54, 0.08), pupilMat);
-    pupil.position.set(side * 2.92, 3.2, -9.08);
-    pupil.rotation.y = side * 0.2;
-    group.add(pupil);
-
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.25, 0.3), darkSkin);
-    brow.position.set(side * 2.76, 3.68, -8.84);
-    brow.rotation.y = side * 0.2;
-    brow.rotation.z = side * 0.28;
-    brow.castShadow = true;
-    group.add(brow);
-
-    const cheekGroove = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 1.6), darkSkin);
-    cheekGroove.position.set(side * 3.85, 2.3, -6.92);
-    cheekGroove.rotation.y = side * 0.7;
-    cheekGroove.rotation.z = side * -0.28;
-    group.add(cheekGroove);
-  }
-
-  for (let i = 0; i < 7; i++) {
-    const t = i / 6;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.52 - Math.abs(t - 0.5) * 0.28, 2.1 - Math.abs(t - 0.5) * 0.65, 7), darkSkin);
-    spike.position.set((t - 0.5) * 5.9, 6.15 + Math.sin(t * Math.PI) * 1.05, -3.6 + Math.cos(t * Math.PI) * 1.4);
-    spike.rotation.x = Math.PI;
-    spike.rotation.z = (t - 0.5) * -0.45;
-    spike.castShadow = true;
-    group.add(spike);
-  }
-
-  for (let side of [-1, 1]) {
-    for (let i = 0; i < 4; i++) {
-      const hook = new THREE.Mesh(new THREE.ConeGeometry(0.14 + i * 0.018, 0.52 + i * 0.05, 6), lowMat(0xf0d9b7));
-      hook.position.set(side * (0.44 + i * 0.34), 0.86 + i * 0.08, -8.18 - i * 0.18);
-      hook.rotation.x = Math.PI * 0.86;
-      hook.rotation.z = side * 0.08;
-      hook.castShadow = true;
-      group.add(hook);
-    }
-  }
-
-  const tentacleAngles = Array.from({ length: 8 }, (_, i) => -Math.PI + i * (Math.PI / 4));
-  tentacleAngles.forEach((angle, i) => {
-    const outward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
-    const tangent = new THREE.Vector3(Math.cos(angle), 0, -Math.sin(angle));
-    const root = new THREE.Vector3(outward.x * 10.2, -12.5, outward.z * 9.0 - 0.4);
-    const surface = new THREE.Vector3(outward.x * 10.7, -0.62, outward.z * 9.7 - 0.4);
-    const lift = 13.5 + (i % 2) * 3.6 + Math.abs(outward.z) * 1.8;
-    const curl = (i % 2 ? 1 : -1) * (1.25 + (i % 3) * 0.32);
-    const curve = new THREE.CatmullRomCurve3([
-      root,
-      surface.clone().add(new THREE.Vector3(0, -1.8, 0)),
-      surface.clone().add(outward.clone().multiplyScalar(1.7)).add(tangent.clone().multiplyScalar(curl * 0.16)).add(new THREE.Vector3(0, lift * 0.34, 0)),
-      surface.clone().add(outward.clone().multiplyScalar(3.1)).add(tangent.clone().multiplyScalar(curl * 0.34)).add(new THREE.Vector3(0, lift * 0.82, 0)),
-      surface.clone().add(outward.clone().multiplyScalar(3.75)).add(tangent.clone().multiplyScalar(curl * 0.18)).add(new THREE.Vector3(0, lift * 1.15, 0)),
-    ], false, "catmullrom", 0.34);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 2.05, 22), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.48, side: THREE.DoubleSide }));
-    ring.position.copy(surface);
-    ring.position.y = -0.38;
-    ring.rotation.x = -Math.PI / 2;
-    ring.userData.krakenWaterRing = true;
-    ring.userData.phase = i * 0.7;
-    group.add(ring);
-
-    const tentacle = makeTaperedTentacle(curve, i < 4 ? 1.12 : 0.92, i < 4 ? 0.34 : 0.24, skin, {
-      segments: 18,
-      radialSegments: 9,
-      suckerMat,
-    });
-    tentacle.userData.tentacle = true;
-    tentacle.userData.phase = i * 0.74;
-    tentacle.userData.anchor = surface.clone();
-    tentacle.userData.homeY = 0;
-    group.add(tentacle);
-
-    for (let j = 0; j < 4; j++) {
-      const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.62 - j * 0.045, 0.025, 5, 12), darkSkin);
-      const p = curve.getPoint(0.34 + j * 0.12);
-      stripe.position.copy(p);
-      stripe.rotation.x = Math.PI / 2;
-      stripe.scale.set(1.25, 0.55, 1);
-      tentacle.add(stripe);
-    }
-  });
-
-  for (let i = 0; i < 15; i++) {
-    const spot = new THREE.Mesh(new THREE.SphereGeometry(0.38 - (i % 3) * 0.045, 7, 5), i % 4 ? darkSkin : suckerMat);
-    spot.position.set(Math.sin(i * 2.1) * (2.2 + (i % 3) * 1.15), 4.4 + Math.sin(i) * 1.55, 0.9 + Math.cos(i * 1.3) * 2.45);
-    spot.scale.y = 0.32;
-    group.add(spot);
-  }
-
-  const waterShadow = new THREE.Mesh(new THREE.RingGeometry(8.2, 14.8, 42), new THREE.MeshBasicMaterial({ color: 0x0c4655, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
-  waterShadow.rotation.x = -Math.PI / 2;
-  waterShadow.position.y = -0.52;
-  group.add(waterShadow);
-
-  group.userData.radius = 25;
-  return group;
-}
-
-function syncKraken(data) {
-  if (!data) return;
-  if (!krakenBoss) {
-    krakenBoss = {
-      group: makeKrakenMesh(),
-      hp: Number(data.hp) || 10000,
-      maxHp: Number(data.maxHp) || 10000,
-      alive: data.alive !== false,
-      radius: Number(data.radius) || 25,
-    };
-    scene.add(krakenBoss.group);
-  }
-  krakenBoss.hp = Number(data.hp) || 0;
-  krakenBoss.maxHp = Number(data.maxHp) || 10000;
-  krakenBoss.alive = data.alive !== false;
-  krakenBoss.radius = Number(data.radius) || 25;
-  krakenBoss.defeatedAt = Number(data.defeatedAt) || 0;
-  const lastPosition = krakenBoss.group.position.clone();
-  krakenBoss.group.position.x = Number(data.x) || 0;
-  krakenBoss.group.position.z = Number(data.z) || 0;
-  const moved = krakenBoss.group.position.clone().sub(lastPosition);
-  moved.y = 0;
-  krakenBoss.group.rotation.y = moved.lengthSq() > 0.0025 ? Math.atan2(moved.x, moved.z) : Number(data.rotation) || 0;
-  if (krakenBoss.alive) {
-    krakenBoss.group.visible = true;
-    krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.6) * 0.18;
-  } else {
-    const sinkAge = krakenBoss.defeatedAt ? Math.max(0, (Date.now() - krakenBoss.defeatedAt) / 1000) : 0;
-    krakenBoss.group.position.y = -Math.min(9, sinkAge * 0.75);
-    krakenBoss.group.visible = sinkAge < 18;
-  }
-}
-
-function projectileHitsKraken(shot) {
-  if (!krakenBoss?.alive || !krakenBoss.group.visible) return false;
-  const localPoint = krakenBoss.group.worldToLocal(shot.mesh.position.clone());
-  const headCenter = new THREE.Vector3(0, 2.75, -6.55);
-  const dx = (localPoint.x - headCenter.x) / 5.8;
-  const dy = (localPoint.y - headCenter.y) / 4.5;
-  const dz = (localPoint.z - headCenter.z) / 4.0;
-  return dx * dx + dy * dy + dz * dz <= 1 && shot.mesh.position.y < 12;
-}
-
-function submergeKrakenTentacleNear(worldPoint) {
-  if (!krakenBoss?.group) return;
-  let closest = null;
-  let closestDistance = Infinity;
-  krakenBoss.group.children.forEach((child) => {
-    if (!child.userData?.tentacle || !child.userData.anchor) return;
-    const anchor = krakenBoss.group.localToWorld(child.userData.anchor.clone());
-    const distance = dist2(anchor, worldPoint);
-    if (distance < closestDistance) {
-      closest = child;
-      closestDistance = distance;
-    }
-  });
-  if (!closest) return;
-  const now = Date.now() / 1000;
-  closest.userData.submergeStart = now;
-  closest.userData.submergeUntil = now + KRAKEN_ATTACK_LIFE * 0.82;
-  closest.userData.submergeDepth = 72;
-}
-
-function krakenAttackCurve(data, t) {
-  const ease = (value) => value * value * (3 - 2 * value);
-  const rise = ease(clamp(t / 0.36, 0, 1));
-  const curl = ease(clamp((t - 0.18) / 0.42, 0, 1));
-  const slam = ease(clamp((t - (KRAKEN_SLAM_T - 0.18)) / 0.18, 0, 1));
-  const retreat = ease(clamp((t - (KRAKEN_SLAM_T + 0.08)) / 0.16, 0, 1));
-  const target = data.target;
-  const dir = data.dir;
-  const side = data.side;
-  const surface = data.surface;
-  const root = data.root;
-
-  const tipHidden = surface.clone().add(dir.clone().multiplyScalar(1.2));
-  tipHidden.y = -30;
-  const tipRaised = target.clone().add(dir.clone().multiplyScalar(-5.5)).add(side.clone().multiplyScalar(2.2));
-  tipRaised.y = 22;
-  const tipHover = target.clone().add(dir.clone().multiplyScalar(-2)).add(side.clone().multiplyScalar(0.7));
-  tipHover.y = 18;
-  const tipStrike = target.clone().add(new THREE.Vector3(0, 0.9, 0));
-  const tipGone = surface.clone().add(dir.clone().multiplyScalar(2.4));
-  tipGone.y = -28;
-  const tip = tipHidden.clone()
-    .lerp(tipRaised, rise)
-    .lerp(tipHover, curl * 0.55)
-    .lerp(tipStrike, slam)
-    .lerp(tipGone, retreat);
-
-  const base = surface.clone();
-  base.y = -9 + rise * 9 - retreat * 9;
-  const lower = surface.clone().add(dir.clone().multiplyScalar(1.8));
-  lower.y = -16 + rise * 19 - retreat * 11;
-  const upper = target.clone().add(dir.clone().multiplyScalar(-7.5)).add(side.clone().multiplyScalar(2.8));
-  upper.y = -5 + rise * 23 + curl * 4 - slam * 8 - retreat * 8;
-  const bend = target.clone().add(dir.clone().multiplyScalar(-3.8)).add(side.clone().multiplyScalar(1.2));
-  bend.y = 5 + rise * 13 + curl * 4 - slam * 14 - retreat * 7;
-
-  return new THREE.CatmullRomCurve3([
-    root.clone(),
-    base,
-    lower,
-    upper,
-    bend,
-    tip,
-  ], false, "catmullrom", 0.45);
-}
-
-function makeKrakenAttackEffect(attack, options = {}) {
-  const group = new THREE.Group();
-  const initialAge = Math.max(0, Number(options.initialAge) || 0);
-  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
-  const dir = target.clone().sub(source);
-  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
-  dir.normalize();
-  const side = new THREE.Vector3(dir.z, 0, -dir.x);
-  group.userData.krakenAttack = true;
-  const attackMat = new THREE.MeshStandardMaterial({
-    color: 0xb82724,
-    roughness: 0.86,
-    metalness: 0.02,
-    flatShading: false,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true,
-    side: THREE.DoubleSide,
-  });
-
-  const attackData = {
-    target,
-    source,
-    dir,
-    side,
-    surface: target.clone().add(dir.clone().multiplyScalar(-6.5)).add(side.clone().multiplyScalar(2.2)),
-    root: target.clone().add(dir.clone().multiplyScalar(-6.8)).add(side.clone().multiplyScalar(2.2)).add(new THREE.Vector3(0, -44, 0)),
-  };
-  attackData.surface.y = 0;
-  const tubeOptions = {
-    segments: 44,
-    radialSegments: 13,
-    openStart: true,
-    openEnd: false,
-    oval: 0.82,
-  };
-  const tentacle = new THREE.Mesh(makeTaperedTubeGeometry(krakenAttackCurve(attackData, 0), 2.2, 0.28, tubeOptions), attackMat.clone());
-  tentacle.castShadow = true;
-  tentacle.userData.krakenAttackTentacle = true;
-  tentacle.userData.attackData = attackData;
-  tentacle.userData.baseRadius = 2.2;
-  tentacle.userData.tipRadius = 0.28;
-  tentacle.userData.tubeOptions = tubeOptions;
-  group.add(tentacle);
-
-  for (let i = 0; i < 11; i++) {
-    const sucker = new THREE.Mesh(new THREE.SphereGeometry(0.28 - i * 0.015, 8, 5), new THREE.MeshStandardMaterial({ color: 0xd76b55, roughness: 0.86, metalness: 0.02 }));
-    sucker.scale.y = 0.28;
-    sucker.userData.krakenAttackSucker = true;
-    sucker.userData.curveT = 0.2 + i * 0.06;
-    group.add(sucker);
-  }
-
-  const splash = new THREE.Mesh(new THREE.RingGeometry(5.2, 14.0, 54), new THREE.MeshBasicMaterial({ color: 0xe9fdff, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false }));
-  splash.position.copy(target);
-  splash.position.y = 0.12;
-  splash.rotation.x = -Math.PI / 2;
-  splash.userData.baseScale = 0.9;
-  splash.visible = false;
-  splash.userData.krakenSplash = true;
-  group.add(splash);
-  for (let i = 0; i < 42; i++) {
-    const angle = (i / 42) * Math.PI * 2 + Math.random() * 0.16;
-    const radius = 2.5 + Math.random() * 5.5;
-    const spray = new THREE.Mesh(
-      new THREE.SphereGeometry(0.24 + Math.random() * 0.22, 6, 5),
-      new THREE.MeshBasicMaterial({ color: i % 4 ? 0xf1fdff : 0x9eddea, transparent: true, opacity: 0 })
-    );
-    spray.position.set(target.x + Math.cos(angle) * radius, 0.24, target.z + Math.sin(angle) * radius);
-    spray.userData.krakenSlamSpray = true;
-    spray.userData.start = spray.position.clone();
-    spray.userData.velocity = new THREE.Vector3(Math.cos(angle) * (5.5 + Math.random() * 6), 9 + Math.random() * 12, Math.sin(angle) * (5.5 + Math.random() * 6));
-    group.add(spray);
-  }
-  for (let i = 0; i < 22; i++) {
-    const angle = (i / 22) * Math.PI * 2;
-    const radius = 7.2 + Math.random() * 3.2;
-    const height = 8 + Math.random() * 10;
-    const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1 + Math.random() * 0.7, height, 0.34),
-      new THREE.MeshBasicMaterial({ color: i % 3 ? 0xafeef8 : 0xffffff, transparent: true, opacity: 0, depthWrite: false })
-    );
-    wall.position.set(target.x + Math.cos(angle) * radius, height * 0.45, target.z + Math.sin(angle) * radius);
-    wall.rotation.y = -angle;
-    wall.userData.krakenWaterWall = true;
-    wall.userData.baseY = wall.position.y;
-    wall.userData.height = height;
-    wall.userData.radius = radius;
-    wall.userData.angle = angle;
-    group.add(wall);
-  }
-  const riseSplash = new THREE.Mesh(new THREE.RingGeometry(4.8, 9.2, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false }));
-  riseSplash.position.copy(attackData.surface);
-  riseSplash.position.y = 0.1;
-  riseSplash.rotation.x = -Math.PI / 2;
-  riseSplash.userData.krakenRiseSplash = true;
-  group.add(riseSplash);
-  addImpactEffect(group, KRAKEN_ATTACK_LIFE, {
-    initialAge,
-    maxWallAge: KRAKEN_ATTACK_REPLAY_MAX_AGE_MS,
-  });
-  addWaveHazard(target, { dps: 10, force: 22, radiusStart: 5.2, radiusEnd: 25, thickness: 3.4, life: 1.55, delay: Math.max(0, KRAKEN_SLAM_DELAY_MS / 1000 - initialAge) });
-}
-
-function krakenAttackWallContains(position, attack, padding = 0) {
-  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
-  const dir = target.clone().sub(source);
-  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
-  dir.normalize();
-  const side = new THREE.Vector3(dir.z, 0, -dir.x);
-  const offset = position.clone().sub(target);
-  offset.y = 0;
-  const along = Math.abs(offset.dot(dir));
-  const across = Math.abs(offset.dot(side));
-  return along <= 7 + padding && across <= 17 + padding;
-}
-
-function krakenAttackSlamContains(position, attack, padding = 0) {
-  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  return dist2(position, target) <= 6.5 + padding;
-}
-
-function krakenAttackEvadePoint(position, attack, shipType = "skiff") {
-  if (!attack) return null;
-  const padding = shipHitRadius(shipType) + 5;
-  if (!krakenAttackSlamContains(position, attack, padding) && !krakenAttackWallContains(position, attack, padding * 0.45)) return null;
-  const target = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  const source = new THREE.Vector3(Number(attack.sourceX) || target.x + 18, 0, Number(attack.sourceZ) || target.z + 18);
-  const dir = target.clone().sub(source);
-  if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
-  dir.normalize();
-  const side = new THREE.Vector3(dir.z, 0, -dir.x);
-  const offset = position.clone().sub(target);
-  offset.y = 0;
-  const sideSign = offset.dot(side) >= 0 ? 1 : -1;
-  const away = position.clone().sub(target);
-  away.y = 0;
-  if (away.lengthSq() < 0.01) away.copy(side).multiplyScalar(sideSign);
-  away.normalize().multiplyScalar(70);
-  const dodge = side.multiplyScalar(sideSign * 105).add(away);
-  const point = position.clone().add(dodge);
-  point.x = clamp(point.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-  point.z = clamp(point.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-  point.y = 0;
-  return point;
-}
-
-function activeKrakenEvadePoint(position, shipType = "skiff") {
-  const now = clock.elapsedTime;
-  const nowWall = Date.now();
-  for (let i = activeKrakenAttacks.length - 1; i >= 0; i--) {
-    if ((activeKrakenAttacks[i].until || 0) < now || (activeKrakenAttacks[i].untilWall || 0) < nowWall) {
-      activeKrakenAttacks.splice(i, 1);
-      continue;
-    }
-    const evade = krakenAttackEvadePoint(position, activeKrakenAttacks[i], shipType);
-    if (evade) return evade;
-  }
-  return null;
-}
-
-function applyKrakenAttack(attack) {
-  if (!attack) return;
-  const sentAt = Number(attack.sentAt);
-  const ageMs = Number.isFinite(sentAt) ? Math.max(0, Date.now() - sentAt) : 0;
-  if (ageMs > KRAKEN_ATTACK_REPLAY_MAX_AGE_MS) return;
-  const initialAge = ageMs / 1000;
-  const slamPoint = new THREE.Vector3(Number(attack.x) || 0, 0, Number(attack.z) || 0);
-  activeKrakenAttacks.push({
-    ...attack,
-    until: clock.elapsedTime + Math.max(0, KRAKEN_ATTACK_LIFE - initialAge),
-    untilWall: Date.now() + Math.max(0, KRAKEN_ATTACK_LIFE * 1000 - ageMs),
-  });
-  submergeKrakenTentacleNear(slamPoint);
-  makeKrakenAttackEffect(attack, { initialAge });
-  const damageDelay = Math.max(0, KRAKEN_SLAM_DELAY_MS - ageMs);
-  const startedWall = Date.now() - ageMs;
-  setTimeout(() => {
-    if (Date.now() - startedWall > KRAKEN_SLAM_DELAY_MS + 800) return;
-    if (state.mode === "ship" && (krakenAttackSlamContains(playerShip.position, attack, shipHitRadius(state.shipType)) || krakenAttackWallContains(playerShip.position, attack, shipHitRadius(state.shipType) * 0.4))) {
-      damageTarget(state, maxHp() * 4);
-    }
-    if (!multiplayer.serverWorld) {
-      bots.forEach((bot) => {
-        if (krakenAttackSlamContains(bot.group.position, attack, shipHitRadius(bot.shipType)) || krakenAttackWallContains(bot.group.position, attack, shipHitRadius(bot.shipType) * 0.4)) {
-          damageTarget(bot, getShipStats(bot.shipType).hp * 4);
-        }
-      });
-    }
-  }, damageDelay);
-}
-
-function makeLeviathanAttackEffect(position, outward, attackId) {
-  const group = new THREE.Group();
-  group.position.copy(position);
-  group.position.y = 0.08;
-  const side = new THREE.Vector3(outward.z, 0, -outward.x).normalize();
-  const foamMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(4.4, 10.6, 42), foamMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.userData.baseScale = 1.0;
-  group.add(ring);
-  for (let i = 0; i < 3; i++) {
-    const wake = new THREE.Mesh(
-      new THREE.RingGeometry(1.2 + i * 0.8, 1.9 + i * 1.0, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.36 - i * 0.06, side: THREE.DoubleSide })
-    );
-    wake.position.copy(outward.clone().multiplyScalar(-2.4 - i * 2.7));
-    wake.rotation.x = -Math.PI / 2;
-    wake.scale.x = 1.8 + i * 0.35;
-    wake.scale.y = 0.55;
-    wake.userData.baseScale = 1;
-    group.add(wake);
-  }
-  for (let i = 0; i < 24; i++) {
-    const spray = new THREE.Mesh(new THREE.SphereGeometry(0.14 + Math.random() * 0.2, 6, 5), new THREE.MeshBasicMaterial({ color: i % 4 ? 0xf1fdff : 0x9eddea, transparent: true, opacity: 0.86 }));
-    spray.position.copy(side.clone().multiplyScalar((Math.random() - 0.5) * 13)).add(outward.clone().multiplyScalar((Math.random() - 0.5) * 7));
-    spray.position.y = 0.3 + Math.random() * 0.8;
-    spray.userData.velocity = side.clone().multiplyScalar((Math.random() - 0.5) * 7)
-      .add(outward.clone().multiplyScalar(-2.4 - Math.random() * 4.4))
-      .add(new THREE.Vector3(0, 3 + Math.random() * 4.2, 0));
-    group.add(spray);
-  }
-  addImpactEffect(group, attackId === "crush" ? 1.25 : 1.75);
-  addWaveHazard(position, { dps: 0, force: 30, radiusStart: 6, radiusEnd: 28, thickness: 4.5, life: 1.8, damageShips: false });
-}
-
-function leviathanAttackHits(position, impactPoint, sideDir, type = state.shipType) {
-  const offset = position.clone().sub(impactPoint);
-  offset.y = 0;
-  const forward = sideDir.clone().normalize();
-  const cross = new THREE.Vector3(forward.z, 0, -forward.x);
-  const along = Math.abs(offset.dot(forward));
-  const across = Math.abs(offset.dot(cross));
-  return along <= 11 + shipHitRadius(type) * 0.35 && across <= 8 + shipHitRadius(type) * 0.45;
-}
-
-function leviathanVector(data, key, fallback = new THREE.Vector3()) {
-  return new THREE.Vector3(
-    Number.isFinite(Number(data?.[`${key}X`])) ? Number(data[`${key}X`]) : fallback.x,
-    Number.isFinite(Number(data?.[`${key}Y`])) ? Number(data[`${key}Y`]) : fallback.y,
-    Number.isFinite(Number(data?.[`${key}Z`])) ? Number(data[`${key}Z`]) : fallback.z,
-  );
-}
-
-function ownServerTarget(id) {
-  return Boolean(id && (id === multiplayer.networkId || id === playerId));
-}
-
-function syncServerLeviathan(data) {
-  if (!data?.id) {
-    if (leviathan?.serverControlled) {
-      scene.remove(leviathan.group);
-      leviathan = null;
-      state.leviathanGrabbed = false;
-      if (playerShip) playerShip.visible = true;
-    }
-    return;
-  }
-  const sideDir = new THREE.Vector3(Number(data.sideX) || 1, 0, Number(data.sideZ) || 0);
-  if (sideDir.lengthSq() < 0.01) sideDir.set(1, 0, 0);
-  sideDir.normalize();
-  const impactPoint = leviathanVector(data, "impact");
-  const startPosition = leviathanVector(data, "start", impactPoint.clone().add(sideDir.clone().multiplyScalar(64)).setY(-24));
-  const smashPosition = leviathanVector(data, "smash", impactPoint.clone().add(sideDir.clone().multiplyScalar(8.6)).setY(0.55));
-  const divePosition = leviathanVector(data, "dive", impactPoint.clone().add(sideDir.clone().multiplyScalar(-30)).setY(-24));
-  if (!leviathan || !leviathan.serverControlled || leviathan.serverId !== data.id) {
-    if (leviathan?.group) scene.remove(leviathan.group);
-    const group = makeLeviathanMesh();
-    group.position.copy(startPosition);
-    group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
-    group.rotation.x = 0.48;
-    group.scale.setScalar(1.1);
-    setLeviathanJawOpen(group, 1);
-    scene.add(group);
-    makeLeviathanAttackEffect(startPosition.clone().setY(0), sideDir, "breach");
-    leviathan = {
-      group,
-      serverControlled: true,
-      serverId: data.id,
-      targetId: data.targetId,
-      born: clock.elapsedTime - Math.max(0, (Date.now() - (Number(data.born) || Date.now())) / 1000),
-      grabbed: false,
-      crushed: false,
-      damaged: false,
-      sideDir: sideDir.clone(),
-      attack: { id: "breach" },
-      startPosition,
-      smashPosition,
-      divePosition,
-      impactPoint,
-      slamAt: 0,
-    };
-  }
-  leviathan.targetId = data.targetId;
-  leviathan.sideDir.copy(sideDir);
-  leviathan.startPosition.copy(startPosition);
-  leviathan.impactPoint.copy(impactPoint);
-  leviathan.smashPosition.copy(smashPosition);
-  leviathan.divePosition.copy(divePosition);
-  leviathan.crushed = Boolean(data.crushed) || leviathan.crushed;
-  leviathan.missed = Boolean(data.missed) || leviathan.missed;
-  leviathan.serverHit = Boolean(data.hit) || leviathan.serverHit;
-  leviathan.damaged = Boolean(data.damaged) || leviathan.damaged;
-  if (Number.isFinite(Number(data.born))) leviathan.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
-  if (Number.isFinite(Number(data.slamAt))) leviathan.slamAt = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.slamAt)) / 1000);
-  if (leviathan.crushed && !leviathan.impactEffectMade) {
-    leviathan.impactEffectMade = true;
-    makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, leviathan.serverHit ? "crush" : "miss");
-  }
-}
-
-function applyServerLeviathanStrike(message) {
-  const attack = message.attack || {};
-  syncServerLeviathan({ ...attack, crushed: true, hit: Boolean(message.hit), missed: !message.hit, slamAt: attack.slamAt || Date.now() });
-  if (!leviathan?.serverControlled) return;
-  const sideDir = leviathan.sideDir || new THREE.Vector3(1, 0, 0);
-  leviathan.crushed = true;
-  leviathan.serverHit = Boolean(message.hit);
-  leviathan.missed = !message.hit;
-  if (!leviathan.slamAt) leviathan.slamAt = clock.elapsedTime;
-  if (!leviathan.impactEffectMade) {
-    leviathan.impactEffectMade = true;
-    makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, message.hit ? "crush" : "miss");
-  }
-  if (message.hit && ownServerTarget(leviathan.targetId) && state.mode === "ship") {
-    state.leviathanGrabbed = true;
-    state.velocity.set(0, 0, 0);
-    playerShip.position.copy(leviathan.impactPoint);
-    playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
-    state.position.copy(playerShip.position);
-    makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), sideDir.clone().multiplyScalar(-1));
-    playerShip.visible = false;
-  }
-}
-
-function applyServerLeviathanDamage(message) {
-  if (!ownServerTarget(message.targetId) || state.mode !== "ship") return;
-  damageTarget(state, maxHp() * 4);
-}
-
-function summonLeviathan() {
-  if (leviathan || clock.elapsedTime < leviathanCooldown || state.mode !== "ship") return;
-  leviathanCooldown = clock.elapsedTime + 10.2;
-  const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-  const outward = playerShip.position.clone().setY(0);
-  if (outward.lengthSq() < 0.01) outward.copy(forward);
-  outward.normalize();
-  const sideDir = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
-  if (sideDir.dot(outward) < 0) sideDir.multiplyScalar(-1);
-  const attack = leviathanAttacks[Math.floor(Math.random() * leviathanAttacks.length)];
-  const group = makeLeviathanMesh();
-  const impactPoint = playerShip.position.clone();
-  impactPoint.y = 0;
-  const startPosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(64));
-  startPosition.y = -24;
-  const smashPosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(8.6));
-  smashPosition.y = 0.55;
-  const divePosition = impactPoint.clone().add(sideDir.clone().multiplyScalar(-30));
-  divePosition.y = -24;
-  group.position.copy(startPosition);
-  group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
-  group.rotation.x = 0.48;
-  group.scale.setScalar(1.1);
-  setLeviathanJawOpen(group, 1);
-  scene.add(group);
-  makeLeviathanAttackEffect(startPosition.clone().setY(0), sideDir, "breach");
-  leviathan = {
-    group,
-    born: clock.elapsedTime,
-    grabbed: false,
-    crushed: false,
-    damaged: false,
-    sideDir: sideDir.clone(),
-    attack,
-    startPosition,
-    smashPosition,
-    divePosition,
-    impactPoint,
-    slamAt: 0,
-  };
-}
-
-function makeFish() {
-  const group = new THREE.Group();
-  const rippleMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
-  const ripple = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 18), rippleMat);
-  ripple.rotation.x = -Math.PI / 2;
-  group.add(ripple);
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.46, 4), mat(0x267c94));
-  fin.position.y = 0.22;
-  fin.rotation.x = Math.PI / 2;
-  group.add(fin);
-  const fishPoint = randomWaterPoint(MAP_LIMIT * 0.92, 18);
-  group.position.set(fishPoint.x, 0.15, fishPoint.z);
-  group.userData.phase = Math.random() * 20;
-  group.userData.kind = "fish";
-  group.userData.speed = 8;
-  group.userData.radius = 0.75;
-  group.userData.direction = Math.random() * Math.PI * 2;
-  scene.add(group);
-  fish.push(group);
-}
-
-function makeSquid() {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), mat(0xb24f5d));
-  body.scale.set(0.72, 0.45, 1.15);
-  body.position.y = 0.24;
-  group.add(body);
-  for (let i = 0; i < 6; i++) {
-    const tentacle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.025, 1.05, 5), mat(0xd06d71));
-    const angle = (i / 6) * Math.PI * 2;
-    tentacle.position.set(Math.cos(angle) * 0.22, 0.12, 0.55 + Math.sin(angle) * 0.12);
-    tentacle.rotation.x = Math.PI / 2 + Math.sin(angle) * 0.4;
-    tentacle.rotation.z = angle;
-    group.add(tentacle);
-  }
-  const point = randomWaterPoint(MAP_LIMIT * 0.92, 18);
-  group.position.set(point.x, 0.12, point.z);
-  group.userData.phase = Math.random() * 20;
-  group.userData.kind = "squid";
-  group.userData.speed = 8;
-  group.userData.radius = 1.05;
-  group.userData.direction = Math.random() * Math.PI * 2;
-  scene.add(group);
-  fish.push(group);
-}
-
-function makeWhale(data = null) {
-  const group = new THREE.Group();
-  const bodyMat = mat(0x315f89);
-  const darkMat = mat(0x234b6c);
-  const bellyMat = mat(0xb1d0df);
-  const grooveMat = mat(0x6f9ebb);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x071018 });
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), bodyMat);
-  body.scale.set(1.65, 0.46, 3.6);
-  body.position.set(0, 0.42, -0.55);
-  body.castShadow = true;
-  group.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 14), bodyMat);
-  head.scale.set(1.95, 0.48, 1.28);
-  head.position.set(0, 0.36, 2.55);
-  head.castShadow = true;
-  group.add(head);
-
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), bodyMat);
-  snout.scale.set(1.72, 0.34, 0.62);
-  snout.position.set(0, 0.31, 3.36);
-  snout.castShadow = true;
-  group.add(snout);
-
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), bellyMat);
-  belly.scale.set(1.28, 0.12, 3.15);
-  belly.position.set(0, 0.08, 0.82);
-  group.add(belly);
-
-  for (let i = -3; i <= 3; i++) {
-    const groove = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.022, 2.2), grooveMat);
-    groove.position.set(i * 0.22, 0.02, 1.72);
-    groove.rotation.x = -0.08;
-    group.add(groove);
-  }
-
-  const tailStock = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.58, 2.4, 12), darkMat);
-  tailStock.position.set(0, 0.36, -4.05);
-  tailStock.rotation.x = Math.PI / 2;
-  tailStock.scale.x = 0.72;
-  tailStock.castShadow = true;
-  group.add(tailStock);
-
-  for (const side of [-1, 1]) {
-    const fluke = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.72, 4), darkMat);
-    fluke.position.set(side * 0.82, 0.36, -5.15);
-    fluke.rotation.z = side * Math.PI / 2;
-    fluke.rotation.y = side * 0.32;
-    fluke.scale.set(1.25, 0.48, 0.12);
-    fluke.castShadow = true;
-    group.add(fluke);
-  }
-
-  const dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.85, 4), darkMat);
-  dorsal.position.set(0, 0.88, -2.15);
-  dorsal.rotation.x = -0.22;
-  dorsal.scale.z = 0.7;
-  dorsal.castShadow = true;
-  group.add(dorsal);
-
-  for (const side of [-1, 1]) {
-    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.34, 2.25, 4), darkMat);
-    fin.position.set(side * 1.82, 0.16, 1.05);
-    fin.rotation.z = side * -1.22;
-    fin.rotation.x = -0.38;
-    fin.rotation.y = side * 0.18;
-    fin.scale.set(0.62, 1, 0.16);
-    fin.castShadow = true;
-    group.add(fin);
-  }
-
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 5), eyeMat);
-    eye.position.set(side * 1.22, 0.56, 2.92);
-    group.add(eye);
-  }
-
-  for (const side of [-1, 1]) {
-    const blowhole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.018, 0.34), darkMat);
-    blowhole.position.set(side * 0.16, 0.84, 2.44);
-    blowhole.rotation.y = side * 0.12;
-    group.add(blowhole);
-  }
-
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.02, 4), darkMat);
-  tail.visible = false;
-  tail.position.set(0, 0.25, -4.4);
-  tail.rotation.x = Math.PI / 2;
-  group.add(tail);
-
-  const point = data
-    ? new THREE.Vector3(Number(data.x) || 0, 0.05, Number(data.z) || WHALE_NORTH_CENTER_Z)
-    : randomNorthernWaterPoint(MAP_LIMIT * 0.9, 70);
-  group.position.set(point.x, 0.05, clamp(point.z, WHALE_NORTH_MIN_Z, WHALE_NORTH_MAX_Z));
-  group.rotation.y = Number.isFinite(Number(data?.rotation)) ? Number(data.rotation) : Math.random() * Math.PI * 2;
-  scene.add(group);
-  const animal = {
-    kind: "whale",
-    serverId: data?.id || null,
-    group,
-    hp: Number(data?.hp) || 1000,
-    maxHp: Number(data?.maxHp) || 1000,
-    speed: 14,
-    direction: group.rotation.y,
-    bombImpulse: new THREE.Vector3(),
-    turnAt: clock.elapsedTime + 3 + Math.random() * 5,
-    submergedUntil: data?.submerged ? clock.elapsedTime + 1.2 : 0,
-    ramCooldown: 0,
-  };
-  animals.push(animal);
-  return animal;
-}
-
-function makeCrateMesh(x, z, kind = "crate") {
-  const group = new THREE.Group();
-  group.position.set(x, 0.65, z);
-  group.rotation.y = Math.random() * Math.PI;
-  if (kind === "whale") {
-    const chunk = new THREE.Mesh(new THREE.DodecahedronGeometry(0.82, 0), mat(0x9db7c7));
-    chunk.scale.set(1.2, 0.45, 0.86);
-    chunk.position.y = 0.05;
-    chunk.castShadow = true;
-    group.add(chunk);
-    const rind = new THREE.Mesh(new THREE.DodecahedronGeometry(0.58, 0), mat(0x315f89));
-    rind.scale.set(1.08, 0.2, 0.58);
-    rind.position.set(-0.18, 0.28, 0.06);
-    rind.castShadow = true;
-    group.add(rind);
-    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 5), new THREE.MeshBasicMaterial({ color: 0xe7f5f7, transparent: true, opacity: 0.6 }));
-    shine.position.set(0.26, 0.48, 0.04);
-    group.add(shine);
-    scene.add(group);
-    return group;
-  }
-  if (kind === "kraken") {
-    const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-2.8, 0, -0.4),
-      new THREE.Vector3(-0.8, 0.55, 0.8),
-      new THREE.Vector3(1.5, 0.15, 0.3),
-      new THREE.Vector3(3.1, 0.45, -0.6),
-    ]);
-    const tentacle = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.42, 9, false), mat(0x6b3d69));
-    tentacle.castShadow = true;
-    group.add(tentacle);
-    const glow = new THREE.Mesh(new THREE.RingGeometry(1.7, 2.15, 24), new THREE.MeshBasicMaterial({ color: 0xf3c33b, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = -0.45;
-    group.add(glow);
-    scene.add(group);
-    return group;
-  }
-  const isTreasure = kind === "treasure";
-  const chest = new THREE.Mesh(
-    new THREE.BoxGeometry(isTreasure ? 1.65 : 1.25, isTreasure ? 1.12 : 1.05, isTreasure ? 1.35 : 1.25),
-    isTreasure ? mats.gold : mats.crate
-  );
-  chest.castShadow = true;
-  group.add(chest);
-  if (isTreasure) {
-    const band = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.18, 1.48), mats.dark);
-    band.position.y = 0.13;
-    band.castShadow = true;
-    group.add(band);
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.32, 1.18), mat(0xf6cc55));
-    lid.position.y = 0.62;
-    lid.castShadow = true;
-    group.add(lid);
-  }
-  scene.add(group);
-  return group;
-}
-
-function removeCrate(crate) {
-  if (!crate) return;
-  scene.remove(crate.mesh);
-  const index = crates.indexOf(crate);
-  if (index >= 0) crates.splice(index, 1);
-}
-
-function dropCrates(pos, count) {
-  for (let i = 0; i < count; i++) {
-    crates.push({
-      mesh: makeCrateMesh(pos.x + (Math.random() - 0.5) * 5, pos.z + (Math.random() - 0.5) * 5),
-      kind: "crate",
-      born: clock.elapsedTime,
-      heal: 8 + Math.random() * 8,
-      xp: 6 + Math.random() * 9,
-      gold: 5 + Math.floor(Math.random() * 13),
-    });
-  }
-}
-
-function dropBlubberBits(pos, count = 0) {
-  const total = clamp(Math.floor(Number(count) || 0), 0, 80);
-  for (let i = 0; i < total; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 2.2 + Math.random() * Math.max(4, Math.sqrt(total) * 1.4);
-    crates.push({
-      mesh: makeCrateMesh(pos.x + Math.sin(angle) * radius, pos.z + Math.cos(angle) * radius, "whale"),
-      kind: "whale",
-      born: clock.elapsedTime,
-      heal: 0,
-      xp: 0,
-      gold: 0,
-      blubber: 1,
-    });
-  }
-}
-
-function dropPlayerDeathCrates(pos) {
-  const count = crateDropCount(state);
-  const droppedBlubber = blubberCount();
-  if (droppedBlubber > 0) state.cargo["Whale Blubber"] = 0;
-  if (multiplayer.serverWorld) {
-    if (sendMultiplayer({
-      type: "playerSunk",
-      x: pos.x,
-      z: pos.z,
-      level: state.level,
-      shipType: state.shipType,
-      blubber: droppedBlubber,
-    })) return;
-  }
-  dropCrates(pos, count);
-  dropBlubberBits(pos, droppedBlubber);
-  if (multiplayer.channel) {
-    sendMultiplayer({
-      type: "playerSunk",
-      x: pos.x,
-      z: pos.z,
-      count,
-      level: state.level,
-      shipType: state.shipType,
-      blubber: droppedBlubber,
-    });
-  }
-}
-
-function spawnTreasure(position = null) {
-  const point = position || randomWaterPoint(MAP_LIMIT * 0.94, 55);
-  crates.push({
-    mesh: makeCrateMesh(point.x, point.z, "treasure"),
-    kind: "treasure",
-    born: clock.elapsedTime,
-    heal: 18 + Math.random() * 14,
-    xp: 440 + Math.random() * 240,
-    gold: 220 + Math.floor(Math.random() * 160),
-  });
-}
-
-function nearestTreasureTo(point, maxDistance = 150) {
-  let best = null;
-  let bestDist = maxDistance;
-  crates.forEach((crate) => {
-    if (crate.kind !== "treasure") return;
-    const d = dist2(point, crate.mesh.position);
-    if (d < bestDist) {
-      best = crate;
-      bestDist = d;
-    }
-  });
-  return best;
-}
-
-function nearestPickupTo(point, maxDistance = 215, bot = null) {
-  let best = null;
-  let bestScore = Infinity;
-  const healthNeed = bot?.shipType ? clamp((getShipStats(bot.shipType).hp - bot.hp) / getShipStats(bot.shipType).hp, 0, 1) : 0;
-  crates.forEach((crate) => {
-    if (islands.some((island) => dist2(crate.mesh.position, island.group.position) < island.radius + 8)) return;
-    const d = dist2(point, crate.mesh.position);
-    const valuable = crate.kind === "treasure" || crate.kind === "kraken";
-    const searchDistance = crate.kind === "treasure"
-      ? Math.min(maxDistance * 2.05, 430)
-      : crate.kind === "kraken"
-        ? Math.min(maxDistance * 1.65, 360)
-        : Math.min(maxDistance, 260);
-    if (d > searchDistance) return;
-    const priority = crate.kind === "kraken" ? 0.2 : crate.kind === "treasure" ? 0.11 : crate.kind === "whale" ? 0.72 : 1 - healthNeed * 0.38;
-    const score = d * priority - healthNeed * 36;
-    if (score < bestScore) {
-      best = crate;
-      bestScore = score;
-    }
-  });
-  return best;
-}
-
-function clearFishingRig() {
-  if (fishingLine) scene.remove(fishingLine);
-  if (fishingBobber) scene.remove(fishingBobber);
-  fishingLine = null;
-  fishingBobber = null;
-}
-
-function nearestFishTo(point, maxDistance) {
-  let best = null;
-  let bestDist = maxDistance;
-  fish.forEach((item) => {
-    const d = dist2(point, item.position);
-    if (d < bestDist) {
-      best = item;
-      bestDist = d;
-    }
-  });
-  return best;
-}
-
-function fishHitRadius(item) {
-  return item?.userData?.radius || (item?.userData?.kind === "squid" ? 1.05 : 0.75);
-}
-
-function startFishing(dir) {
-  if (state.fishing) return toast("Already reeling. Hold steady.");
-  const castPoint = playerShip.position.clone().add(dir.clone().multiplyScalar(12 + Math.random() * 8));
-  castPoint.y = 0.18;
-  fishingBobber = new THREE.Group();
-  const bobberCore = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), mat(0xf4f1df));
-  bobberCore.position.y = 0.18;
-  fishingBobber.add(bobberCore);
-  const bobberTop = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), mat(0xd84b3d));
-  bobberTop.position.y = 0.48;
-  fishingBobber.add(bobberTop);
-  const splash = new THREE.Mesh(new THREE.RingGeometry(0.7, 1.0, 24), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.75, side: THREE.DoubleSide }));
-  splash.rotation.x = -Math.PI / 2;
-  fishingBobber.add(splash);
-  fishingBobber.position.copy(castPoint);
-  scene.add(fishingBobber);
-  fishingLine = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.045, 0.045, 1, 8),
-    new THREE.MeshBasicMaterial({ color: 0xf8f4e5, transparent: true, opacity: 0.92 })
-  );
-  setCylinderBetween(fishingLine, playerShip.position.clone().add(new THREE.Vector3(0, 1.45, 0)), castPoint.clone());
-  scene.add(fishingLine);
-  state.fishing = {
-    target: null,
-    castPoint: castPoint.clone(),
-    timer: 0,
-    biteTime: 0,
-    reelTime: 0.9 + Math.random() * 1.25,
-    phase: "waiting",
-  };
-  toast("Line cast. Waiting for a bite...");
-}
-
-function finishFishing() {
-  const target = state.fishing?.target;
-  const kind = target?.userData?.kind === "squid" ? "Squid" : "Fish";
-  if (target && fish.includes(target)) {
-    scene.remove(target);
-    fish.splice(fish.indexOf(target), 1);
-  }
-  clearFishingRig();
-  state.fishing = null;
-  state.gold += 16 + state.level * 3 + Math.floor(Math.random() * 14);
-  addXP(22 + Math.floor(Math.random() * 10));
-  toast(`${kind} reeled in after a hard pull.`);
-  kind === "Squid" ? makeSquid() : makeFish();
-}
-
-function rewardFishCatch(item, source = "Line") {
-  const kind = item?.userData?.kind === "squid" ? "Squid" : "Fish";
-  if (item && fish.includes(item)) {
-    scene.remove(item);
-    fish.splice(fish.indexOf(item), 1);
-  }
-  state.gold += 16 + state.level * 3 + Math.floor(Math.random() * 14);
-  addXP(22 + Math.floor(Math.random() * 10));
-  if (source !== "quiet") toast(`${kind} caught by ${source}.`);
-  kind === "Squid" ? makeSquid() : makeFish();
-}
-
-function pointTouchesWhalerNet(point) {
-  if (state.shipType !== "whaler" || !state.whalerNets || !playerShip) return false;
-  const progress = clamp(state.whalerNetProgress || 0, 0, 1);
-  if (progress < 0.55) return false;
-  const local = playerShip.worldToLocal(point.clone());
-  const radius = shipHitRadius("whaler");
-  const inner = radius * 0.28;
-  const outer = inner + (4.4 * progress);
-  return Math.abs(local.x) > inner
-    && Math.abs(local.x) < outer
-    && Math.abs(local.z) < radius * 1.26
-    && local.y > -1.1
-    && local.y < 2.2;
-}
-
-function updateWhalerNets() {
-  if (state.mode !== "ship" || state.shipType !== "whaler" || !state.whalerNets || state.whalerNetProgress < 0.55) return;
-  crates.slice().forEach((crate) => {
-    if (pointTouchesWhalerNet(crate.mesh.position)) collectCrate(crate);
-  });
-  fish.slice().forEach((item) => {
-    if (pointTouchesWhalerNet(item.position)) rewardFishCatch(item, "the nets");
-  });
-}
-
-function alertBot(bot, seconds = 12) {
-  bot.agroUntil = Math.max(bot.agroUntil || 0, clock.elapsedTime + seconds + bot.level * 0.8);
-  bot.target = playerShip.position.clone();
-  bot.turn = Math.min(bot.turn || 0, 0.2);
-  bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 1.25);
-}
-
-function targetFireState(target) {
-  return target === state ? state.fire : target?.fire;
-}
-
-function setTargetFireState(target, fire) {
-  if (target === state) state.fire = fire;
-  else if (target) target.fire = fire;
-}
-
-function targetShipGroup(target) {
-  if (target === state) return playerShip;
-  return target?.group || null;
-}
-
-function disposeVisualMesh(mesh) {
-  if (!mesh) return;
-  mesh.geometry?.dispose?.();
-  if (Array.isArray(mesh.material)) mesh.material.forEach((item) => item?.dispose?.());
-  else mesh.material?.dispose?.();
-}
-
-function clearBurnVisual(target) {
-  const fire = targetFireState(target);
-  if (!fire?.scorch) return;
-  fire.scorch.parent?.remove(fire.scorch);
-  disposeVisualMesh(fire.scorch);
-  fire.scorch = null;
-}
-
-function addScorchMark(target, worldPosition = null) {
-  const fire = targetFireState(target);
-  const group = targetShipGroup(target);
-  if (!fire || !group) return;
-  if (!fire.scorch) {
-    fire.scorch = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42, 14, 8),
-      new THREE.MeshStandardMaterial({ color: 0x120807, roughness: 0.98, metalness: 0, transparent: true, opacity: 0.88 })
-    );
-    fire.scorch.userData.burnScorch = true;
-    group.add(fire.scorch);
-  }
-  const type = target === state ? state.shipType : target.shipType || STARTER_SHIP;
-  const radius = shipHitRadius(type);
-  const hit = worldPosition?.clone?.() || group.position.clone().add(new THREE.Vector3(0, 1.05, -radius * 0.16));
-  const local = group.worldToLocal(hit);
-  local.x = clamp(local.x, -radius * 0.72, radius * 0.72);
-  local.y = clamp(local.y, 0.45, 2.4);
-  local.z = clamp(local.z, -radius * 0.88, radius * 0.88);
-  const size = clamp(radius * 0.13, 0.4, 0.92);
-  fire.scorch.position.copy(local);
-  fire.scorch.rotation.set(-0.18 + Math.random() * 0.14, Math.random() * Math.PI, Math.random() * 0.3);
-  fire.scorch.scale.set(size * 1.35, size * 0.13, size * 0.72);
-}
-
-function makeBurnSmoke(position) {
-  const group = new THREE.Group();
-  group.position.copy(position);
-  for (let i = 0; i < 5; i++) {
-    const puff = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16 + Math.random() * 0.14, 8, 6),
-      new THREE.MeshBasicMaterial({ color: i % 2 ? 0x31343a : 0x5d5f62, transparent: true, opacity: 0.42 })
-    );
-    puff.position.set((Math.random() - 0.5) * 0.35, Math.random() * 0.22, (Math.random() - 0.5) * 0.35);
-    puff.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.45, 1.35 + Math.random() * 0.8, (Math.random() - 0.5) * 0.45);
-    puff.userData.puff = true;
-    group.add(puff);
-  }
-  addImpactEffect(group, 1.15);
-}
-
-function updateBurnVisual(target, dt) {
-  const fire = targetFireState(target);
-  const group = targetShipGroup(target);
-  if (!fire || !group) return;
-  if (!fire.scorch) addScorchMark(target);
-  if (fire.scorch?.material) {
-    const heat = clamp(fire.remaining / 12, 0, 1);
-    fire.scorch.material.opacity = 0.62 + heat * 0.24;
-  }
-  fire.smokeTimer = (fire.smokeTimer || 0) - dt;
-  if (fire.smokeTimer <= 0) {
-    fire.smokeTimer = 0.16 + Math.random() * 0.14;
-    const smokePoint = new THREE.Vector3();
-    if (fire.scorch?.parent) fire.scorch.getWorldPosition(smokePoint);
-    else smokePoint.copy(group.position).y += 1.25;
-    smokePoint.y += 0.38;
-    makeBurnSmoke(smokePoint);
-  }
-}
-
-function igniteTarget(target, fire, hitPosition = null, visualOnly = false) {
-  if (!fire) return;
-  const current = targetFireState(target);
-  const effect = {
-    dps: Number(fire.dps) || 2,
-    remaining: Number(fire.duration) || 12,
-  };
-  const next = {
-    dps: effect.dps,
-    remaining: Math.max(current?.remaining || 0, effect.remaining),
-    visualOnly: Boolean(visualOnly) && current?.visualOnly !== false,
-    scorch: current?.scorch || null,
-    smokeTimer: current?.smokeTimer || 0,
-  };
-  setTargetFireState(target, next);
-  addScorchMark(target, hitPosition);
-}
-
-function updateFireDamage(target, dt, speed = 0) {
-  const fire = targetFireState(target);
-  if (!fire) return;
-  const movementWear = 1 + clamp(speed / 32, 0, 0.9);
-  fire.remaining -= dt * movementWear;
-  updateBurnVisual(target, dt);
-  if (!fire.visualOnly) {
-    const damage = (Number(fire.dps) || 2) * dt;
-    target.hp -= damage;
-  }
-  if (fire.remaining <= 0) {
-    clearBurnVisual(target);
-    setTargetFireState(target, null);
-  }
-  if (!fire.visualOnly && target.hp <= 0) {
-    clearBurnVisual(target);
-    setTargetFireState(target, null);
-    if (target.isBot) {
-      damageTarget(target, 0);
-    } else {
-      damageTarget(state, maxHp() * 4);
-    }
-  }
-}
-
-function animalHitRadius(animal) {
-  return animal.kind === "whale" ? 5.2 : 1;
-}
-
-function whaleIslandSteer(position, forward, radius, submerged = false, extra = 0) {
-  const steer = new THREE.Vector3();
-  let active = false;
-  islands.forEach((island) => {
-    const away = position.clone().sub(island.group.position);
-    away.y = 0;
-    const distance = away.length();
-    const danger = island.radius + radius + (submerged ? 18 : 30) + extra;
-    if (distance <= 0.001 || distance >= danger) return;
-    active = true;
-    const pressure = Math.pow((danger - distance) / danger, 1.35);
-    const radial = away.normalize();
-    const tangent = new THREE.Vector3(radial.z, 0, -radial.x);
-    if (tangent.dot(forward) < 0) tangent.multiplyScalar(-1);
-    steer.add(radial.multiplyScalar(pressure * (submerged ? 1.05 : 1.75)));
-    steer.add(tangent.multiplyScalar(pressure * (submerged ? 1.25 : 1.55)));
-  });
-  if (!active) return null;
-  const blended = forward.clone().multiplyScalar(0.42).add(steer);
-  return blended.lengthSq() > 0.001 ? blended.normalize() : forward.clone();
-}
-
-function projectileHitsAnimal(shot, animal) {
-  if (!animal || animal.hp <= 0 || animal.kind !== "whale") return false;
-  if (animal.submergedUntil > clock.elapsedTime && shot.ammoType !== "harpoon") return false;
-  const local = animal.group.worldToLocal(shot.mesh.position.clone());
-  const lengthHit = 5.65;
-  const widthHit = 2.05;
-  const heightHit = animal.submergedUntil > clock.elapsedTime ? 1.35 : 2.3;
-  const ellipse = (local.x / widthHit) ** 2 + (local.z / lengthHit) ** 2;
-  return ellipse <= 1 && local.y > -1.2 && local.y < heightHit;
-}
-
-function damageAnimal(animal, shot) {
-  if (animal.kind !== "whale") return false;
-  const damage = shot.ammoType === "harpoon"
-    ? CANNONBALL_TYPES.harpoon.whaleDamage * (state.shipType === "whaler" ? 1.5 : 1)
-    : shot.damage * 0.5;
-  if (animal.serverId && multiplayer.serverWorld) {
-    animal.aggressiveUntil = clock.elapsedTime + 18;
-    animal.submergedUntil = 0;
-    makeSplashEffect(animal.group.position);
-    sendMultiplayer({ type: "hitWhale", id: animal.serverId, damage, ammoType: shot.ammoType || "basic" });
-    return false;
-  }
-  animal.hp -= damage;
-  animal.aggressiveUntil = clock.elapsedTime + 18;
-  animal.submergedUntil = 0;
-  makeSplashEffect(animal.group.position);
-  if (animal.hp > 0) return false;
-  const pos = animal.group.position.clone();
-  scene.remove(animal.group);
-  animals.splice(animals.indexOf(animal), 1);
-  const bitCount = 3 + Math.floor(Math.random() * 3);
-  if (multiplayer.serverWorld) {
-    sendMultiplayer({ type: "spawnWhaleBits", x: pos.x, z: pos.z, count: bitCount });
-  } else {
-    for (let i = 0; i < bitCount; i++) {
-      const angle = (Math.PI * 2 * i) / bitCount + Math.random() * 0.45;
-      const radius = 2.2 + Math.random() * 4.4;
-      crates.push({
-        mesh: makeCrateMesh(pos.x + Math.sin(angle) * radius, pos.z + Math.cos(angle) * radius, "whale"),
-        kind: "whale",
-        born: clock.elapsedTime,
-        heal: 0,
-        xp: 0,
-        gold: 0,
-        blubber: 1,
-      });
-    }
-  }
-  toast("Whale down. Blubber bits surfaced.");
-  return true;
-}
-
-function updateAnimals(dt) {
-  animals.slice().forEach((animal) => {
-    if (animal.kind !== "whale") return;
-    if (animal.serverId && multiplayer.serverWorld) {
-      if (animal.serverPosition) animal.group.position.lerp(animal.serverPosition, clamp(dt * 6, 0, 0.28));
-      if (Number.isFinite(animal.serverRotation)) {
-        animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.serverRotation, clamp(dt * 5, 0, 0.24));
-        animal.direction = animal.group.rotation.y;
-      }
-      const submerged = animal.submergedUntil > clock.elapsedTime || animal.serverSubmerged;
-      const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
-      animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
-      animal.group.traverse((child) => {
-        if (child.material) child.material.opacity = submerged ? 0.34 : 1;
-        if (child.material) child.material.transparent = submerged;
-      });
-      return;
-    }
-    if (!pointInWhaleNorthZone(animal.group.position, 80)) {
-      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 8, WHALE_NORTH_MAX_Z - 8);
-      animal.direction = whaleZoneReturnDirection(animal.group.position);
-    }
-    animal.turnAt -= dt;
-    if (animal.turnAt <= 0) {
-      animal.turnAt = 3 + Math.random() * 6;
-      animal.direction += (Math.random() - 0.5) * 1.2;
-      if (Math.random() < 0.28) animal.submergedUntil = clock.elapsedTime + 4 + Math.random() * 5;
-    }
-    const underIsland = pointInAnyIsland(animal.group.position, animalHitRadius(animal) * 0.65);
-    if (underIsland && animal.submergedUntil <= clock.elapsedTime + 0.6) {
-      animal.submergedUntil = clock.elapsedTime + 2.4;
-    }
-    const nearWhaleBoundary = animal.group.position.z < WHALE_NORTH_MIN_Z + 42 || animal.group.position.z > WHALE_NORTH_MAX_Z - 42;
-    if ((animal.aggressiveUntil || 0) > clock.elapsedTime && state.mode === "ship" && pointInWhaleNorthZone(playerShip.position, -12)) {
-      animal.direction = lerpAngle(
-        animal.direction,
-        Math.atan2(playerShip.position.x - animal.group.position.x, playerShip.position.z - animal.group.position.z),
-        clamp(dt * 2.4, 0, 0.2)
-      );
-      animal.submergedUntil = 0;
-    }
-    if (nearWhaleBoundary || !pointInWhaleNorthZone(animal.group.position)) {
-      animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), clamp(dt * 3.8, 0, 0.32));
-    }
-    const submerged = animal.submergedUntil > clock.elapsedTime;
-    const desiredForward = new THREE.Vector3(Math.sin(animal.direction), 0, Math.cos(animal.direction));
-    const islandSteer = whaleIslandSteer(animal.group.position, desiredForward, animalHitRadius(animal), submerged);
-    if (islandSteer) {
-      animal.direction = lerpAngle(animal.direction, Math.atan2(islandSteer.x, islandSteer.z), clamp(dt * (submerged ? 1.9 : 3.2), 0, 0.26));
-    }
-    const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
-    animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
-    animal.group.rotation.y = lerpAngle(animal.group.rotation.y, animal.direction, clamp(dt * 2, 0, 0.12));
-    const forward = new THREE.Vector3(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
-    const next = animal.group.position.clone().add(forward.multiplyScalar(animal.speed * dt * (submerged ? 0.82 : (animal.aggressiveUntil || 0) > clock.elapsedTime ? 1.08 : 1)));
-    if (animal.bombImpulse?.lengthSq?.() > 0.001) {
-      next.add(animal.bombImpulse.clone().multiplyScalar(dt));
-      animal.bombImpulse.multiplyScalar(Math.pow(0.14, dt));
-    }
-    const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + animalHitRadius(animal) * 0.85);
-    if (!pointInWhaleNorthZone(next)) {
-      animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), 0.62);
-      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 2, WHALE_NORTH_MAX_Z - 2);
-      return;
-    }
-    if (Math.abs(next.x) > MAP_LIMIT * 0.94 || Math.abs(next.z) > MAP_LIMIT * 0.94 || blockedIsland) {
-      if (blockedIsland) {
-        const escape = whaleIslandSteer(animal.group.position, forward, animalHitRadius(animal), submerged, 44);
-        if (escape) animal.direction = lerpAngle(animal.direction, Math.atan2(escape.x, escape.z), 0.42);
-        const away = animal.group.position.clone().sub(blockedIsland.group.position);
-        away.y = 0;
-        if (away.lengthSq() > 0.01) animal.group.position.add(away.normalize().multiplyScalar(dt * animal.speed * 0.35));
-      } else {
-        animal.direction += Math.PI * (0.8 + Math.random() * 0.4);
-      }
-      animal.group.position.x = clamp(animal.group.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-      animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 2, WHALE_NORTH_MAX_Z - 2);
-    } else {
-      animal.group.position.copy(next);
-    }
-    animal.group.traverse((child) => {
-      if (child.material) child.material.opacity = submerged ? 0.34 : 1;
-      if (child.material) child.material.transparent = submerged;
-    });
-    animal.ramCooldown = Math.max(0, animal.ramCooldown - dt);
-    if (!submerged && state.mode === "ship" && animal.ramCooldown <= 0 && dist2(animal.group.position, playerShip.position) < animalHitRadius(animal) + shipHitRadius(state.shipType) * 0.5) {
-      const away = playerShip.position.clone().sub(animal.group.position);
-      away.y = 0;
-      if (away.lengthSq() < 0.01) away.set(Math.sin(animal.group.rotation.y), 0, Math.cos(animal.group.rotation.y));
-      away.normalize();
-      const whaleScale = state.shipType === "whaler" ? getShipStats().whaleRamTakenScale || 0.25 : 1;
-      damageTarget(state, 50 * whaleScale);
-      state.velocity.add(away.multiplyScalar(10));
-      animal.submergedUntil = clock.elapsedTime + 5 + Math.random() * 3;
-      animal.ramCooldown = 9;
-      toast("A whale rammed your ship.");
-    }
-  });
-}
-
-function makeStormCloud() {
-  const group = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0x34383e, roughness: 1, transparent: false, opacity: 1, depthWrite: true });
-  const underMat = new THREE.MeshStandardMaterial({ color: 0x2d3137, roughness: 1, transparent: false, opacity: 1, depthWrite: true });
-  const wispMat = new THREE.MeshBasicMaterial({ color: 0x34383e, transparent: false, opacity: 1, depthWrite: true, side: THREE.DoubleSide, fog: false });
-  for (let i = 0; i < 14; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), i < 5 ? underMat : cloudMat);
-    puff.scale.set(9 + Math.random() * 9, 1.05 + Math.random() * 1.25, 4.8 + Math.random() * 5.5);
-    puff.position.set((Math.random() - 0.5) * 58, Math.random() * 6.6, (Math.random() - 0.5) * 48);
-    puff.rotation.set((Math.random() - 0.5) * 0.08, Math.random() * Math.PI, (Math.random() - 0.5) * 0.12);
-    group.add(puff);
-  }
-  for (let i = 0; i < 9; i++) {
-    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(18 + Math.random() * 20, 2.6 + Math.random() * 2.2), wispMat.clone());
-    sheet.material.opacity = 1;
-    sheet.position.set((Math.random() - 0.5) * 62, -1.4 + Math.random() * 4, (Math.random() - 0.5) * 54);
-    sheet.rotation.set((Math.random() - 0.5) * 0.18, Math.random() * Math.PI, (Math.random() - 0.5) * 0.1);
-    group.add(sheet);
-  }
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x1f2b35, transparent: true, opacity: 0.22, depthWrite: false }));
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = -47.82;
-  shadow.userData.stormShadow = true;
-  group.add(shadow);
-  group.position.y = 48;
-  return group;
-}
-
-function spawnStorm() {
-  const group = makeStormCloud();
-  const northBias = Math.random() < 0.72;
-  const x = (Math.random() - 0.5) * MAP_LIMIT * 1.4;
-  const z = northBias ? Math.random() * MAP_LIMIT * 0.9 : (Math.random() - 0.5) * MAP_LIMIT * 1.5;
-  group.position.x = x;
-  group.position.z = z;
-  scene.add(group);
-  const direction = Math.random() * Math.PI * 2;
-  const radius = 58 + Math.random() * 34;
-  const shadow = group.children.find((child) => child.userData.stormShadow);
-  if (shadow) shadow.scale.setScalar(radius);
-  storms.push({
-    group,
-    radius,
-    velocity: new THREE.Vector3(Math.sin(direction), 0, Math.cos(direction)).multiplyScalar(4),
-    born: clock.elapsedTime,
-    life: 600,
-    strikeAt: clock.elapsedTime + 2 + Math.random() * 6,
-  });
-}
-
-function makeLightningBolt(start, end) {
-  const group = new THREE.Group();
-  const points = [];
-  const segments = 8;
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const p = start.clone().lerp(end, t);
-    p.x += (Math.random() - 0.5) * 3.6 * (1 - Math.abs(t - 0.5));
-    p.z += (Math.random() - 0.5) * 3.6 * (1 - Math.abs(t - 0.5));
-    points.push(p);
-  }
-  const main = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.95 })
-  );
-  group.add(main);
-  for (let i = 2; i < points.length - 2; i += 2) {
-    const base = points[i];
-    const branchEnd = base.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, -3 - Math.random() * 5, (Math.random() - 0.5) * 8));
-    group.add(new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([base, branchEnd]),
-      new THREE.LineBasicMaterial({ color: 0x89dfff, transparent: true, opacity: 0.72 })
-    ));
-  }
-  addImpactEffect(group, 0.28);
-}
-
-function lightningStrike(storm) {
-  const candidates = [];
-  if (state.mode === "ship" && dist2(playerShip.position, storm.group.position) < storm.radius) {
-    candidates.push({ kind: "player", position: playerShip.position, target: state, type: state.shipType });
-  }
-  bots.forEach((bot) => {
-    if (dist2(bot.group.position, storm.group.position) < storm.radius) {
-      candidates.push({ kind: "bot", position: bot.group.position, target: bot, type: bot.shipType });
-    }
-  });
-  balloons.forEach((balloon) => {
-    if (!balloon.destroyed && dist2(balloon.group.position, storm.group.position) < storm.radius) {
-      candidates.push({ kind: "balloon", position: balloon.group.position, target: balloon });
-    }
-  });
-  islands.forEach((island) => {
-    if (dist2(island.group.position, storm.group.position) < storm.radius + island.radius) {
-      const angle = Math.random() * Math.PI * 2;
-      candidates.push({
-        kind: "island",
-        position: island.group.position.clone().add(new THREE.Vector3(Math.sin(angle) * island.radius * 0.45, 0, Math.cos(angle) * island.radius * 0.45)),
-      });
-    }
-  });
-  if (!candidates.length) return;
-  const hit = candidates[Math.floor(Math.random() * candidates.length)];
-  const start = new THREE.Vector3(hit.position.x, storm.group.position.y + 6, hit.position.z);
-  const end = hit.position.clone().setY(0.6);
-  makeLightningBolt(start, end);
-  makeFireImpactEffect(end.clone(), new THREE.Vector3(1, 0, 0));
-  if (hit.kind === "player" || hit.kind === "bot") {
-    damageTarget(hit.target, 50, { fire: { dps: 10, duration: 3 }, hitPosition: end });
-  } else if (hit.kind === "balloon") {
-    destroyBalloon(hit.target, "lightning");
-  }
-}
-
-function showServerLightning(x, z) {
-  const point = new THREE.Vector3(Number(x) || 0, 0.6, Number(z) || 0);
-  makeLightningBolt(point.clone().setY(58), point);
-  makeFireImpactEffect(point.clone(), new THREE.Vector3(1, 0, 0));
-}
-
-function updateStorms(dt) {
-  if (multiplayer.serverWorld) {
-    storms.slice().forEach((storm) => {
-      if (storm.serverPosition) storm.group.position.lerp(storm.serverPosition, clamp(dt * 3.5, 0, 0.2));
-      storm.group.rotation.y += dt * 0.04;
-    });
-    return;
-  }
-  if (clock.elapsedTime >= nextStormAt) {
-    nextStormAt = clock.elapsedTime + 130 + Math.random() * 220;
-    if (Math.random() < 0.65) spawnStorm();
-  }
-  storms.slice().forEach((storm) => {
-    storm.group.position.add(storm.velocity.clone().multiplyScalar(dt));
-    storm.group.rotation.y += dt * 0.04;
-    if (clock.elapsedTime >= storm.strikeAt) {
-      storm.strikeAt = clock.elapsedTime + 3 + Math.random() * 7;
-      lightningStrike(storm);
-    }
-    if (clock.elapsedTime - storm.born > storm.life) {
-      scene.remove(storm.group);
-      storms.splice(storms.indexOf(storm), 1);
-    }
-  });
-}
-
-function damageTarget(target, amount, options = {}) {
-  if (target.serverId && multiplayer.serverWorld) {
-    sendMultiplayer({ type: "hitBot", id: target.serverId, damage: amount, fire: options.fire || null });
-    return;
-  }
-  const armor = options.ignoreArmor ? 0 : target.isBot ? getShipStats(target.shipType).armor : getShipStats().armor;
-  target.hp -= amount * (1 - armor);
-  if (target.hp > 0 && options.fire) igniteTarget(target, options.fire, options.hitPosition || null);
-  if (target.isBot && target.hp > 0) alertBot(target);
-  if (target.hp <= 0) {
-    const level = target.level || 1;
-    const deathPos = target.isBot ? target.group.position : playerShip.position;
-    if (target.isBot) {
-      clearBurnVisual(target);
-      target.fire = null;
-      dropCrates(deathPos, crateDropCount(target));
-      target.hp = getShipStats(target.shipType).hp;
-      target.group.position.copy(randomWaterPoint(MAP_LIMIT * 0.9, 82));
-      target.level = Math.max(1, target.level + (Math.random() > 0.55 ? 1 : 0));
-      target.agroUntil = 0;
-      target.fireCooldown = 1.8 + Math.random() * 2;
-      state.gold += 45 + level * 12;
-      addXP(40 + level * 22);
-      toast(`Sank a level ${level} ship. Crates overboard!`);
-    } else {
-      dropPlayerDeathCrates(deathPos);
-      clearBuildInventory(false);
-      const lostGold = Math.floor(state.gold * 0.25);
-      state.gold = Math.max(0, state.gold - lostGold);
-      clearBurnVisual(state);
-      state.fire = null;
-      state.leviathanGrabbed = false;
-      state.fallingOffWorld = false;
-      state.fallingTimer = 0;
-      state.fallVelocityY = 0;
-      state.fallDrift.set(0, 0, 0);
-      state.fallSpin.set(0, 0, 0);
-      state.viewMode = "ship";
-      state.activeBalloonIndex = -1;
-      resetCharacterHealth();
-      target.mode = "ship";
-      target.dockedAt = null;
-      closeShop();
-      character.visible = false;
-      target.position.set(-15, 0, -12);
-      replacePlayerShip(STARTER_SHIP, target.position);
-      state.velocity.set(0, 0, 0);
-      toast(`Your ship was sunk. You lost ${lostGold}g and restarted in a Skiff.`);
-    }
-  }
-}
-
-function initWorld() {
-  addLights();
-  addSea();
-  initWindCurrents();
-  for (let i = 0; i < 20; i++) makeCloud();
-  islandData.forEach((data) => islands.push(makeIsland(data)));
-  playerShip = makeShip(state.shipType);
-  playerShip.position.copy(state.position);
-  playerShip.position.y = SHIP_WATERLINE_Y;
-  scene.add(playerShip);
-  character = makeCharacter();
-  for (let i = 0; i < STARTING_FISH_COUNT; i++) makeFish();
-  for (let i = 0; i < STARTING_SQUID_COUNT; i++) makeSquid();
-  for (let i = 0; i < 7; i++) makeWhale();
-  for (let i = 0; i < 15; i++) {
-    const spec = shipCatalog[1 + Math.floor(Math.random() * (shipCatalog.length - 1))];
-    const group = makeShip(spec.id, true);
-    const spawn = randomWaterPoint(MAP_LIMIT * 0.9, 96);
-    group.position.copy(spawn);
-    group.rotation.y = Math.random() * Math.PI * 2;
-    scene.add(group);
-    bots.push({
-      localId: `bot-${i}`,
-      isBot: true,
-      group,
-      shipType: spec.id,
-      hp: spec.hp,
-      level: 1 + Math.floor(Math.random() * 7),
-      turn: Math.random() * 10,
-      velocity: new THREE.Vector3(),
-      rotation: group.rotation.y,
-      agroUntil: 0,
-      naturallyAggressive: Math.random() < 0.24,
-      courageous: Math.random() < 1 / 3,
-      upgradeFocus: ["damage", "reload", "range"][i % 3],
-      targetBot: null,
-      botFightUntil: 0,
-      fireCooldown: 1.6 + Math.random() * 2.4,
-    });
-  }
-}
-
-function setTool(tool) {
-  state.tool = tool;
-  if (tool !== "glass" && state.spyTarget) {
-    state.spyTarget = null;
-    updateSpyPanel();
-  }
-  Object.entries(ui.toolButtons).forEach(([name, button]) => button.classList.toggle("active", name === tool));
-}
-
-ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
-ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
-ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
-[ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
-  select?.addEventListener("change", () => setLanguage(select.value));
-});
-ui.guideYes?.addEventListener("click", () => showBeginnerGuide());
-ui.guideNo?.addEventListener("click", () => closeBeginnerGuide());
-ui.guideClose?.addEventListener("click", () => closeBeginnerGuide());
-ui.ammoHotbar?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-ammo-slot]");
-  if (!button) return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (selectAmmoSlot(button.dataset.ammoSlot, true)) setTool("cannon");
-});
-ui.ammoHotbar?.addEventListener("mousedown", (event) => {
-  if (!event.target.closest("[data-ammo-slot]")) return;
-  event.preventDefault();
-  event.stopPropagation();
-});
-ui.closeShop.addEventListener("click", () => closeShop());
-ui.dockPrompt.addEventListener("click", () => {
-  if (nameGateOpen()) return;
-  if (state.mode === "land") {
-    setSail();
-    return;
-  }
-  const island = currentIsland();
-  if (island) dockAtIsland(island);
-});
-ui.closeMinimap.addEventListener("click", () => {
-  ui.minimapPanel.classList.add("hidden");
-  ui.minimapPanel.classList.remove("expanded");
-  ui.openMinimap.classList.remove("hidden");
-});
-ui.openMinimap.addEventListener("click", () => {
-  ui.minimapPanel.classList.remove("hidden");
-  ui.minimapPanel.classList.remove("expanded");
-  ui.openMinimap.classList.add("hidden");
-});
-ui.minimap?.addEventListener("click", (event) => {
-  handleGoldDiggerMinimapTeleport(event);
-});
-ui.toggleWindMap?.addEventListener("click", () => {
-  state.showWindMarkers = !state.showWindMarkers;
-  saveValue("islandwakeWindMarkers", state.showWindMarkers ? "1" : "0");
-  toast(state.showWindMarkers ? "Wind markers shown." : "Wind markers hidden.");
-});
-ui.closeLeaderboard?.addEventListener("click", () => {
-  ui.leaderboardPanel.classList.add("hidden");
-  ui.openLeaderboard.classList.remove("hidden");
-});
-ui.openLeaderboard?.addEventListener("click", () => {
-  ui.leaderboardPanel.classList.remove("hidden");
-  ui.openLeaderboard.classList.add("hidden");
-  renderLeaderboard();
-});
-ui.closeInventory?.addEventListener("click", () => setInventoryOpen(false));
-function handleInventoryBodyAction(event) {
-  const button = event.target.closest("[data-build-select]");
-  if (!button) return;
-  const now = performance.now();
-  if (event.type === "click" && now - lastInventoryPointerHandledAt < 450) return;
-  if (event.type === "pointerdown") lastInventoryPointerHandledAt = now;
-  event.preventDefault();
-  event.stopPropagation();
-  if (button.disabled) return;
-  const type = button.dataset.buildSelect;
-  if (!BUILD_ITEMS[type] || buildInventoryCount(type) <= 0) return;
-  state.selectedBuildItem = state.selectedBuildItem === type ? null : type;
-  renderInventory();
-}
-ui.inventoryBody?.addEventListener("pointerdown", handleInventoryBodyAction);
-ui.inventoryBody?.addEventListener("click", handleInventoryBodyAction);
-ui.snapBuild?.addEventListener("change", () => {
-  state.buildSnap = Boolean(ui.snapBuild.checked);
-});
-ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
-  state.shopTab = tab.dataset.tab;
-  ui.tabs.forEach((item) => item.classList.toggle("active", item === tab));
-  renderShop();
-}));
-
-function setupNameGate() {
-  if (!ui.nameGate || !ui.nameForm || !ui.nameInput) return;
-  const joinGame = (event = null, forcedName = "", forcedToken = "") => {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    if (ui.nameGate.classList.contains("hidden")) return;
-    if (forcedName) ui.nameInput.value = forcedName;
-    if (forcedToken && ui.developerTokenInput) ui.developerTokenInput.value = forcedToken;
-    const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
-    if (!nextName) {
-      ui.nameInput.focus();
-      return;
-    }
-    const token = ui.developerTokenInput?.value?.trim() || "";
-    state.name = nextName;
-    state.devToken = token;
-    state.infiniteGold = token === "GoldDigger";
-    state.infiniteLevels = token === "GoldDigger";
-    if (state.infiniteGold) state.gold = 999999999;
-    if (state.infiniteLevels) {
-      state.level = Math.max(state.level, 999999);
-      state.points = Math.max(state.points, 999999);
-      state.xp = 0;
-    }
-    state.joined = true;
-    saveValue("islandwakeName", nextName);
-    ui.nameGate.classList.add("hidden");
-    sendMultiplayer({ type: "hello", player: multiplayerPayload() });
-    updateHud();
-    showBeginnerQuestion();
-  };
-  window.islandwakeJoin = (name = "", token = "") => joinGame(null, String(name || ""), String(token || ""));
-  ui.nameInput.value = state.name;
-  ui.nameGate.classList.remove("hidden");
-  setTimeout(() => {
-    ui.nameInput.focus();
-    ui.nameInput.select();
-  }, 100);
-  ui.playerName.style.cursor = "pointer";
-  ui.playerName.title = t("captainName");
-  ui.playerName.addEventListener("click", () => {
-    ui.nameInput.value = state.name;
-    ui.nameGate.classList.remove("hidden");
-    ui.nameInput.focus();
-    ui.nameInput.select();
-  });
-  ui.nameButton?.addEventListener("click", joinGame);
-  ui.nameForm.addEventListener("submit", joinGame);
-  ui.nameGate.addEventListener("click", (event) => {
-    const button = event.target?.closest?.("button");
-    if (!button || !ui.nameGate.contains(button)) return;
-    joinGame(event);
-  }, true);
-  ui.nameInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    joinGame(event);
-  });
-  ui.developerTokenInput?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    joinGame(event);
-  });
-  if (window.ISLANDWAKE_PENDING_JOIN) {
-    joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN), String(window.ISLANDWAKE_PENDING_TOKEN || ""));
-    window.ISLANDWAKE_PENDING_JOIN = "";
-    window.ISLANDWAKE_PENDING_TOKEN = "";
-  }
-}
-
-addEventListener("keydown", (event) => {
-  if (nameGateOpen()) return;
-  const key = event.key.toLowerCase();
-  const code = event.code?.toLowerCase?.() || "";
-  if ((key === "t" || code === "keyt") && state.mode === "ship") {
-    const island = currentIsland();
-    if (island) {
-      event.preventDefault();
-      startDocking(island);
-    } else {
-      toast("Get closer to an island to dock.");
-    }
-    return;
-  }
-  if ((key === "c" || code === "keyc") && state.mode === "land") {
-    event.preventDefault();
-    setSail();
-    return;
-  }
-  if ((key === "c" || code === "keyc") && (state.viewMode === "deck" || state.viewMode === "swim")) {
-    event.preventDefault();
-    exitDeckMode();
-    return;
-  }
-  if (key === "f") {
-    event.preventDefault();
-    if (state.viewMode === "deck" || state.viewMode === "swim") returnCharacterToShipDeck();
-    else enterDeckMode();
-    return;
-  }
-  if ((key === "r" || code === "keyr") && state.mode === "land") {
-    event.preventDefault();
-    openIslandShop();
-    return;
-  }
-  if ((key === " " || key === "spacebar") && state.mode === "land" && state.grounded) {
-    event.preventDefault();
-    state.walkVelocityY = 12;
-    state.grounded = false;
-    return;
-  }
-  if ((key === " " || key === "spacebar") && state.viewMode === "deck" && state.grounded) {
-    event.preventDefault();
-    state.walkVelocityY = 9;
-    state.grounded = false;
-    return;
-  }
-  if (event.key === "ArrowLeft") {
-    event.preventDefault();
-    state.cameraYaw += 0.38;
-  }
-  if (event.key === "ArrowRight") {
-    event.preventDefault();
-    state.cameraYaw -= 0.38;
-  }
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    state.cameraPitch = clamp(state.cameraPitch + 0.08, -0.18, 0.92);
-  }
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    state.cameraPitch = clamp(state.cameraPitch - 0.08, -0.18, 0.92);
-  }
-  if (key === "g") {
-    event.preventDefault();
-    setTool("glass");
-    inspectWithSpyglass();
-    return;
-  }
-  if (key === "x" && state.fishing) {
-    event.preventDefault();
-    clearFishingRig();
-    state.fishing = null;
-    state.rodCooldown = 0.35;
-    toast("Line retracted.");
-    return;
-  }
-  if (key === "n") {
-    event.preventDefault();
-    if (state.shipType !== "whaler" || state.mode !== "ship") return toast("Only the Whaler can use side nets at sea.");
-    state.whalerNets = !state.whalerNets;
-    toast(state.whalerNets ? "Whaler nets extended. Speed reduced." : "Whaler nets retracted.");
-    return;
-  }
-  if (key === "b") {
-    event.preventDefault();
-    launchBalloon();
-    return;
-  }
-  if (key === "v") {
-    event.preventDefault();
-    cycleViewMode();
-    return;
-  }
-  if (key === "l") {
-    event.preventDefault();
-    landActiveBalloon();
-    return;
-  }
-  if (key === " ") {
-    event.preventDefault();
-  }
-  keys.add(key);
-  if (event.key === "1") setTool("cannon");
-  if (event.key === "2") setTool("rod");
-  if (event.key === "3") {
-    setTool("glass");
-    inspectWithSpyglass();
-  }
-});
-addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
-addEventListener("mousemove", (event) => {
-  mouse.x = (event.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / innerHeight) * 2 + 1;
-});
-addEventListener("mousedown", (event) => {
-  if (event.target === canvas) useTool();
-});
-
-function currentIsland() {
-  const pos = state.mode === "ship" ? playerShip.position : character.position;
-  if (state.mode === "land" && state.dockedAt) {
-    return islands.find((island) => island.name === state.dockedAt);
-  }
-  return islands.find((island) => {
-    const dockDistance = dist2(pos, island.dock);
-    const islandDistance = dist2(pos, island.group.position);
-    return state.mode === "ship"
-      ? dockDistance < 18 || islandDistance < island.radius + 12
-      : dockDistance < 16 || islandDistance < island.radius + 2;
-  });
-}
-
-function startDocking(island) {
-  if (!island || state.mode !== "ship") return;
-  state.docking = { island: island.name, remaining: 5 };
-  state.velocity.multiplyScalar(0.25);
-  toast(`Docking at ${islandName(island)}: 5 seconds.`);
-}
-
-function updateDocking(dt) {
-  if (!state.docking || state.mode !== "ship") return;
-  const island = islands.find((item) => item.name === state.docking.island);
-  if (!island || currentIsland() !== island) {
-    state.docking = null;
-    toast("Docking cancelled. Stay close to the island.");
-    return;
-  }
-  state.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
-  state.docking.remaining -= dt;
-  if (state.docking.remaining <= 0) {
-    state.docking = null;
-    dockAtIsland(island);
-  }
-}
-
-function dockAtIsland(island) {
-  if (!island) return;
-  state.docking = null;
-  state.mode = "land";
-  state.viewMode = "ship";
-  state.dockedAt = island.name;
-  resetCharacterHealth();
-  const landing = landingPointForShip(island, playerShip.position);
-  state.walkingPos.copy(landing.point);
-  character.position.copy(state.walkingPos);
-  character.position.y = landing.y;
-  character.visible = true;
-  state.walkHeight = 0;
-  state.walkVelocityY = 0;
-  state.grounded = true;
-  playerShip.position.y = SHIP_WATERLINE_Y;
-  state.velocity.set(0, 0, 0);
-  closeShop();
-  toast(`Docked at ${islandName(island)}. Press R for the market or C to set sail.`);
-  updateHud();
-}
-
-function setSail() {
-  if (state.mode !== "land") return;
-  const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
-  closeShop();
-  ["w", "a", "s", "d", "c"].forEach((key) => keys.delete(key));
-  if (island) {
-    const away = playerShip.position.clone().sub(island.group.position);
-    away.y = 0;
-    if (away.lengthSq() < 0.001) {
-      away.set(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
-    }
-    away.normalize();
-    const minDistance = island.radius + shipHitRadius(state.shipType) + 2.5;
-    if (dist2(playerShip.position, island.group.position) < minDistance) {
-      playerShip.position.x = island.group.position.x + away.x * minDistance;
-      playerShip.position.z = island.group.position.z + away.z * minDistance;
-    }
-  }
-  state.mode = "ship";
-  state.viewMode = "ship";
-  state.dockedAt = null;
-  resetCharacterHealth();
-  character.visible = false;
-  playerShip.visible = true;
-  state.walkHeight = 0;
-  state.walkVelocityY = 0;
-  state.grounded = false;
-  state.velocity.set(0, 0, 0);
-  state.position.copy(playerShip.position);
-  state.position.y = SHIP_WATERLINE_Y;
-  playerShip.position.y = SHIP_WATERLINE_Y;
-  multiplayer.lastSent = 0;
-  toast("Sails raised.");
-  updateHud();
-}
-
-function openIslandShop() {
-  if (state.mode !== "land") return toast("Dock at an island before shopping.");
-  const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
-  if (!island) return toast("Dock at an island before shopping.");
-  openShop(island);
-}
-
-function useTool() {
-  if (nameGateOpen()) return;
-  if (ui.shop.classList.contains("hidden") === false) return;
-  if (state.viewMode === "balloon") {
-    dropBalloonBomb(activeBalloon());
-    return;
-  }
-  if (state.viewMode === "deck" || state.viewMode === "swim") return;
-  if (state.mode !== "ship") return;
-  raycaster.setFromCamera(mouse, camera);
-  raycaster.ray.intersectPlane(aimPlane, aimPoint);
-  const dir = aimPoint.clone().sub(playerShip.position);
-  dir.y = 0;
-  if (dir.lengthSq() < 0.1) return;
-  dir.normalize();
-  if (state.tool === "cannon") {
-    const fireDelay = cannonReload();
-    if (state.cooldown > 0) return;
-    const ammo = currentAmmoType();
-    if (!consumeAmmo(ammo)) return;
-    state.cooldown = fireDelay;
-    const range = cannonRange() * (ammo.rangeScale || 1);
-    const targetDistance = clamp(dist2(playerShip.position, aimPoint), 4, range);
-    const pellets = ammo.pellets || 1;
-    for (let i = 0; i < pellets; i++) {
-      const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
-      const shotDir = rotateFlatDirection(dir, spread);
-      const baseDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : cannonDamage() * (ammo.damageScale || 1);
-      const damage = ammo.noRangeDamage ? baseDamage : scaleDamageByRange(baseDamage, targetDistance, range);
-      const target = playerShip.position.clone().add(shotDir.clone().multiplyScalar(targetDistance));
-      target.y = 0;
-      const origin = playerShip.position.clone().add(shotDir.clone().multiplyScalar(3.8));
-      makeProjectile(playerId, origin, shotDir, damage, range, { target, ammoType: ammo.id });
-      publishShot(origin, shotDir, damage, range, target, ammo.id);
-    }
-  } else if (state.tool === "rod") {
-    if (state.rodCooldown > 0) return;
-    state.rodCooldown = 1.1;
-    let best = null;
-    let bestDist = 17;
-    crates.forEach((crate) => {
-      const toCrate = crate.mesh.position.clone().sub(playerShip.position);
-      const d = dist2(playerShip.position, crate.mesh.position);
-      const alignment = dir.dot(toCrate.normalize());
-      if (d < bestDist && alignment > 0.35) {
-        best = crate;
-        bestDist = d;
-      }
-    });
-    if (best) {
-      collectCrate(best);
-    } else {
-      startFishing(dir);
-    }
-  } else if (state.tool === "glass") {
-    inspectWithSpyglass(dir, true);
-  }
-}
-
-function collectCrate(crate) {
-  if (crate.serverId && multiplayer.serverWorld) {
-    if (crate.pending) return;
-    if (crate.kind === "whale" && !canAddBlubber(Math.max(1, Math.floor(Number(crate.blubber) || 1)))) {
-      return toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
-    }
-    crate.pending = true;
-    sendMultiplayer({ type: "collectCrate", id: crate.serverId });
-    return;
-  }
-  if (crate.kind === "whale") {
-    const amount = Math.max(1, Math.floor(Number(crate.blubber) || 1));
-    if (!canAddBlubber(amount)) return toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
-    state.cargo["Whale Blubber"] = blubberCount() + amount;
-    removeCrate(crate);
-    toast("Recovered whale blubber.");
-    return;
-  }
-  state.hp = clamp(state.hp + crate.heal, 0, maxHp());
-  addXP(crate.xp);
-  state.gold += crate.gold ?? (10 + Math.floor(Math.random() * 26));
-  const kind = crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate";
-  removeCrate(crate);
-  toast(`${kind} recovered: repairs, gold, and XP.`);
-}
-
-function botCollectCrates(bot) {
-  if (multiplayer.serverWorld || !bot?.group || !crates.length) return;
-  const spec = getShipStats(bot.shipType);
-  const pickupRadius = shipHitRadius(bot.shipType) + 1.15;
-  crates.slice().forEach((crate) => {
-    if (dist2(bot.group.position, crate.mesh.position) > pickupRadius) return;
-    bot.hp = clamp((Number(bot.hp) || spec.hp) + (Number(crate.heal) || 0), 0, bot.serverMaxHp || spec.hp);
-    if (crate.kind === "treasure" || crate.kind === "kraken") {
-      bot.level = Math.min(40, (bot.level || 1) + 2);
-      bot.fireCooldown = Math.min(bot.fireCooldown || 1.5, 1.1);
-    }
-    removeCrate(crate);
-  });
-}
-
-function inspectWithSpyglass(dir = null, requireShipHit = false) {
-  if (state.mode !== "ship") return toast("Use the spyglass from your ship.");
-  if (!dir) {
-    dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    dir.y = 0;
-    if (dir.lengthSq() < 0.01) dir.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-    dir.normalize();
-  }
-  const candidates = [
-    ...bots.map((bot) => {
-      const spec = getShipStats(bot.shipType);
-      return { kind: "Hostile", name: shipName(bot.shipType), level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
-    }),
-    ...[...remotePlayers.values()].map((p) => {
-      const spec = getShipStats(p.shipType);
-      return { kind: "Captain", name: p.name, level: p.level || 1, hp: p.hp || spec.hp, max: spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: p.lookPosition || p.group.position, shipPos: p.group.position, shipType: p.shipType, group: p.group };
-    }),
-  ];
-  const directTarget = requireShipHit
-    ? candidates
-      .map((item) => {
-        if (!item.group?.visible) return null;
-        const hit = raycaster.intersectObject(item.group, true)[0];
-        return hit ? { ...item, pos: item.shipPos, distance: dist2(playerShip.position, item.shipPos), hitDistance: hit.distance } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.hitDistance - b.hitDistance)[0]
-    : null;
-  const scanned = requireShipHit ? [] : candidates.map((item) => {
-    const scanPos = requireShipHit ? item.shipPos : item.pos;
-    const toTarget = scanPos.clone().sub(playerShip.position);
-    toTarget.y = 0;
-    const distance = toTarget.length();
-    const forward = toTarget.dot(dir);
-    const closest = playerShip.position.clone().add(dir.clone().multiplyScalar(forward));
-    const missDistance = dist2(scanPos, closest);
-    const aim = distance > 0.01 ? dir.dot(toTarget.clone().normalize()) : 0;
-    return {
-      ...item,
-      pos: scanPos,
-      distance,
-      aim,
-      forward,
-      missDistance,
-      hitRadius: shipHitRadius(item.shipType) * 0.95,
-    };
-  });
-  const target = requireShipHit
-    ? directTarget
-    : scanned
-      .filter((item) => item.distance < 135 && item.aim > -0.2)
-      .sort((a, b) => (b.aim * 55 - b.distance * 0.35) - (a.aim * 55 - a.distance * 0.35))[0]
-      || scanned
-        .filter((item) => item.distance < 80)
-        .sort((a, b) => a.distance - b.distance)[0];
-  if (!target) {
-    state.spyTarget = null;
-    if (!requireShipHit) toast("Spyglass found no ships. Aim toward a sail.");
-    updateSpyPanel();
-    return;
-  }
-  const crateEstimate = crateDropCount({ isBot: true, shipType: target.shipType, level: target.level });
-  const threat = target.level > state.level + 2 ? "Dangerous" : target.hp < target.max * 0.4 ? "Wounded" : "Manageable";
-  state.spyTarget = { ...target, crateEstimate, threat, expires: clock.elapsedTime + 8 };
-  updateSpyPanel();
-}
-
-function openShop(island) {
-  state.dockedAt = island.name;
-  ui.shopIsland.textContent = islandName(island);
-  ui.shop.classList.remove("hidden");
-  renderShop();
-}
-
-function closeShop() {
-  ui.shop.classList.add("hidden");
-}
-
-function ensureShipPreviewRenderer() {
-  if (shipPreviewRenderer) return;
-  shipPreviewScene = new THREE.Scene();
-  shipPreviewCamera = new THREE.OrthographicCamera(-6.6, 6.6, 4.2, -4.2, 0.1, 90);
-  shipPreviewCamera.position.set(7.4, 5.4, 8.2);
-  shipPreviewCamera.lookAt(0, 1.0, 0);
-  const fill = new THREE.HemisphereLight(0xffffff, 0x5fabb9, 1.9);
-  shipPreviewScene.add(fill);
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
-  key.position.set(4, 8, 5);
-  shipPreviewScene.add(key);
-  shipPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-  shipPreviewRenderer.setPixelRatio(1);
-  shipPreviewRenderer.setSize(190, 112, false);
-  shipPreviewRenderer.setClearColor(0x000000, 0);
-  shipPreviewRenderer.outputColorSpace = THREE.SRGBColorSpace;
-  shipPreviewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-  shipPreviewRenderer.toneMappingExposure = 1.1;
-}
-
-function shipPreviewImage(type) {
-  if (shipPreviewCache.has(type)) return shipPreviewCache.get(type);
-  try {
-    ensureShipPreviewRenderer();
-    const group = makeShip(type, true);
-    group.rotation.set(-0.06, -0.72, 0);
-    group.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(group);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z, 1);
-    group.position.sub(center);
-    group.position.y += 0.5;
-    group.scale.multiplyScalar(Math.min(1.25, 7.4 / maxDim));
-    shipPreviewScene.add(group);
-    shipPreviewRenderer.render(shipPreviewScene, shipPreviewCamera);
-    const url = shipPreviewRenderer.domElement.toDataURL("image/png");
-    shipPreviewScene.remove(group);
-    shipPreviewCache.set(type, url);
-    return url;
-  } catch (error) {
-    shipPreviewCache.set(type, "");
-    return "";
-  }
-}
-
-function tradeDescription(island, name, owned, buyPrice, sellPrice) {
-  if (name === "Whale Blubber") {
-    return t("blubberTrade", { owned });
-  }
-  const markets = islandData
-    .map((item) => ({ name: item.name, sell: marketSellPrice(item, name) }))
-    .sort((a, b) => b.sell - a.sell);
-  const best = markets[0] || { name: island.name, sell: sellPrice };
-  const profit = best.sell - buyPrice;
-  const routeText = best.name === island.name
-    ? t("betterSellHere")
-    : t("bestKnownResale", { price: best.sell, island: islandName(best.name) });
-  const profitText = profit > 0
-    ? t("possibleProfit", { profit })
-    : t("weakTradeRoute");
-  return `${t("owned", { count: owned })} ${t("sellHere", { price: sellPrice })} ${routeText} ${profitText}`;
-}
-
-function shipRoleDescription(ship) {
-  const speed = ship.speed >= 28 ? t("speedVeryFast") : ship.speed >= 22 ? t("speedQuick") : ship.speed <= 12 ? t("speedSlow") : t("speedSteady");
-  const defense = ship.armor <= 0 ? t("noArmor") : ship.armor >= 0.14 ? t("heavyArmor") : ship.armor >= 0.08 ? t("solidArmor") : t("lightArmor");
-  const hold = ship.capacity >= 38 ? t("hugeHold") : ship.capacity >= 22 ? t("largeHold") : ship.capacity <= 7 ? t("smallHold") : t("usefulHold");
-  const durability = ship.hp >= 2400 ? t("massiveHp") : ship.hp >= 1500 ? t("highHp") : ship.hp <= 750 ? t("lightHp") : t("goodHp");
-  const handling = ship.speed > 22 && ship.armor <= 0 ? t("speedBuild") : ship.speed <= 12 ? t("heavyBuild") : t("balancedBuild");
-  return t("shipRole", { speed, durability, defense, hold, handling });
-}
-
-function ammoDescription(ammo) {
-  if (ammo.id === "hotshot") {
-    const fire = ammo.fire || { dps: 0, duration: 0 };
-    return t("hotshotDesc", { dps: fire.dps, duration: fire.duration });
-  }
-  if (ammo.id === "grapeshot") {
-    return t("grapeshotDesc", { pellets: ammo.pellets, damage: Math.round(ammo.damageScale * 100), range: Math.round(ammo.rangeScale * 100) });
-  }
-  if (ammo.id === "harpoon") {
-    return t("harpoonDesc");
-  }
-  if (ammo.id === "airburst") {
-    return t("airburstDesc");
-  }
-  return t("basicDesc");
-}
-
-function upgradeDescription(id) {
-  if (id === "damage") {
-    return t("damageUpgradeDesc", { damage: cannonDamage() });
-  }
-  if (id === "fireRate") {
-    return t("reloadUpgradeDesc", { reload: cannonReload().toFixed(2), max: MAX_RELOAD_UPGRADES });
-  }
-  return t("rangeUpgradeDesc", { range: cannonRange() });
-}
-
-function renderShop() {
-  const island = islands.find((item) => item.name === state.dockedAt) || islands[0];
-  ui.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === state.shopTab));
-  if (island.exploreOnly) {
-    ui.shopBody.innerHTML = `<p class="stats">${t("unchartedShop", { island: islandName(island) })}</p>`;
-    return;
-  }
-  if (state.shopTab === "goods") {
-    const marketGoods = [...goods];
-    if (island.name === "Portsmouth" || blubberCount() > 0) marketGoods.push("Whale Blubber");
-    const blubberLabel = state.shipType === "whaler"
-      ? ` | ${t("blubber")} ${blubberCount()}/${blubberCapacity()}`
-      : blubberCount() > 0
-        ? t("blubberInHold", { count: blubberCount() })
-        : "";
-    ui.shopBody.innerHTML = `<p class="stats">${t("marketIntro", { culture: cultureName(island.culture), hold: cargoCount(), capacity: cargoCapacity(), blubber: blubberLabel })}</p>` + marketGoods.map((name) => {
-      const owned = state.cargo[name] || 0;
-      const buyPrice = marketBuyPrice(island, name);
-      const sellPrice = marketSellPrice(island, name);
-      const actions = name === "Whale Blubber"
-        ? `<button data-sell="${name}" ${sellPrice <= 0 ? "disabled" : ""}>${t("sell")}</button>`
-        : `<button data-buy="${name}">${t("buy")}</button><button data-sell="${name}">${t("sell")}</button>`;
-      return `<div class="row"><div><h3>${goodName(name)} <span class="price">${buyPrice > 0 ? `${t("buyPrice", { price: buyPrice })} / ` : ""}${t("sellPrice", { price: sellPrice })}</span></h3><p>${tradeDescription(island, name, owned, buyPrice, sellPrice)}</p></div><div class="actions">${actions}</div></div>`;
-    }).join("");
-  } else if (state.shopTab === "ships") {
-    const ships = availableShipsForIsland(island);
-    ui.shopBody.innerHTML = `<p class="stats">${t("shipwrightIntro", { island: islandName(island), culture: cultureName(island.culture) })}</p>` + ships.map((ship) => {
-      const owned = ship.id === state.shipType;
-      const preview = shipPreviewImage(ship.id);
-      const previewMarkup = preview
-        ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
-        : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? t("sailing") : t("buy")}</button></div><p>${shipRoleDescription(ship)}</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })}</p>${shipCompareMarkup(ship)}</div></div>`;
-    }).join("");
-  } else if (state.shopTab === "ammo") {
-    const slotStatus = `<div class="ammo-slot-status">${state.ammoSlots.map((type, index) => {
-      const ammo = type ? CANNONBALL_TYPES[type] : null;
-      return `<span>${index + 1}: ${index === 0 ? t("basic") : ammo ? ammoShortName(ammo) : t("emptySlot")}</span>`;
-    }).join("")}</div>`;
-    const replacePrompt = state.pendingAmmoAssign && CANNONBALL_TYPES[state.pendingAmmoAssign]
-      ? `<div class="row"><div><h3>${t("hotbarFull")}</h3><p>${t("replaceAmmoPrompt", { ammo: ammoName(state.pendingAmmoAssign) })}</p></div><div class="actions">${[1, 2, 3, 4].map((slot) => `<button data-replace-ammo="${state.pendingAmmoAssign}" data-slot="${slot}">${t("slot", { slot: slot + 1 })}</button>`).join("")}</div></div>`
-      : "";
-    const balloonRow = `<div class="row"><div><h3>${t("hotAirBalloon")} <span class="price">${t("each", { price: BALLOON_COST })}</span></h3><p>${t("balloonShopDesc", { owned: state.balloonStock, max: state.maxBalloons })}</p></div><div class="actions"><button data-buy-balloon="1" ${state.balloonStock >= state.maxBalloons ? "disabled" : ""}>${t("buy")}</button></div></div>`;
-    ui.shopBody.innerHTML = `${slotStatus}${replacePrompt}` + SPECIAL_AMMO_TYPES.map((id) => {
-      const ammo = CANNONBALL_TYPES[id];
-      const owned = ammoCount(id);
-      const description = ammoDescription(ammo);
-      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button></div></div>`;
-    }).join("") + balloonRow;
-  } else {
-    const ups = [
-      ["damage", t("cannonDamage"), upgradeDescription("damage")],
-      ["fireRate", t("fireRate"), upgradeDescription("fireRate")],
-      ["range", t("cannonRange"), upgradeDescription("range")],
-    ];
-    ui.shopBody.innerHTML = `<p class="stats">${t("upgradePoints", { points: state.points })}</p>` + ups.map(([id, name, desc]) => (
-      `<div class="row"><div><h3>${name} ${t("lvl", { level: state.upgrades[id] })}${id === "fireRate" ? `/${MAX_RELOAD_UPGRADES}` : ""}</h3><p>${desc}</p></div><button data-upgrade="${id}" ${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? "disabled" : ""}>${id === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES ? t("max") : t("spend")}</button></div>`
-    )).join("");
-  }
-}
-
-function handleShopBodyAction(event) {
-  const button = event.target.closest("button");
-  if (!button) return;
-  const now = performance.now();
-  if (event.type === "click" && now - lastShopPointerHandledAt < 450) return;
-  if (event.type === "pointerdown") lastShopPointerHandledAt = now;
-  event.preventDefault();
-  event.stopPropagation();
-  if (button.disabled) return;
-  const island = islands.find((item) => item.name === state.dockedAt);
-  if (button.dataset.buy) {
-    const name = button.dataset.buy;
-    const price = marketBuyPrice(island, name);
-    if (state.gold < price) return toast("Not enough gold.");
-    if (cargoCount() >= cargoCapacity()) return toast("Your hold is full. Upgrade ship capacity or sell cargo.");
-    state.gold -= price;
-    state.cargo[name] = (state.cargo[name] || 0) + 1;
-    toast(`Bought ${name}.`);
-  }
-  if (button.dataset.sell) {
-    const name = button.dataset.sell;
-    if (!state.cargo[name]) return toast("No cargo to sell.");
-    state.cargo[name]--;
-    state.gold += marketSellPrice(island, name);
-    addXP(4);
-    toast(`Sold ${name}.`);
-  }
-  if (button.dataset.ship) {
-    const ship = getShipStats(button.dataset.ship);
-    if (state.gold < ship.price) return toast("Not enough gold.");
-    if (regularCargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity} regular cargo.`);
-    if (ship.id === "whaler") {
-      if (blubberCount() > (ship.blubberCapacity || 50)) return toast(`${ship.name} cannot carry that much whale blubber.`);
-    } else if (totalCargoCount() > ship.capacity) {
-      return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
-    }
-    state.gold -= ship.price;
-    replacePlayerShip(ship.id);
-    if (ship.id === "ballooner") state.balloonStock = Math.max(state.balloonStock, 3);
-    toast(`${ship.name} launched.`);
-  }
-  if (button.dataset.buyAmmo) {
-    const ammo = CANNONBALL_TYPES[button.dataset.buyAmmo];
-    if (!ammo || ammo.infinite) return;
-    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 25);
-    const cost = ammo.price * amount;
-    if (state.gold < cost) return toast("Not enough gold.");
-    state.gold -= cost;
-    state.ammo[ammo.id] = ammoCount(ammo.id) + amount;
-    const placed = placeAmmoOnHotbar(ammo.id);
-    toast(placed ? `Bought ${amount} ${ammo.name}.` : `Bought ${amount} ${ammo.name}. Replace a hotbar slot.`);
-  }
-  if (button.dataset.replaceAmmo) {
-    const ammo = CANNONBALL_TYPES[button.dataset.replaceAmmo];
-    if (!ammo) return;
-    assignAmmoSlot(button.dataset.slot, ammo.id);
-    toast(`${ammo.name} assigned to slot ${Number(button.dataset.slot) + 1}.`);
-  }
-  if (button.dataset.buyBalloon) {
-    if (state.balloonStock >= state.maxBalloons) return toast("You already have the maximum number of balloons.");
-    if (state.gold < BALLOON_COST) return toast("Not enough gold.");
-    state.gold -= BALLOON_COST;
-    state.balloonStock++;
-    toast("Hot air balloon purchased.");
-  }
-  if (button.dataset.upgrade) {
-    if (state.points < 1) return toast("Level up to earn upgrade points.");
-    if (button.dataset.upgrade === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES) return toast("Reload upgrade is maxed.");
-    state.points--;
-    state.upgrades[button.dataset.upgrade]++;
-    toast("Upgrade installed.");
-  }
-  renderShop();
-  updateHud();
-}
-
-ui.shopBody.addEventListener("pointerdown", handleShopBodyAction);
-ui.shopBody.addEventListener("click", handleShopBodyAction);
-
-function makeBalloonMesh(showDirectionArrow = true) {
-  const group = new THREE.Group();
-  const envelope = new THREE.Mesh(new THREE.SphereGeometry(1.8, 18, 12), new THREE.MeshStandardMaterial({ color: 0xd85842, roughness: 0.82, metalness: 0.02 }));
-  envelope.scale.set(1.05, 1.22, 1.05);
-  envelope.position.y = 4.6;
-  envelope.castShadow = true;
-  group.add(envelope);
-  const band = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.055, 6, 24), mat(0xf3d178));
-  band.position.y = 4.2;
-  group.add(band);
-  const basket = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.72, 1.1), mats.plank);
-  basket.position.y = 1.9;
-  basket.castShadow = true;
-  group.add(basket);
-  if (showDirectionArrow) {
-    const arrow = new THREE.Group();
-    arrow.position.set(0, 6.96, 0.08);
-    const arrowBacking = new THREE.Group();
-    const backingHead = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.55, 3), new THREE.MeshBasicMaterial({ color: 0x17323b }));
-    backingHead.rotation.x = Math.PI / 2;
-    backingHead.position.z = 0.72;
-    arrowBacking.add(backingHead);
-    const backingTail = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.45), new THREE.MeshBasicMaterial({ color: 0x17323b }));
-    backingTail.position.z = -0.22;
-    arrowBacking.add(backingTail);
-    arrowBacking.position.y = -0.035;
-    arrow.add(arrowBacking);
-    const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.58, 1.32, 3), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    arrowHead.rotation.x = Math.PI / 2;
-    arrowHead.position.z = 0.72;
-    arrow.add(arrowHead);
-    const arrowTail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 1.25), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    arrowTail.position.z = -0.16;
-    arrow.add(arrowTail);
-    group.add(arrow);
-  }
-  for (const sx of [-0.45, 0.45]) {
-    for (const sz of [-0.4, 0.4]) {
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 5), mat(0x3b2d24));
-      rope.position.set(sx, 3.0, sz);
-      rope.rotation.x = sx * 0.08;
-      group.add(rope);
-    }
-  }
-  group.userData.balloon = true;
-  return group;
-}
-
-function activeBalloon() {
-  return state.viewMode === "balloon" ? balloons[state.activeBalloonIndex] : null;
-}
-
-function ensureBalloonReticle() {
-  if (balloonReticle) return balloonReticle;
-  balloonReticle = new THREE.Group();
-  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.75, 40), new THREE.MeshBasicMaterial({ color: 0xfff1a6, transparent: true, opacity: 0.82, side: THREE.DoubleSide, depthWrite: false }));
-  ring.rotation.x = -Math.PI / 2;
-  balloonReticle.add(ring);
-  const crossA = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.035, 0.08), new THREE.MeshBasicMaterial({ color: 0xfff1a6, transparent: true, opacity: 0.72 }));
-  crossA.position.y = 0.04;
-  balloonReticle.add(crossA);
-  const crossB = crossA.clone();
-  crossB.rotation.y = Math.PI / 2;
-  balloonReticle.add(crossB);
-  balloonReticle.visible = false;
-  scene.add(balloonReticle);
-  return balloonReticle;
-}
-
-function predictedBalloonBombPoint(balloon) {
-  const plan = ensureBalloonBombPlan(balloon);
-  const start = balloon.group.position.clone().add(plan.offset);
-  const velocity = balloonBombVelocity(balloon, plan);
-  return simulateBalloonBombImpact(start, velocity);
-}
-
-function updateBalloonReticle() {
-  const reticle = ensureBalloonReticle();
-  const balloon = activeBalloon();
-  reticle.visible = Boolean(balloon && !balloon.destroyed && balloon.bomb && !balloon.landing);
-  if (!reticle.visible) return;
-  const point = predictedBalloonBombPoint(balloon);
-  reticle.position.copy(point);
-  const pulse = 1 + Math.sin(clock.elapsedTime * 5.4) * 0.08;
-  reticle.scale.set(pulse, pulse, pulse);
-}
-
-function launchBalloon() {
-  if (state.mode !== "ship" || state.shipType !== "ballooner") return toast("Only a Ballooner can launch hot air balloons.");
-  if (balloons.filter((balloon) => !balloon.destroyed).length >= 3) return toast("Only 3 balloons can be launched at once.");
-  if (state.balloonStock <= 0) return toast("No spare hot air balloons.");
-  const group = makeBalloonMesh();
-  group.position.copy(playerShip.position).add(new THREE.Vector3(0, 22, 0));
-  group.rotation.y = state.rotation;
-  scene.add(group);
-  state.balloonStock--;
-  balloons.push({
-    group,
-    hp: 100,
-    velocity: new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation)).multiplyScalar(6),
-    rotation: state.rotation,
-    bomb: true,
-    landing: false,
-    destroyed: false,
-  });
-  toast("Balloon launched. Press V to switch view.");
-}
-
-function ensureBalloonBombPlan(balloon) {
-  if (!balloon.bombPlan) {
-    balloon.bombPlan = {
-      offset: new THREE.Vector3((Math.random() - 0.5) * 2.4, -2.1, (Math.random() - 0.5) * 2.4),
-      drift: new THREE.Vector3((Math.random() - 0.5) * 2.4, -10, (Math.random() - 0.5) * 2.4),
-    };
-  }
-  return balloon.bombPlan;
-}
-
-function balloonBombVelocity(balloon, plan = ensureBalloonBombPlan(balloon)) {
-  return new THREE.Vector3(balloon.velocity.x, 0, balloon.velocity.z).multiplyScalar(0.85).add(plan.drift);
-}
-
-function simulateBalloonBombImpact(start, velocity) {
-  const fallHeight = Math.max(0.01, start.y - 0.2);
-  const time = Math.max(0.01, (velocity.y + Math.sqrt(velocity.y * velocity.y + 2 * BALLOON_BOMB_GRAVITY * fallHeight)) / BALLOON_BOMB_GRAVITY);
-  return start.clone().add(velocity.clone().multiplyScalar(time)).setY(0.08);
-}
-
-function cycleViewMode() {
-  const usable = balloons.filter((balloon) => !balloon.destroyed);
-  if (!usable.length || state.viewMode !== "balloon") {
-    if (!usable.length) {
-      state.viewMode = "ship";
-      state.activeBalloonIndex = -1;
-      return toast("Ship view.");
-    }
-    state.viewMode = "balloon";
-    state.activeBalloonIndex = balloons.indexOf(usable[0]);
-    return toast("Balloon view.");
-  }
-  const current = usable.indexOf(balloons[state.activeBalloonIndex]);
-  if (current < usable.length - 1) {
-    state.activeBalloonIndex = balloons.indexOf(usable[current + 1]);
-    toast("Next balloon view.");
-  } else {
-    state.viewMode = "ship";
-    state.activeBalloonIndex = -1;
-    toast("Ship view.");
-  }
-}
-
-function landActiveBalloon() {
-  const balloon = activeBalloon();
-  if (!balloon || balloon.destroyed) return;
-  balloon.landing = true;
-  toast("Balloon descending. Keep it above the Ballooner.");
-}
-
-function destroyBalloon(balloon, cause = "crash") {
-  if (!balloon || balloon.destroyed) return;
-  balloon.destroyed = true;
-  balloon.fallVelocity = -1.6;
-  balloon.fallSpin = new THREE.Vector3((Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 1.0, (Math.random() - 0.5) * 1.8);
-  balloon.cause = cause;
-  if (state.activeBalloonIndex === balloons.indexOf(balloon)) {
-    state.viewMode = "ship";
-    state.activeBalloonIndex = -1;
-  }
-}
-
-function makeBalloonBombMesh() {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.82, 14, 10), mat(0x2f2a24));
-  mesh.castShadow = true;
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.045, 6, 16), mat(0x6b4a2e));
-  band.rotation.x = Math.PI / 2;
-  mesh.add(band);
-  return mesh;
-}
-
-function dropBalloonBomb(balloon) {
-  if (!balloon || balloon.destroyed) return;
-  if (!balloon.bomb) return toast("This balloon has already dropped its bomb.");
-  balloon.bomb = false;
-  const plan = ensureBalloonBombPlan(balloon);
-  const start = balloon.group.position.clone().add(plan.offset);
-  const velocity = balloonBombVelocity(balloon, plan);
-  if (multiplayer.serverWorld && sendMultiplayer({
-    type: "balloonBomb",
-    x: start.x,
-    y: start.y,
-    z: start.z,
-    vx: velocity.x,
-    vy: velocity.y,
-    vz: velocity.z,
-  })) {
-    toast("Bomb away.");
-    return;
-  }
-  const mesh = makeBalloonBombMesh();
-  mesh.position.copy(start);
-  scene.add(mesh);
-  balloonBombs.push({ mesh, start, velocity, born: clock.elapsedTime, bornWall: Date.now() });
-  toast("Bomb away.");
-}
-
-function detonateAirburst(shot) {
-  const center = shot.target.clone();
-  center.y = 24;
-  const group = new THREE.Group();
-  group.position.copy(center);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(1.7, 16, 10), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.86 }));
-  flash.userData.puff = true;
-  group.add(flash);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(AIRBURST_RADIUS * 0.9, AIRBURST_RADIUS, 42), new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }));
-  ring.rotation.x = Math.PI / 2;
-  ring.userData.puff = true;
-  group.add(ring);
-  addImpactEffect(group, 0.75);
-  balloons.forEach((balloon) => {
-    if (balloon.destroyed) return;
-    const d = balloon.group.position.distanceTo(center);
-    if (d > AIRBURST_RADIUS) return;
-    const damage = AIRBURST_DAMAGE * clamp(1 - d / Math.max(1, AIRBURST_RADIUS), 0, 1);
-    balloon.hp -= damage;
-    if (balloon.hp <= 0) destroyBalloon(balloon, "airburst");
-  });
-  if (multiplayer.serverWorld) {
-    serverBotBalloons.forEach((balloon) => {
-      const d = balloon.group.position.distanceTo(center);
-      if (d > AIRBURST_RADIUS) return;
-      const damage = AIRBURST_DAMAGE * clamp(1 - d / Math.max(1, AIRBURST_RADIUS), 0, 1);
-      sendMultiplayer({ type: "hitBotBalloon", id: balloon.serverId, damage });
-    });
-  }
-}
-
-function bombKnockbackVector(origin, target, radius, strength = BALLOON_BOMB_KNOCKBACK, weightScale = 1) {
-  const away = target.clone().sub(origin);
-  away.y = 0;
-  const distance = away.length();
-  if (distance > radius) return null;
-  if (distance <= 0.001) away.set(Math.sin(clock.elapsedTime * 9.1), 0, Math.cos(clock.elapsedTime * 9.1));
-  else away.multiplyScalar(1 / distance);
-  const falloff = clamp(1 - distance / Math.max(1, radius), 0.32, 1);
-  return away.multiplyScalar(strength * falloff * weightScale);
-}
-
-function pushFloatingLootFromExplosion(position, radius, strength = BALLOON_BOMB_KNOCKBACK * 0.72) {
-  crates.forEach((crate) => {
-    const knockback = bombKnockbackVector(position, crate.mesh.position, radius, strength, crate.kind === "treasure" || crate.kind === "kraken" ? 0.8 : 1);
-    if (!knockback) return;
-    crate.velocity = crate.velocity || new THREE.Vector3();
-    crate.velocity.add(knockback);
-  });
-}
-
-function detonateBalloonBomb(position, options = {}) {
-  makeSplashEffect(position);
-  const boom = new THREE.Group();
-  boom.position.copy(position).setY(1.2);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(2.8, 16, 10), new THREE.MeshBasicMaterial({ color: 0xffd06b, transparent: true, opacity: 0.86 }));
-  flash.userData.puff = true;
-  boom.add(flash);
-  for (let i = 0; i < 14; i++) {
-    const shard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.8), mat(i % 2 ? 0x5a3725 : 0x2f2a24));
-    shard.position.set((Math.random() - 0.5) * 2.2, 0.2 + Math.random() * 1.2, (Math.random() - 0.5) * 2.2);
-    shard.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 8, 5 + Math.random() * 8, (Math.random() - 0.5) * 8);
-    shard.userData.spin = new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7);
-    boom.add(shard);
-  }
-  addImpactEffect(boom, 0.9);
-  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly });
-  const damage = Number(options.damage) || BALLOON_BOMB_DAMAGE;
-  pushFloatingLootFromExplosion(position, BALLOON_BOMB_BLAST_RADIUS + 8);
-  const hitShip = (target, pos, type) => {
-    const d = dist2(position, pos);
-    const radius = BALLOON_BOMB_BLAST_RADIUS + shipHitRadius(type) * 0.5;
-    if (d >= radius) return;
-    const falloff = clamp(1 - d / Math.max(1, radius), 0.32, 1);
-    const velocity = target === state ? state.velocity : target.velocity;
-    const knockback = velocity ? bombKnockbackVector(position, pos, radius, BALLOON_BOMB_KNOCKBACK, clamp(95 / shipWeight(type), 0.38, 1.25)) : null;
-    if (knockback) velocity.add(knockback);
-    damageTarget(target, damage * falloff, { ignoreArmor: true });
-  };
-  if (!options.visualOnly) {
-    if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
-    bots.forEach((bot) => hitShip(bot, bot.group.position, bot.shipType));
-  }
-  if (!options.visualOnly || options.affectAnimals) animals.forEach((animal) => {
-    const d = dist2(position, animal.group.position);
-    const radius = BALLOON_BOMB_BLAST_RADIUS + animalHitRadius(animal) * 0.65;
-    if (d < radius) {
-      const falloff = clamp(1 - d / Math.max(1, radius), 0.3, 1);
-      const knockback = bombKnockbackVector(position, animal.group.position, radius, BALLOON_BOMB_KNOCKBACK, animal.kind === "whale" ? 0.52 : 1);
-      if (knockback) {
-        animal.bombImpulse = animal.bombImpulse || new THREE.Vector3();
-        animal.bombImpulse.add(knockback);
-      }
-      animal.hp -= damage * falloff;
-      animal.aggressiveUntil = clock.elapsedTime + 12;
-      animal.submergedUntil = 0;
-      if (animal.hp <= 0) damageAnimal(animal, { ammoType: "bomb", damage: 9999, mesh: { position } });
-    }
-  });
-  if (!options.visualOnly && krakenBoss?.alive && krakenBoss.group?.visible) {
-    const head = krakenHeadWorldPosition() || krakenBoss.group.position;
-    const d = dist2(position, head);
-    const radius = 28;
-    if (d < radius) {
-      const amount = damage * clamp(1 - d / radius, 0.32, 1);
-      krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - amount);
-      if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: amount });
-      if (krakenBoss.hp <= 0) krakenBoss.alive = false;
-    }
-  }
-  if (!options.visualOnly) balloons.forEach((balloon) => {
-    if (balloon.destroyed) return;
-    const d = dist2(position, balloon.group.position);
-    if (d < 9) {
-      balloon.hp -= 100;
-      if (balloon.hp <= 0) destroyBalloon(balloon, "bomb");
-    }
-  });
-}
-
-function updateBalloons(dt) {
-  serverBotBalloons.slice().forEach((balloon) => {
-    if (balloon.serverPosition) balloon.group.position.lerp(balloon.serverPosition, clamp(dt * (balloon.falling ? 8 : 6), 0, balloon.falling ? 0.45 : 0.3));
-    if (Number.isFinite(balloon.serverRotation)) balloon.group.rotation.y = lerpAngle(balloon.group.rotation.y, balloon.serverRotation, clamp(dt * 6, 0, 0.3));
-    if (balloon.falling) {
-      balloon.group.rotation.x += dt * (balloon.fallSpin?.x || 0.8);
-      balloon.group.rotation.y += dt * (balloon.fallSpin?.y || 0.4);
-      balloon.group.rotation.z += dt * (balloon.fallSpin?.z || 1.0);
-    } else {
-      balloon.group.rotation.x *= Math.pow(0.08, dt);
-      balloon.group.rotation.z *= Math.pow(0.08, dt);
-    }
-  });
-  const controlled = activeBalloon();
-  balloons.slice().forEach((balloon, index) => {
-    if (balloon.destroyed) {
-      balloon.fallVelocity = (balloon.fallVelocity || -1.6) - 7.5 * dt;
-      balloon.group.position.y += balloon.fallVelocity * dt;
-      balloon.group.position.x += Math.sin(clock.elapsedTime * 3.4 + index) * dt * 0.9;
-      balloon.group.position.z += Math.cos(clock.elapsedTime * 2.9 + index) * dt * 0.9;
-      balloon.group.rotation.x += dt * (balloon.fallSpin?.x || 0.8);
-      balloon.group.rotation.y += dt * (balloon.fallSpin?.y || 0.4);
-      balloon.group.rotation.z += dt * (balloon.fallSpin?.z || 1.0);
-      if (balloon.group.position.y <= 0.4) {
-        const pos = balloon.group.position.clone().setY(0);
-        makeSplashEffect(pos);
-        makeSplinterEffect(pos.clone().setY(0.8), new THREE.Vector3(1, 0, 0));
-        if (state.mode === "ship" && dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 3) damageTarget(state, 50);
-        scene.remove(balloon.group);
-        const actualIndex = balloons.indexOf(balloon);
-        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
-      }
-      return;
-    }
-    if (balloon === controlled && !balloon.landing) {
-      const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
-      const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
-      balloon.rotation += turn * dt * 1.7;
-      const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
-      balloon.velocity.add(forward.multiplyScalar(throttle * 20 * dt));
-      balloon.velocity.multiplyScalar(Math.pow(0.9, dt * 6));
-    } else if (!balloon.landing) {
-      balloon.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
-    }
-    if (balloon === controlled || balloon.landing) {
-      balloon.velocity.add(windAt(balloon.group.position).multiplyScalar(dt * (balloon.landing ? 0.45 : 2.35)));
-    }
-    if (balloon.landing) {
-      const toShip = playerShip.position.clone().sub(balloon.group.position);
-      toShip.y = 0;
-      if (toShip.lengthSq() > 0.01) {
-        toShip.normalize();
-        balloon.velocity.lerp(toShip.multiplyScalar(12), clamp(dt * 2.2, 0, 0.2));
-      }
-      balloon.velocity.x += Math.sin(clock.elapsedTime * 2.4 + index) * dt * 0.75;
-      balloon.velocity.z += Math.cos(clock.elapsedTime * 1.9 + index) * dt * 0.75;
-      balloon.group.position.y -= dt * 4.8;
-    }
-    balloon.group.position.add(balloon.velocity.clone().multiplyScalar(dt));
-    if (balloon.landing) {
-      if (balloon.group.position.y <= 5.0 && dist2(balloon.group.position, playerShip.position) < shipHitRadius(state.shipType) + 4 && state.shipType === "ballooner") {
-        const actualIndex = balloons.indexOf(balloon);
-        scene.remove(balloon.group);
-        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
-        state.balloonStock = Math.min(state.maxBalloons, state.balloonStock + 1);
-        if (state.activeBalloonIndex === actualIndex) {
-          state.viewMode = "ship";
-          state.activeBalloonIndex = -1;
-        }
-        toast("Balloon recovered.");
-        return;
-      }
-      if (balloon.group.position.y <= 0.55) {
-        const pos = balloon.group.position.clone().setY(0);
-        makeSplashEffect(pos);
-        const actualIndex = balloons.indexOf(balloon);
-        scene.remove(balloon.group);
-        if (actualIndex >= 0) balloons.splice(actualIndex, 1);
-        if (state.activeBalloonIndex === actualIndex) {
-          state.viewMode = "ship";
-          state.activeBalloonIndex = -1;
-        }
-        toast("Balloon splashed down.");
-        return;
-      }
-    } else {
-      balloon.group.position.y += (24 + Math.sin(clock.elapsedTime * 1.4 + index) * 1.2 - balloon.group.position.y) * clamp(dt * 0.8, 0, 0.05);
-    }
-    balloon.group.rotation.y = balloon.rotation;
-    if (Math.abs(balloon.group.position.x) > WATERFALL_LIMIT || Math.abs(balloon.group.position.z) > WATERFALL_LIMIT) destroyBalloon(balloon, "edge");
-  });
-  for (let i = 0; i < balloons.length; i++) {
-    for (let j = i + 1; j < balloons.length; j++) {
-      if (!balloons[i].destroyed && !balloons[j].destroyed && balloons[i].group.position.distanceTo(balloons[j].group.position) < 3.2) {
-        destroyBalloon(balloons[i], "collision");
-        destroyBalloon(balloons[j], "collision");
-      }
-    }
-  }
-  balloonBombs.slice().forEach((bomb) => {
-    if (bomb.serverId) {
-      bomb.mesh.rotation.x += dt * 4;
-      bomb.mesh.rotation.z += dt * 1.7;
-      return;
-    }
-    const age = Number.isFinite(bomb.bornWall)
-      ? Math.max(0, (Date.now() - bomb.bornWall) / 1000)
-      : Math.max(0, clock.elapsedTime - (bomb.born ?? clock.elapsedTime));
-    bomb.mesh.position.copy(bomb.start.clone().add(bomb.velocity.clone().multiplyScalar(age)));
-    bomb.mesh.position.y = bomb.start.y + bomb.velocity.y * age - 0.5 * BALLOON_BOMB_GRAVITY * age * age;
-    bomb.mesh.rotation.x += dt * 4;
-    if (bomb.mesh.position.y <= 0.2) {
-      const pos = bomb.mesh.position.clone().setY(0);
-      scene.remove(bomb.mesh);
-      balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
-      detonateBalloonBomb(pos);
-    }
-  });
-}
-
-function updateShip(dt) {
-  const spec = getShipStats();
-  state.cooldown = Math.max(0, state.cooldown - dt);
-  state.rodCooldown = Math.max(0, state.rodCooldown - dt);
-  const netsActive = state.shipType === "whaler" && state.whalerNets;
-  state.whalerNetProgress += ((netsActive ? 1 : 0) - state.whalerNetProgress) * clamp(dt * 4.8, 0, 1);
-  updateWhalerNetVisuals(playerShip, netsActive, dt);
-  updateFireDamage(state, dt, state.velocity.length());
-  state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
-  updateDocking(dt);
-  if (state.fallingOffWorld) {
-    state.fallingTimer += dt;
-    state.fallVelocityY -= (27 + state.fallingTimer * 8) * dt;
-    const drift = state.fallDrift.clone().multiplyScalar(dt);
-    playerShip.position.add(drift);
-    playerShip.position.y += state.fallVelocityY * dt;
-    state.fallDrift.multiplyScalar(Math.pow(0.985, dt * 60));
-    state.velocity.copy(state.fallDrift);
-    playerShip.rotation.set(
-      Math.sin(state.fallingTimer * 1.6) * 0.22 + state.fallSpin.x * state.fallingTimer,
-      state.rotation + state.fallSpin.y * state.fallingTimer,
-      Math.cos(state.fallingTimer * 1.35) * 0.18 + state.fallSpin.z * state.fallingTimer,
-    );
-    state.position.copy(playerShip.position);
-    if (state.fallingTimer > 9.2 || playerShip.position.y < -820) {
-      state.fallingOffWorld = false;
-      state.fallingTimer = 0;
-      state.fallVelocityY = 0;
-      state.fallDrift.set(0, 0, 0);
-      state.fallSpin.set(0, 0, 0);
-      playerShip.rotation.set(0, state.rotation, 0);
-      damageTarget(state, maxHp() * 4);
-    }
-    return;
-  }
-  if (state.leviathanGrabbed) {
-    state.velocity.set(0, 0, 0);
-    state.position.copy(playerShip.position);
-    return;
-  }
-  if (state.viewMode === "deck" || state.viewMode === "swim") {
-    state.velocity.multiplyScalar(Math.pow(0.5, dt * 8));
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
-    updateSeaWalker(dt);
-    state.position.copy(playerShip.position);
-    return;
-  }
-  if (state.viewMode === "balloon") {
-    state.velocity.multiplyScalar(Math.pow(0.55, dt * 8));
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
-    state.position.copy(playerShip.position);
-    return;
-  }
-  const effectiveSpeed = state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed;
-  const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
-  const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
-  state.rotation += turn * dt * (1.7 + effectiveSpeed / 28);
-  const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-  state.velocity.add(forward.multiplyScalar(throttle * effectiveSpeed * dt));
-  const wind = windAt(playerShip.position);
-  state.velocity.add(wind.multiplyScalar(dt * (Math.abs(throttle) > 0.05 ? 0.35 : 0.82)));
-  state.velocity.multiplyScalar(Math.pow(0.86, dt * 9));
-  const next = playerShip.position.clone().add(state.velocity.clone().multiplyScalar(dt));
-  const hullRadius = shipHitRadius(state.shipType);
-  const blockedIsland = islands.some((island) => islandFootprintContains(island, next, hullRadius * 0.28));
-  if (!blockedIsland) {
-    playerShip.position.copy(next);
-  } else {
-    state.velocity.multiplyScalar(-0.22);
-  }
-  playerShip.rotation.y = state.rotation;
-  playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
-  state.position.copy(playerShip.position);
-  if (Math.abs(playerShip.position.x) > WATERFALL_LIMIT || Math.abs(playerShip.position.z) > WATERFALL_LIMIT) {
-    state.fallingOffWorld = true;
-    state.fallingTimer = 0;
-    state.fallVelocityY = -4.5;
-    state.fallSpin.set((Math.random() - 0.5) * 0.26, (Math.random() - 0.5) * 0.18, (Math.random() - 0.5) * 0.32);
-    const outward = playerShip.position.clone().setY(0);
-    if (outward.lengthSq() < 0.01) outward.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-    outward.normalize();
-    state.fallDrift.copy(state.velocity);
-    if (state.fallDrift.length() < 12) state.fallDrift.add(outward.multiplyScalar(12));
-    makeSplashEffect(playerShip.position.clone().setY(0));
-  } else if (!multiplayer.serverWorld && (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT)) summonLeviathan();
-  crates.slice().forEach((crate) => {
-    if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
-  });
-  updateWhalerNets();
-}
-
-function updateWalker(dt) {
-  const island = islands.find((item) => item.name === state.dockedAt);
-  if (!island) return;
-  const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
-  character.rotation.y += turn * dt * 2.45;
-  state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.18);
-  const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0);
-  if (throttle) {
-    const forward = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
-    const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 10.5));
-    const groundY = walkableGroundY(island, next);
-    if (groundY !== null) {
-      character.position.x = next.x;
-      character.position.z = next.z;
-    } else if (!state.grounded && throttle > 0) {
-      const rawGround = islandGroundY(island, next);
-      if (rawGround !== null) {
-        character.position.x = next.x;
-        character.position.z = next.z;
-        state.walkHeight = Math.max(state.walkHeight, Math.min(1.4, rawGround - character.position.y + 0.6));
-      }
-    }
-  }
-  const groundY = islandGroundY(island, character.position) ?? island.landY;
-  const aboveGround = character.position.y - groundY;
-  if (state.grounded && aboveGround > 0.28) {
-    state.walkHeight = aboveGround;
-    state.walkVelocityY = Math.min(state.walkVelocityY, 0);
-    state.grounded = false;
-  } else if (aboveGround < -0.18) {
-    state.walkHeight = 0;
-  }
-  state.walkVelocityY -= 28 * dt;
-  state.walkHeight += state.walkVelocityY * dt;
-  if (state.walkHeight <= 0) {
-    state.walkHeight = 0;
-    state.walkVelocityY = 0;
-    state.grounded = true;
-  }
-  const bob = state.grounded ? Math.sin(clock.elapsedTime * 5) * 0.035 : 0;
-  character.position.y = groundY + state.walkHeight + bob;
-}
-
-function updateSeaWalker(dt) {
-  if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
-  const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
-  character.rotation.y += turn * dt * 2.35;
-  state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.22);
-  const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0);
-  const forward = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y));
-  if (state.viewMode === "swim") {
-    if (dist2(character.position, playerShip.position) < shipHitRadius(state.shipType) + 1.6 && keys.has("f")) {
-      returnCharacterToShipDeck();
-      return;
-    }
-    if (throttle) {
-      const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 4.2));
-      if (Math.abs(next.x) < MAP_LIMIT * 0.98 && Math.abs(next.z) < MAP_LIMIT * 0.98) {
-        const block = shipSwimBlockAt(next);
-        const islandBlock = islandSwimBlockAt(next, 0.4);
-        if (!block && !islandBlock) {
-          character.position.x = next.x;
-          character.position.z = next.z;
-        } else if (block) {
-          pushSwimmerAwayFromShip(block, dt);
-        } else {
-          pushSwimmerAwayFromIsland(islandBlock, dt);
-        }
-      }
-    }
-    character.position.y = 0.08 + Math.sin(clock.elapsedTime * 4.2) * 0.045;
-    const currentBlock = shipSwimBlockAt(character.position);
-    if (currentBlock) pushSwimmerAwayFromShip(currentBlock, dt);
-    const currentIslandBlock = islandSwimBlockAt(character.position, 0.4);
-    if (currentIslandBlock) pushSwimmerAwayFromIsland(currentIslandBlock, dt);
-    return;
-  }
-
-  const currentLocal = playerShip.worldToLocal(character.position.clone());
-  if (throttle) {
-    const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 6.2));
-    const local = playerShip.worldToLocal(next.clone());
-    const nextSurface = shipWalkSurfaceAt(local, state.shipType, currentLocal.y);
-    if (nextSurface) {
-      character.position.x = next.x;
-      character.position.z = next.z;
-    } else if (!localPointOnShipDeck(local, state.shipType)) {
-      character.position.x = next.x;
-      character.position.z = next.z;
-      state.grounded = false;
-      state.walkVelocityY = Math.min(state.walkVelocityY, 0);
-      state.walkHeight = Math.max(state.walkHeight, Math.max(0, currentLocal.y - shipDeckLocalY(state.shipType)));
-    }
-  }
-  state.walkVelocityY -= 24 * dt;
-  state.walkHeight += state.walkVelocityY * dt;
-  if (state.walkHeight <= 0) {
-    state.walkHeight = 0;
-    if (state.grounded) state.walkVelocityY = 0;
-  }
-  const local = playerShip.worldToLocal(character.position.clone());
-  const surface = shipWalkSurfaceAt(local, state.shipType, local.y);
-  if (!surface) {
-    if (localPointOnShipDeck(local, state.shipType)) {
-      const deckPoint = deckWorldPosition(local.x, local.z, state.shipType);
-      character.position.y = deckPoint.y + Math.sin(clock.elapsedTime * 5) * 0.018;
-      state.walkHeight = 0;
-      state.walkVelocityY = 0;
-      state.grounded = true;
-      return;
-    }
-    if (!state.grounded || character.position.y > 0.5) {
-      state.grounded = false;
-      character.position.y += state.walkVelocityY * dt;
-    }
-    if (character.position.y <= 0.18) {
-      state.viewMode = "swim";
-      resetCharacterHealth();
-      character.position.y = 0.1;
-      toast("You are swimming. Press F to return to your ship.");
-    }
-    return;
-  }
-  if (local.y <= surface.y + 0.08 && state.walkVelocityY <= 0) {
-    state.walkHeight = 0;
-    state.walkVelocityY = 0;
-    state.grounded = true;
-  } else {
-    state.walkHeight = Math.max(0, local.y - surface.y);
-  }
-  const deckPoint = shipSurfaceWorldPosition(local.x, local.z, surface.y);
-  character.position.y = deckPoint.y + state.walkHeight + Math.sin(clock.elapsedTime * 5) * 0.018;
-}
-
-function nearestBotEnemy(bot, maxDistance = 52) {
-  let best = null;
-  let bestDistance = maxDistance;
-  bots.forEach((other) => {
-    if (other === bot || other.hp <= 0) return;
-    const distance = dist2(bot.group.position, other.group.position);
-    if (distance < bestDistance) {
-      best = other;
-      bestDistance = distance;
-    }
-  });
-  return best;
-}
-
-function startBotFeud(bot, enemy, seconds = 9) {
-  if (!bot || !enemy) return;
-  bot.targetBot = enemy.localId;
-  bot.botFightUntil = clock.elapsedTime + seconds;
-  if (Math.random() < 0.7) {
-    enemy.targetBot = bot.localId;
-    enemy.botFightUntil = clock.elapsedTime + seconds * 0.85;
-  }
-}
-
-function botAimedTargetPoint(origin, targetPosition, targetVelocity = null, maxRange = BOT_CANNON_RANGE) {
-  const target = targetPosition.clone();
-  target.y = 0;
-  const baseOffset = target.clone().sub(origin);
-  baseOffset.y = 0;
-  const distance = baseOffset.length();
-  if (targetVelocity && distance > 0.01) {
-    const leadTime = clamp(distance / CANNONBALL_SPEED, 0, 1.35);
-    const lead = targetVelocity.clone();
-    lead.y = 0;
-    target.add(lead.multiplyScalar(leadTime * 0.82));
-  }
-  if (distance > 0.01) {
-    const jitter = clamp(0.45 + distance * 0.012, 0.45, 1.4);
-    target.x += (Math.random() - 0.5) * jitter;
-    target.z += (Math.random() - 0.5) * jitter;
-  }
-  const offset = target.clone().sub(origin);
-  offset.y = 0;
-  const aimedDistance = offset.length();
-  if (aimedDistance > maxRange && aimedDistance > 0.001) {
-    target.copy(origin).add(offset.normalize().multiplyScalar(maxRange));
-  }
-  target.y = 0;
-  return target;
-}
-
-function updateBots(dt) {
-  if (multiplayer.serverWorld) {
-    bots.forEach((bot, i) => {
-      if (bot.serverPosition) {
-        bot.velocity.copy(bot.serverPosition).sub(bot.group.position).multiplyScalar(1 / Math.max(dt, 0.001));
-        bot.group.position.lerp(bot.serverPosition, clamp(dt * 8, 0, 0.35));
-      }
-      if (Number.isFinite(bot.serverRotation)) {
-        bot.group.rotation.y = lerpAngle(bot.group.rotation.y, bot.serverRotation, clamp(dt * 7, 0, 0.32));
-        bot.rotation = bot.group.rotation.y;
-      }
-      bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
-      updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
-      updateFireDamage(bot, dt, bot.velocity.length());
-    });
-    return;
-  }
-  bots.forEach((bot, i) => {
-    const spec = getShipStats(bot.shipType);
-    updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
-    const playerDistance = dist2(bot.group.position, playerShip.position);
-    let aggressive = state.mode === "ship" && ((bot.agroUntil || 0) > clock.elapsedTime || (bot.naturallyAggressive && playerDistance < 34));
-    const lowHealth = bot.hp < spec.hp * 0.58;
-    let fightingBot = bot.targetBot && bot.botFightUntil > clock.elapsedTime
-      ? bots.find((other) => other.localId === bot.targetBot && other.hp > 0)
-      : null;
-    if (!fightingBot && !aggressive && Math.random() < dt * 0.018) {
-      fightingBot = nearestBotEnemy(bot, 54);
-      if (fightingBot) startBotFeud(bot, fightingBot, 8 + Math.random() * 8);
-    }
-    let pickupTarget = nearestPickupTo(bot.group.position, lowHealth ? 250 : 215, bot);
-    const pickupDistance = pickupTarget ? dist2(bot.group.position, pickupTarget.mesh.position) : Infinity;
-    const valuablePickup = pickupTarget && (pickupTarget.kind === "treasure" || pickupTarget.kind === "kraken");
-    const pickupChaseRange = pickupTarget?.kind === "treasure" ? 310 : pickupTarget?.kind === "kraken" ? 240 : 170;
-    if (pickupTarget && (lowHealth || (!aggressive && !fightingBot) || (valuablePickup && pickupDistance < pickupChaseRange))) {
-      if (lowHealth || valuablePickup) {
-        aggressive = false;
-        bot.agroUntil = 0;
-        fightingBot = null;
-        bot.targetBot = null;
-        bot.botFightUntil = 0;
-      }
-    } else {
-      pickupTarget = null;
-    }
-    const krakenEvade = activeKrakenEvadePoint(bot.group.position, bot.shipType);
-    if (krakenEvade) {
-      aggressive = false;
-      bot.agroUntil = 0;
-      fightingBot = null;
-      bot.targetBot = null;
-      bot.botFightUntil = 0;
-      pickupTarget = null;
-      bot.turn = Math.max(bot.turn, 2.4);
-    }
-    bot.turn -= dt;
-    bot.fireCooldown = Math.max(0, (bot.fireCooldown || 0) - dt);
-    if (krakenEvade) {
-      bot.target = krakenEvade;
-    } else if (aggressive) {
-      bot.target = playerShip.position.clone();
-    } else if (fightingBot) {
-      bot.target = fightingBot.group.position.clone();
-    } else if (pickupTarget) {
-      bot.target = pickupTarget.mesh.position.clone();
-    } else if (bot.turn < 0) {
-      bot.turn = 4 + Math.random() * 7;
-      bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
-    }
-    const target = bot.target || playerShip.position;
-    const toTarget = target.clone().sub(bot.group.position);
-    toTarget.y = 0;
-    const targetDistance = toTarget.length();
-    if (!aggressive && !fightingBot && !pickupTarget && targetDistance < 9) {
-      bot.velocity.multiplyScalar(Math.pow(0.62, dt * 3));
-      bot.turn = 1.5 + Math.random() * 2.5;
-      bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
-    }
-    if (targetDistance > 5) {
-      const avoidance = new THREE.Vector3();
-      islands.forEach((island) => {
-        const away = bot.group.position.clone().sub(island.group.position);
-        away.y = 0;
-        const distance = away.length();
-        const danger = island.radius + shipHitRadius(bot.shipType) * 1.8 + 12;
-        if (distance > 0.001 && distance < danger) avoidance.add(away.normalize().multiplyScalar((danger - distance) / danger * 38));
-      });
-      if (!aggressive && !fightingBot) {
-        const awayFromStarter = bot.group.position.clone().sub(starterIslandCenter());
-        awayFromStarter.y = 0;
-        const starterDistance = awayFromStarter.length();
-        if (starterDistance > 0.001 && starterDistance < CENTER_BOT_CLEAR_RADIUS) {
-          avoidance.add(awayFromStarter.normalize().multiplyScalar((CENTER_BOT_CLEAR_RADIUS - starterDistance) / CENTER_BOT_CLEAR_RADIUS * 64));
-          if (!pickupTarget && targetDistance < CENTER_BOT_CLEAR_RADIUS * 0.7) {
-            bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
-            bot.turn = Math.max(bot.turn, 2.5);
-          }
-        }
-      }
-      const edgeMargin = 44;
-      const edgeX = MAP_LIMIT - Math.abs(bot.group.position.x);
-      const edgeZ = MAP_LIMIT - Math.abs(bot.group.position.z);
-      if (edgeX < edgeMargin) avoidance.x += -Math.sign(bot.group.position.x || 1) * ((edgeMargin - edgeX) / edgeMargin) * 48;
-      if (edgeZ < edgeMargin) avoidance.z += -Math.sign(bot.group.position.z || 1) * ((edgeMargin - edgeZ) / edgeMargin) * 48;
-      const avoidShip = (position, type, weight = 1) => {
-        const away = bot.group.position.clone().sub(position);
-        away.y = 0;
-        const distance = away.length();
-        const danger = shipSeparationDistance(bot.shipType, type) + 9;
-        if (distance > 0.001 && distance < danger) avoidance.add(away.normalize().multiplyScalar((danger - distance) / danger * 18 * weight));
-      };
-      if (state.mode === "ship") avoidShip(playerShip.position, state.shipType, aggressive ? 0.55 : 1);
-      bots.forEach((other) => {
-        if (other !== bot) avoidShip(other.group.position, other.shipType, fightingBot === other ? 0.28 : 0.75);
-      });
-      remotePlayers.forEach((remote) => {
-        if (remote.group.visible) avoidShip(remote.group.position, remote.shipType, 0.8);
-      });
-      if (krakenBoss?.alive && krakenBoss.group?.visible) {
-        const head = krakenHeadWorldPosition();
-        if (head) {
-          const away = bot.group.position.clone().sub(head);
-          away.y = 0;
-          const krakenDistance = away.length();
-          const danger = 48 + shipHitRadius(bot.shipType);
-          if (krakenDistance > 0.001 && krakenDistance < danger) {
-            avoidance.add(away.clone().normalize().multiplyScalar((danger - krakenDistance) / danger * (krakenEvade ? 130 : 54)));
-            if (!krakenEvade && krakenDistance < 30 + shipHitRadius(bot.shipType) * 0.5) {
-              aggressive = false;
-              fightingBot = null;
-              pickupTarget = null;
-              bot.target = bot.group.position.clone().add(away.normalize().multiplyScalar(105));
-              bot.turn = Math.max(bot.turn, 2.2);
-            }
-          }
-        }
-      }
-      const steerTarget = toTarget.clone().add(avoidance);
-      const desired = Math.atan2(steerTarget.x, steerTarget.z);
-      const delta = angleDelta(desired, bot.rotation);
-      const inCombat = aggressive || Boolean(fightingBot);
-      const chasingPickup = Boolean(pickupTarget);
-      const evadingKraken = Boolean(krakenEvade);
-      const turnRate = evadingKraken ? 1.25 + spec.speed / 40 : inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
-      const turnStep = clamp(delta, -dt * turnRate, dt * turnRate);
-      bot.rotation += turnStep;
-      const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
-      const facing = clamp(Math.cos(delta), 0.18, 1);
-      const arrive = evadingKraken ? 1 : chasingPickup ? clamp(targetDistance / 14, 0.24, 1) : clamp(targetDistance / (inCombat ? 20 : 34), 0.18, 1);
-      const pickupCruise = pickupTarget?.kind === "treasure" || pickupTarget?.kind === "kraken" ? 0.6 : 0.48;
-      const cruise = evadingKraken ? 0.74 : inCombat ? 0.48 : chasingPickup ? pickupCruise : 0.28;
-      const desiredVelocity = forward.multiplyScalar(spec.speed * cruise * facing * arrive);
-      bot.velocity.lerp(desiredVelocity, clamp(dt * (evadingKraken ? 2.1 : inCombat ? 1.5 : chasingPickup ? 1.35 : 1.0), 0, evadingKraken ? 0.26 : 0.18));
-      bot.velocity.multiplyScalar(Math.pow(0.92, dt * 3));
-      const next = bot.group.position.clone().add(bot.velocity.clone().multiplyScalar(dt));
-      const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + shipHitRadius(bot.shipType) * 0.6 + 5);
-      const blocked = Boolean(blockedIsland);
-      if (!blocked) bot.group.position.copy(next);
-      else {
-        bot.velocity.multiplyScalar(0.08);
-        const away = Math.atan2(bot.group.position.x - blockedIsland.group.position.x, bot.group.position.z - blockedIsland.group.position.z);
-        bot.rotation = lerpAngle(bot.rotation, away, 0.08);
-        bot.target = randomTravelWaterPoint(MAP_LIMIT * 0.92);
-        bot.agroUntil = 0;
-        bot.targetBot = null;
-        bot.turn = 2 + Math.random() * 3;
-      }
-      bot.group.rotation.y = bot.rotation;
-    }
-    bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
-    updateFireDamage(bot, dt, bot.velocity.length());
-    botCollectCrates(bot);
-    const shotTarget = aggressive ? playerShip : fightingBot?.group;
-    const shotDir = shotTarget ? shotTarget.position.clone().sub(bot.group.position) : new THREE.Vector3();
-    shotDir.y = 0;
-    const facing = shotDir.lengthSq()
-      ? new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation)).dot(shotDir.clone().normalize())
-      : 0;
-    const shotDistance = shotDir.length();
-    const canFire = shotTarget && bot.fireCooldown <= 0 && facing > 0.45;
-    const botRange = botCannonRange(bot);
-    if (canFire && shotDistance <= botRange && shotDistance > 0.01) {
-      const targetVelocity = fightingBot ? fightingBot.velocity : state.velocity;
-      const origin = bot.group.position.clone();
-      const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, botRange);
-      const shot = targetPoint.clone().sub(origin);
-      shot.y = 0;
-      if (shot.lengthSq() < 0.01) return;
-      shot.normalize();
-      const damage = scaleDamageByRange(botCannonDamage(bot), shotDistance, botRange);
-      makeProjectile(
-        bot.localId,
-        origin.add(shot.clone().multiplyScalar(3.4)),
-        shot,
-        damage,
-        botRange,
-        { target: targetPoint, targetKind: fightingBot ? "bot" : "player" },
-      );
-      bot.fireCooldown = botCannonReload(bot);
-    }
-  });
-}
-
-function updateProjectiles(dt) {
-  const now = Date.now();
-  projectiles.slice().forEach((shot) => {
-    if (now - (shot.createdWallAt || now) > (shot.maxWallAge || 4200)) {
-      removeProjectile(shot);
-      return;
-    }
-    shot.traveled += shot.speed * dt;
-    const progress = clamp(shot.traveled / shot.distance, 0, 1);
-    shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
-    if (!shot.airburst) {
-      shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
-    } else {
-      shot.mesh.position.y += Math.sin(progress * Math.PI) * 1.8;
-    }
-    shot.trailPoints.push(shot.mesh.position.clone());
-    while (shot.trailPoints.length > 7) shot.trailPoints.shift();
-    shot.trail.geometry.setFromPoints(shot.trailPoints);
-    shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
-    if (shot.airburst && progress >= 0.92) {
-      detonateAirburst(shot);
-      removeProjectile(shot);
-      return;
-    }
-    let hit = false;
-    if (shot.owner === playerId) {
-      animals.forEach((animal) => {
-        if (!hit && projectileHitsAnimal(shot, animal)) {
-          damageAnimal(animal, shot);
-          hit = true;
-        }
-      });
-      if (shot.ammoType !== "airburst") {
-        bots.forEach((bot) => {
-          if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            const hitPosition = shot.mesh.position.clone();
-            if (multiplayer.serverWorld && bot.serverId) {
-              sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage, fire: shot.fire || null });
-              if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
-            } else {
-              damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition });
-            }
-            addXP(1 + Math.floor(shot.damage / 27));
-            hit = true;
-          }
-        });
-        remotePlayers.forEach((remote) => {
-          if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
-            if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
-            if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
-            hit = true;
-          }
-        });
-        if (!hit && projectileHitsKraken(shot)) {
-          if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: shot.damage });
-          krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - shot.damage);
-          hit = true;
-        }
-      }
-    } else {
-      if (shot.targetKind !== "bot") {
-        if (projectileHitsCharacter(shot)) {
-          damageCharacter(CHARACTER_MAX_HP, { hitPosition: shot.mesh.position.clone() });
-          hit = true;
-        } else if (state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
-          damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-          hit = true;
-        }
-      }
-      if (!hit && !multiplayer.serverWorld && shot.targetKind !== "player") {
-        bots.forEach((bot) => {
-          if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-            hit = true;
-          }
-        });
-      }
-    }
-    if (progress >= 1 || hit) {
-      removeProjectile(shot, hit ? "hit" : "splash");
-    }
-  });
-}
-
-function updateKrakenAttackEffect(effect, t) {
-  const ease = (value) => value * value * (3 - 2 * value);
-  const rise = ease(clamp(t / 0.36, 0, 1));
-  const slam = ease(clamp((t - (KRAKEN_SLAM_T - 0.06)) / 0.12, 0, 1));
-  const after = ease(clamp((t - KRAKEN_SLAM_T) / 0.22, 0, 1));
-  effect.group.children.forEach((child) => {
-    if (child.userData.krakenAttackTentacle) {
-      child.visible = true;
-      const curve = krakenAttackCurve(child.userData.attackData, t);
-      child.geometry.dispose();
-      child.geometry = makeTaperedTubeGeometry(curve, child.userData.baseRadius, child.userData.tipRadius, child.userData.tubeOptions);
-      effect.group.userData.latestAttackCurve = curve;
-    }
-    if (child.userData.krakenAttackSucker) {
-      const curve = effect.group.userData.latestAttackCurve;
-      if (!curve) return;
-      const point = curve.getPoint(clamp(child.userData.curveT, 0, 1));
-      child.visible = t > 0.08 && point.y > -6;
-      child.position.copy(point);
-      child.position.y -= 0.42;
-      const scale = 0.68 + rise * 0.32;
-      child.scale.set(1, 0.28, 0.86).multiplyScalar(scale);
-    }
-    if (child.userData.krakenRiseSplash) {
-      child.visible = t < 0.52;
-      const scale = 0.8 + rise * 2.9;
-      child.scale.set(scale, scale, scale);
-      child.material.opacity = Math.max(0, 0.58 * (1 - rise));
-    }
-    if (child.userData.krakenSplash) {
-      child.visible = t >= KRAKEN_SLAM_T;
-      const scale = 0.9 + slam * 0.65 + after * 2.0;
-      child.scale.set(scale, scale, scale);
-      child.material.opacity = Math.max(0, 0.92 * (1 - after));
-    }
-    if (child.userData.krakenWaterWall) {
-      const local = clamp((t - KRAKEN_SLAM_T) / 0.48, 0, 1);
-      child.visible = local > 0 && local < 1;
-      const surge = ease(clamp(local / 0.42, 0, 1));
-      const fall = ease(clamp((local - 0.32) / 0.68, 0, 1));
-      child.scale.y = 0.35 + surge * 1.35;
-      child.scale.x = 0.8 + local * 0.65;
-      child.position.y = child.userData.baseY + surge * 5.2 - fall * 7.8;
-      child.material.opacity = Math.max(0, 0.72 * (1 - fall));
-    }
-    if (child.userData.krakenSlamSpray) {
-      const local = clamp((t - KRAKEN_SLAM_T) / 0.44, 0, 1);
-      child.visible = local > 0 && local < 1;
-      child.position.copy(child.userData.start);
-      child.position.addScaledVector(child.userData.velocity, local);
-      child.position.y = child.userData.start.y + child.userData.velocity.y * local - 15.5 * local * local;
-      child.material.opacity = Math.max(0, 0.9 * (1 - local));
-    }
-  });
-}
-
-function updateImpactEffects(dt) {
-  const nowWall = Date.now();
-  impactEffects.slice().forEach((effect) => {
-    const wallAge = Number.isFinite(effect.bornWall) ? Math.max(0, (nowWall - effect.bornWall) / 1000) : 0;
-    effect.age = Math.max(effect.age + dt, wallAge);
-    const t = clamp(effect.age / effect.life, 0, 1);
-    const fade = 1 - t;
-    if (effect.group.userData.krakenAttack) updateKrakenAttackEffect(effect, t);
-    effect.group.children.forEach((child) => {
-      if (effect.group.userData.krakenAttack && (
-        child.userData.krakenAttackTentacle
-        || child.userData.krakenAttackSucker
-        || child.userData.krakenRiseSplash
-        || child.userData.krakenSplash
-        || child.userData.krakenWaterWall
-        || child.userData.krakenSlamSpray
-      )) return;
-      if (child.userData.velocity) {
-        child.position.addScaledVector(child.userData.velocity, dt);
-        child.userData.velocity.y -= 8.5 * dt;
-      }
-      if (child.userData.spin) {
-        child.rotation.x += child.userData.spin.x * dt;
-        child.rotation.y += child.userData.spin.y * dt;
-        child.rotation.z += child.userData.spin.z * dt;
-      }
-      if (child.userData.puff) {
-        const scale = 1 + t * 2.6;
-        child.scale.setScalar(scale);
-      } else if (child.geometry?.type === "RingGeometry") {
-        const scale = 1 + t * 2.8;
-        child.scale.set(scale, scale, scale);
-      }
-      if (child.material) child.material.opacity = Math.max(0, fade * (child.userData.puff ? 0.45 : 0.9));
-    });
-    if (effect.age >= effect.life || (Number.isFinite(effect.maxWallAge) && nowWall - effect.bornWall > effect.maxWallAge)) {
-      scene.remove(effect.group);
-      effect.group.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
-      });
-      impactEffects.splice(impactEffects.indexOf(effect), 1);
-    }
-  });
-}
-
-function disposeTransientObject(object) {
-  if (!object) return;
-  scene.remove(object);
-  object.traverse?.((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose?.());
-    else if (child.material) child.material.dispose?.();
-  });
-}
-
-function clearPastTransientEffects() {
-  impactEffects.splice(0).forEach((effect) => disposeTransientObject(effect.group));
-  balloonBombs.splice(0).forEach((bomb) => disposeTransientObject(bomb.mesh));
-  waveHazards.length = 0;
-  activeKrakenAttacks.length = 0;
-  krakenBoss?.group?.children.forEach((child) => {
-    if (!child.userData?.tentacle) return;
-    delete child.userData.submergeStart;
-    delete child.userData.submergeUntil;
-    delete child.userData.submergeDepth;
-    child.visible = true;
-  });
-}
-
-function setupTransientResumeCleanup() {
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      tabHiddenAt = Date.now();
-      return;
-    }
-    if (tabHiddenAt && Date.now() - tabHiddenAt > 1400) clearPastTransientEffects();
-    tabHiddenAt = 0;
-  });
-}
-
-function updateFish(dt) {
-  fish.forEach((item, i) => {
-    item.userData.phase += dt;
-    const bait = state.fishing?.phase === "waiting" ? fishingBobber?.position : null;
-    let direction = item.userData.direction || 0;
-    if (bait && dist2(item.position, bait) < (item.userData.kind === "squid" ? 45 : 30)) {
-      direction = Math.atan2(bait.x - item.position.x, bait.z - item.position.z);
-      item.userData.direction = lerpAngle(item.userData.direction || direction, direction, clamp(dt * 2.2, 0, 0.18));
-      if (dist2(item.position, bait) < fishHitRadius(item) + 0.72 && state.fishing) {
-        state.fishing.target = item;
-        state.fishing.phase = "reeling";
-        state.fishing.timer = 0;
-        toast(`${item.userData.kind === "squid" ? "Squid" : "Fish"} on the line!`);
-      }
-    } else if (Math.random() < dt * 0.28) {
-      item.userData.direction += (Math.random() - 0.5) * 0.9;
-    }
-    direction = item.userData.direction || direction;
-    const speed = item.userData.speed || 8;
-    const next = item.position.clone();
-    next.x += Math.sin(direction) * speed * dt;
-    next.z += Math.cos(direction) * speed * dt;
-    const hitRadius = fishHitRadius(item);
-    if (Math.abs(next.x) > MAP_LIMIT * 0.95 || Math.abs(next.z) > MAP_LIMIT * 0.95 || pointInAnyIsland(next, hitRadius + 5)) {
-      item.userData.direction += Math.PI * (0.85 + Math.random() * 0.3);
-      item.position.x = clamp(item.position.x, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-      item.position.z = clamp(item.position.z, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94);
-    } else {
-      item.position.copy(next);
-    }
-    item.rotation.y = direction;
-    const pulse = 1 + Math.sin(item.userData.phase * 5) * 0.12;
-    item.scale.set(pulse, 1, pulse);
-  });
-  if (state.fishing) {
-    state.fishing.timer += dt;
-    const targetPos = state.fishing.target?.position || state.fishing.castPoint;
-    if (state.fishing.phase === "waiting") {
-      fishingBobber.position.copy(state.fishing.castPoint);
-      fishingBobber.position.y = 0.2 + Math.sin(clock.elapsedTime * 9) * 0.12;
-    } else {
-      const t = clamp(state.fishing.timer / state.fishing.reelTime, 0, 1);
-      const shipTip = playerShip.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-      fishingBobber.position.lerpVectors(targetPos, shipTip, t);
-      fishingBobber.position.y = 0.25 + Math.sin(clock.elapsedTime * 18) * 0.2;
-      if (t >= 1) finishFishing();
-    }
-    if (fishingLine && fishingBobber) {
-      setCylinderBetween(
-        fishingLine,
-        playerShip.position.clone().add(new THREE.Vector3(0, 1.45, 0)),
-        fishingBobber.position.clone()
-      );
-    }
-  }
-  if (!multiplayer.serverWorld) {
-    treasureSpawnTimer -= dt;
-    if (treasureSpawnTimer <= 0) {
-      treasureSpawnTimer = 28 + Math.random() * 42;
-      const treasureCount = crates.filter((crate) => crate.kind === "treasure").length;
-      if (treasureCount < MAX_TREASURES && Math.random() < 0.45) spawnTreasure();
-    }
-  }
-  crates.slice().forEach((crate) => {
-    if (crate.born === undefined) crate.born = clock.elapsedTime;
-    if (crate.velocity?.lengthSq?.() > 0.001) {
-      const next = crate.mesh.position.clone().add(crate.velocity.clone().multiplyScalar(dt));
-      if (Math.abs(next.x) < MAP_LIMIT * 0.98 && Math.abs(next.z) < MAP_LIMIT * 0.98 && !pointInAnyIsland(next, 4)) {
-        crate.mesh.position.x = next.x;
-        crate.mesh.position.z = next.z;
-      } else {
-        crate.velocity.multiplyScalar(-0.22);
-      }
-      crate.velocity.multiplyScalar(Math.pow(0.16, dt));
-      if (crate.velocity.lengthSq() < 0.01) crate.velocity.set(0, 0, 0);
-    }
-    crate.mesh.rotation.y += dt * (crate.kind === "treasure" || crate.kind === "kraken" ? 0.92 : 0.65);
-    const age = clock.elapsedTime - crate.born;
-    const lifetime = crate.kind === "kraken" ? CRATE_LIFETIME * 4 : crate.kind === "whale" ? WHALE_BIT_LIFETIME : CRATE_LIFETIME;
-    const sink = clamp((age - lifetime) / CRATE_SINK_TIME, 0, 1);
-    const baseY = crate.kind === "kraken" ? 0.54 : crate.kind === "treasure" ? 0.78 : crate.kind === "whale" ? 0.48 : 0.72;
-    crate.mesh.position.y = baseY + Math.sin(clock.elapsedTime * 2 + crate.mesh.id) * 0.1 - sink * 1.8;
-    const baseScale = crate.kind === "kraken" ? 1.2 : crate.kind === "treasure" ? 1.08 : crate.kind === "whale" ? 0.72 : 1;
-    crate.mesh.scale.setScalar(baseScale * (1 - sink * 0.35));
-    if (!crate.serverId && age > lifetime + CRATE_SINK_TIME) removeCrate(crate);
-  });
-}
-
-function updateLeviathan(dt) {
-  if (!leviathan?.group) return;
-  const age = clock.elapsedTime - leviathan.born;
-  const ease = (value) => value * value * (3 - 2 * value);
-  const sideDir = leviathan.sideDir || new THREE.Vector3(1, 0, 0);
-  const jawForward = sideDir.clone().multiplyScalar(-1);
-  const serverControlled = Boolean(leviathan.serverControlled);
-  leviathan.group.rotation.y = Math.atan2(sideDir.x, sideDir.z);
-
-  const leapDuration = 3.15;
-  if (!leviathan.crushed) {
-    if (!serverControlled && age < 2.75 && state.mode === "ship") {
-      const liveTarget = playerShip.position.clone();
-      liveTarget.y = 0;
-      leviathan.impactPoint.lerp(liveTarget, clamp(dt * 5.6, 0, 0.7));
-      leviathan.smashPosition.copy(leviathan.impactPoint).add(sideDir.clone().multiplyScalar(8.6));
-      leviathan.smashPosition.y = 0.55;
-      leviathan.divePosition.copy(leviathan.impactPoint).add(sideDir.clone().multiplyScalar(-30));
-      leviathan.divePosition.y = -24;
-    }
-
-    const leapT = ease(clamp(age / leapDuration, 0, 1));
-    const leapPosition = leviathan.startPosition.clone().lerp(leviathan.smashPosition, leapT);
-    leapPosition.y = leviathan.startPosition.y
-      + (leviathan.smashPosition.y - leviathan.startPosition.y) * leapT
-      + Math.sin(leapT * Math.PI) * 43;
-    leviathan.group.position.copy(leapPosition);
-    const arcLift = Math.sin(leapT * Math.PI);
-    const tipDown = ease(clamp((leapT - 0.12) / 0.82, 0, 1));
-    const slamLean = ease(clamp((age - 2.48) / 0.58, 0, 1));
-    leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 3.1) * 0.065 * (1 - slamLean);
-    leviathan.group.rotation.x = (0.48 * (1 - tipDown) - 1.0 * tipDown + arcLift * 0.14) * (1 - slamLean) - 1.18 * slamLean;
-    leviathan.group.scale.setScalar(1.06 + arcLift * 0.22 + slamLean * 0.12);
-    setLeviathanJawOpen(leviathan.group, 0.95 - slamLean * 0.28);
-
-    if (age >= leapDuration) {
-      leviathan.crushed = true;
-      leviathan.slamAt = clock.elapsedTime;
-      if (serverControlled) return;
-      const hit = state.mode === "ship" && leviathanAttackHits(playerShip.position, leviathan.impactPoint, sideDir, state.shipType);
-      if (hit) {
-        state.leviathanGrabbed = true;
-        state.velocity.set(0, 0, 0);
-        playerShip.position.copy(leviathan.impactPoint);
-        playerShip.position.y = SHIP_WATERLINE_Y + 0.18;
-        state.position.copy(playerShip.position);
-        makeSplinterEffect(playerShip.position.clone().add(new THREE.Vector3(0, 1.0, 0)), jawForward);
-        playerShip.visible = false;
-      } else {
-        leviathan.missed = true;
-      }
-      makeLeviathanAttackEffect(leviathan.impactPoint.clone().setY(0), sideDir, hit ? "crush" : "miss");
-    }
-    return;
-  }
-
-  const slamAge = clock.elapsedTime - leviathan.slamAt;
-  const diveT = ease(clamp(slamAge / 2.25, 0, 1));
-  const divePosition = leviathan.smashPosition.clone().lerp(leviathan.divePosition, diveT);
-  divePosition.y = leviathan.smashPosition.y
-    + (leviathan.divePosition.y - leviathan.smashPosition.y) * diveT
-    + Math.sin(diveT * Math.PI) * 5.5;
-  leviathan.group.position.copy(divePosition);
-  leviathan.group.rotation.z = Math.sin(clock.elapsedTime * 4.6) * 0.045 * (1 - diveT);
-  leviathan.group.rotation.x = -1.18 + diveT * 1.36;
-  leviathan.group.scale.setScalar(1.18 - diveT * 0.16);
-  setLeviathanJawOpen(leviathan.group, 0.67 - diveT * 0.26, diveT * 0.1);
-
-  if (state.leviathanGrabbed && !leviathan.damaged && (!serverControlled || leviathan.serverHit)) {
-    state.velocity.set(0, 0, 0);
-    state.position.copy(playerShip.position);
-  }
-
-  if (!serverControlled && !leviathan.missed && !leviathan.damaged && slamAge > 0.48) {
-    leviathan.damaged = true;
-    damageTarget(state, maxHp() * 4);
-  }
-
-  if (slamAge > 2.45 || age > 6.4) {
-    state.leviathanGrabbed = false;
-    scene.remove(leviathan.group);
-    leviathan = null;
-  }
-}
-
-function updateKraken(dt) {
-  if (!krakenBoss?.group) return;
-  const ease = (value) => value * value * (3 - 2 * value);
-  const now = clock.elapsedTime;
-  const nowWall = Date.now() / 1000;
-  if (krakenBoss.alive) {
-    krakenBoss.group.position.y = Math.sin(clock.elapsedTime * 0.58) * 0.18;
-  }
-  krakenBoss.group.children.forEach((child) => {
-    if (child.userData?.tentacle) {
-      const started = child.userData.submergeStart;
-      let dive = 0;
-      if (Number.isFinite(started)) {
-        const until = child.userData.submergeUntil || started + KRAKEN_ATTACK_LIFE * 0.82;
-        const down = ease(clamp((nowWall - started) / 0.8, 0, 1));
-        const up = ease(clamp((nowWall - until) / 1.25, 0, 1));
-        dive = down * (1 - up);
-        if (nowWall > until + 1.35) {
-          delete child.userData.submergeStart;
-          delete child.userData.submergeUntil;
-          delete child.userData.submergeDepth;
-        }
-      }
-      child.visible = dive < 0.72;
-      if (!Number.isFinite(child.userData.homeX)) {
-        child.userData.homeX = child.position.x;
-        child.userData.homeZ = child.position.z;
-      }
-      const sway = Math.sin(now * 0.46 + child.userData.phase) * 0.28;
-      const bob = Math.sin(now * 0.82 + child.userData.phase) * 0.34;
-      child.position.y = (child.userData.homeY || 0) + bob - dive * (child.userData.submergeDepth || 18);
-      child.position.x = child.userData.homeX + Math.sin(now * 0.31 + child.userData.phase) * 0.18;
-      child.position.z = child.userData.homeZ + Math.cos(now * 0.28 + child.userData.phase) * 0.18;
-      child.rotation.x = Math.sin(now * 0.54 + child.userData.phase) * 0.07 + dive * 0.18;
-      child.rotation.y = Math.sin(now * 0.7 + child.userData.phase) * 0.13 + sway * 0.05;
-      child.rotation.z = Math.cos(now * 0.52 + child.userData.phase) * 0.09;
-    }
-    if (child.userData?.krakenWaterRing) {
-      const pulse = 1 + Math.sin(clock.elapsedTime * 1.4 + child.userData.phase) * 0.12;
-      child.scale.set(pulse, pulse, pulse);
-      child.material.opacity = 0.35 + Math.sin(clock.elapsedTime * 1.8 + child.userData.phase) * 0.08;
-    }
-  });
-}
-
-function updateCamera(dt) {
-  if (keys.has("arrowleft")) state.cameraYaw += 1.9 * dt;
-  if (keys.has("arrowright")) state.cameraYaw -= 1.9 * dt;
-  if (keys.has("arrowup")) state.cameraPitch = clamp(state.cameraPitch + 0.55 * dt, -0.18, 0.92);
-  if (keys.has("arrowdown")) state.cameraPitch = clamp(state.cameraPitch - 0.55 * dt, -0.18, 0.92);
-  camera.up.set(0, 1, 0);
-  if (state.fallingOffWorld && playerShip) {
-    if (character) character.visible = false;
-    const target = playerShip.position;
-    const cameraHeight = 16 + clamp(state.cameraPitch, -0.18, 0.92) * 18;
-    const orbitRadius = 38;
-    const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * orbitRadius, cameraHeight, Math.cos(state.cameraYaw) * orbitRadius);
-    const desired = target.clone().add(offset);
-    camera.position.lerp(desired, 0.14);
-    camera.lookAt(target.x, target.y, target.z);
-    labels.forEach((label) => label.lookAt(camera.position));
-    return;
-  }
-  if (state.viewMode === "deck" || state.viewMode === "swim") {
-    if (character) character.visible = false;
-    const swim = state.viewMode === "swim";
-    const eyeHeight = swim ? 0.24 : CHARACTER_EYE_HEIGHT;
-    const eye = character.position.clone().add(new THREE.Vector3(0, eyeHeight, 0));
-    if (swim) eye.y = Math.max(0.22, eye.y);
-    const pitch = swim ? clamp(state.cameraPitch * 0.58, 0.02, 0.48) : clamp(state.cameraPitch * 0.75 - 0.12, -0.18, 0.58);
-    const look = eye.clone().add(new THREE.Vector3(Math.sin(character.rotation.y), pitch, Math.cos(character.rotation.y)).normalize().multiplyScalar(16));
-    camera.position.lerp(eye, 0.36);
-    camera.lookAt(look);
-    labels.forEach((label) => label.lookAt(camera.position));
-    return;
-  }
-  if (state.mode === "land") {
-    if (character) character.visible = false;
-    const eye = character.position.clone().add(new THREE.Vector3(0, CHARACTER_EYE_HEIGHT, 0));
-    const yaw = character.rotation.y;
-    const look = eye.clone().add(new THREE.Vector3(Math.sin(yaw), clamp(state.cameraPitch * 0.75 - 0.12, -0.28, 0.58), Math.cos(yaw)).normalize().multiplyScalar(16));
-    camera.position.lerp(eye, 0.36);
-    camera.lookAt(look);
-    labels.forEach((label) => label.lookAt(camera.position));
-    return;
-  }
-  if (character) character.visible = false;
-  const balloon = activeBalloon();
-  if (balloon && !balloon.destroyed) {
-    camera.up.set(0, 0, -1);
-    const height = clamp(54 + state.cameraPitch * 18, 48, 72);
-    const desired = balloon.group.position.clone().add(new THREE.Vector3(0, height, 0));
-    camera.position.lerp(desired, 0.18);
-    camera.lookAt(balloon.group.position.x, balloon.group.position.y - 18, balloon.group.position.z + 0.01);
-    labels.forEach((label) => label.lookAt(camera.position));
-    return;
-  }
-  const target = state.mode === "ship" ? playerShip.position : character.position;
-  const cameraHeight = clamp(22 + state.cameraPitch * 48, 8, 70);
-  const orbitRadius = clamp(62 - state.cameraPitch * 18, 36, 68);
-  const offset = new THREE.Vector3(Math.sin(state.cameraYaw) * orbitRadius, cameraHeight, Math.cos(state.cameraYaw) * orbitRadius);
-  const desired = target.clone().add(offset);
-  desired.y = Math.max(2.8, desired.y);
-  camera.position.lerp(desired, 0.08);
-  camera.lookAt(target.x, target.y + clamp(state.cameraPitch * 6, 0, 7), target.z);
-  labels.forEach((label) => label.lookAt(camera.position));
-}
-
-function updateHud() {
-  if (state.infiniteGold) state.gold = 999999999;
-  if (state.infiniteLevels) {
-    state.level = Math.max(state.level, 999999);
-    state.points = Math.max(state.points, 999999);
-    state.xp = 0;
-  }
-  const spec = getShipStats();
-  ui.playerName.textContent = captainName();
-  ui.modeLabel.textContent = state.viewMode === "swim"
-    ? t("swimming")
-    : state.viewMode === "deck"
-      ? t("onDeck")
-      : state.mode === "ship" ? t("atSea") : t("docked", { island: islandName(state.dockedAt) });
-  ui.hpBar.style.width = `${clamp((state.hp / maxHp()) * 100, 0, 100)}%`;
-  ui.xpBar.style.width = state.infiniteLevels || state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100)}%`;
-  const levelLabel = state.infiniteLevels
-    ? t("lvlInfinite")
-    : state.level >= MAX_PLAYER_LEVEL
-      ? t("lvlMax", { level: MAX_PLAYER_LEVEL })
-      : t("lvl", { level: state.level });
-  const fireLabel = state.fire ? ` | ${t("burning", { seconds: Math.ceil(state.fire.remaining) })}` : "";
-  const blubberLabel = state.shipType === "whaler"
-    ? ` | ${t("blubber")} ${blubberCount()}/${blubberCapacity()}`
-    : blubberCount() > 0
-      ? ` | ${t("blubber")} ${blubberCount()}`
-      : "";
-  const netLabel = state.shipType === "whaler" ? ` | ${t("nets")} ${state.whalerNets ? t("out") : t("in")}` : "";
-  ui.statsLine.textContent = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${fireLabel}`;
-  const entries = Object.entries(state.cargo).filter(([, count]) => count > 0);
-  ui.cargoList.innerHTML = entries.length ? entries.map(([name, count]) => `<span>${goodName(name)} x${count}</span>`).join("") : `<span>${t("emptyHold")}</span>`;
-  const island = currentIsland();
-  const landIsland = state.mode === "land"
-    ? islands.find((item) => item.name === state.dockedAt) || island
-    : island;
-  const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land");
-  ui.dockPrompt.classList.toggle("hidden", !showPrompt);
-  if (showPrompt) {
-    ui.dockPrompt.innerHTML = state.docking
-      ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
-      : state.mode === "ship"
-      ? t("pressDock", { island: islandName(island) })
-      : t("pressSailShop");
-  }
-  updateSpyPanel();
-  updateAmmoHotbar();
-  renderLeaderboard();
-}
-
-function renderLeaderboard() {
-  if (!ui.leaderboardList || ui.leaderboardPanel.classList.contains("hidden")) return;
-  const rows = [
-    { name: captainName(), gold: Math.floor(state.gold), self: true },
-    ...[...remotePlayers.values()].map((player) => ({
-      name: player.name || t("captain"),
-      gold: Math.floor(Number(player.gold) || 0),
-      self: false,
-    })),
-  ]
-    .sort((a, b) => b.gold - a.gold)
-    .slice(0, 10);
-  ui.leaderboardList.innerHTML = rows.map((row) => (
-    `<li${row.self ? ' class="self"' : ""}><span>${escapeMarkup(row.name)}</span><b>${row.gold}g</b></li>`
-  )).join("");
-}
-
-function escapeMarkup(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
-}
-
-function updateSpyPanel() {
-  const target = state.spyTarget;
-  if (!target || clock.elapsedTime > target.expires) {
-    state.spyTarget = null;
-    ui.spyPanel.classList.add("hidden");
-    return;
-  }
-  const distance = Math.round(dist2(playerShip.position, target.pos));
-  const hpPct = Math.round((target.hp / target.max) * 100);
-  ui.spyPanel.classList.remove("hidden");
-  ui.spyName.textContent = target.kind === "Hostile" && target.shipType ? shipName(target.shipType) : target.name;
-  ui.spyDetails.innerHTML = t("spyDetails", {
-    level: target.level,
-    distance: t("distanceMeter", { distance }),
-    threat: t(String(target.threat || "").toLowerCase()) || target.threat,
-    hp: Math.ceil(target.hp),
-    max: target.max,
-    pct: hpPct,
-    armor: Math.round(target.armor * 100),
-    speed: target.speed,
-    regen: target.regen,
-    crates: target.crateEstimate,
-  });
-}
-
-function mapPoint(x, z) {
-  const range = MINIMAP_VISIBLE_LIMIT;
-  const size = ui.minimap.width;
-  return {
-    x: size * 0.5 + (x / range) * size * 0.5,
-    y: size * 0.5 + (z / range) * size * 0.5,
-  };
-}
-
-function worldPointFromMinimapEvent(event) {
-  const rect = ui.minimap.getBoundingClientRect();
-  const xRatio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
-  const yRatio = clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
-  return new THREE.Vector3(
-    (xRatio - 0.5) * MINIMAP_VISIBLE_LIMIT * 2,
-    0,
-    (yRatio - 0.5) * MINIMAP_VISIBLE_LIMIT * 2,
-  );
-}
-
-function teleportGoldDiggerTo(point, source = "map") {
-  if (!hasGoldDiggerPowers() || !playerShip) return false;
-  const target = point.clone();
-  target.x = clamp(target.x, -MINIMAP_VISIBLE_LIMIT, MINIMAP_VISIBLE_LIMIT);
-  target.y = 0;
-  target.z = clamp(target.z, -MINIMAP_VISIBLE_LIMIT, MINIMAP_VISIBLE_LIMIT);
-  if (pointInAnyIsland(target, 3)) {
-    toast("GoldDigger teleport blocked: island.");
+  function useBandage() {
+    if (!spendStamina(4)) return;
+    if (managedItemCount("bandage") <= 0) return toast("No bandages.");
+    removePlayerItem("bandage", 1, HOTBAR_SWAP_SLOTS.includes(selected) ? { area: "hotbar", index: selected } : null);
+    state.player.health = clamp(state.player.health + 35, 0, 100);
+    renderHotbar();
+    toast("Bandage used.");
+  }
+
+  function eatFood() {
+    if (!spendStamina(2)) return;
+    const foods = selectedFood && managedItemCount(selectedFood) > 0 ? [selectedFood] : availableFoods();
+    for (const food of foods) {
+      if (eatSpecificFood(food)) return;
+    }
+    toast("No food.");
+  }
+
+  function eatSpecificFood(food) {
+    if (!["cookedFish", "cookedMeat", "rawFish", "tomato", "coconut"].includes(food)) return false;
+    if (managedItemCount(food) <= 0) return false;
+    removePlayerItem(food, 1, HOTBAR_SWAP_SLOTS.includes(selected) ? { area: "hotbar", index: selected } : null);
+    if (food === "cookedFish") {
+      state.player.hunger = clamp(state.player.hunger + 42, 0, 100);
+      recoverStamina(22);
+      toast("Ate cooked fish.");
+    } else if (food === "cookedMeat") {
+      state.player.hunger = clamp(state.player.hunger + 40, 0, 100);
+      state.player.thirst = clamp(state.player.thirst + 3, 0, 100);
+      recoverStamina(17);
+      toast("Ate cooked meat.");
+    } else if (food === "rawFish") {
+      state.player.hunger = clamp(state.player.hunger + 18, 0, 100);
+      state.player.thirst = clamp(state.player.thirst - 5, 0, 100);
+      recoverStamina(7);
+      toast("Ate raw fish. Not glamorous.");
+    } else if (food === "tomato") {
+      state.player.hunger = clamp(state.player.hunger + 16, 0, 100);
+      state.player.thirst = clamp(state.player.thirst + 8, 0, 100);
+      recoverStamina(9);
+      toast("Ate tomatoes.");
+    } else if (food === "coconut") {
+      state.player.hunger = clamp(state.player.hunger + 8, 0, 100);
+      state.player.thirst = clamp(state.player.thirst + 15, 0, 100);
+      recoverStamina(8);
+      toast("Coconut cracked open.");
+    }
+    if (managedItemCount(food) <= 0 && selectedFood === food) {
+      selectedFood = null;
+      heldItem = null;
+    }
+    renderHotbar();
     return true;
   }
-  closeShop();
-  state.mode = "ship";
-  state.viewMode = "ship";
-  state.dockedAt = null;
-  state.docking = null;
-  state.fallingOffWorld = false;
-  state.fallingTimer = 0;
-  state.fallVelocityY = 0;
-  state.fallDrift.set(0, 0, 0);
-  state.fallSpin.set(0, 0, 0);
-  state.leviathanGrabbed = false;
-  state.activeBalloonIndex = -1;
-  state.velocity.set(0, 0, 0);
-  playerShip.visible = true;
-  playerShip.position.set(target.x, SHIP_WATERLINE_Y, target.z);
-  playerShip.rotation.y = state.rotation;
-  character.visible = false;
-  state.position.copy(playerShip.position);
-  multiplayer.lastSent = 0;
-  toast(source === "minimap" ? "GoldDigger minimap teleport." : "GoldDigger teleport.");
-  return true;
-}
 
-function handleGoldDiggerMinimapTeleport(event) {
-  if (!hasGoldDiggerPowers() || nameGateOpen()) return false;
-  event.preventDefault();
-  event.stopPropagation();
-  return teleportGoldDiggerTo(worldPointFromMinimapEvent(event), "minimap");
-}
-
-function drawMapDot(ctx, x, z, radius, color, stroke = null) {
-  const { x: px, y: py } = mapPoint(x, z);
-  ctx.beginPath();
-  ctx.arc(px, py, radius, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  if (stroke) {
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = stroke;
-    ctx.stroke();
+  function drinkWater() {
+    if (!spendStamina(2)) return;
+    if (hotbar[selected]?.id === "waterFlask") {
+      removePlayerItem("waterFlask", 1, { area: "hotbar", index: selected });
+      if (hotbar[selected]?.id === "empty") setHotbarItem(selected, slot("flask", 1));
+      else addPlayerItem("flask", 1, "hotbar");
+      state.player.thirst = clamp(state.player.thirst + 34, 0, 100);
+      recoverStamina(6);
+      renderHotbar();
+      return toast("Drank clean water. Flask is empty.");
+    }
+    const wm = state.structures.find((s) => s.type === "waterMaker" && dist(s, state.player) < 64);
+    if (wm) return operateStructure(wm);
+    toast("Fill the empty flask at a water maker.");
   }
-  return { x: px, y: py };
-}
 
-function drawKrakenMapMarker(ctx, x, z, ratio, hp, maxHp) {
-  const pos = mapPoint(x, z);
-  const pulse = (Math.sin(clock.elapsedTime * 3.4) + 1) * 0.5;
-  const radius = (5.8 + pulse * 0.9) * ratio;
-  const hpRatio = clamp((Number(hp) || 0) / Math.max(1, Number(maxHp) || 10000), 0, 1);
-  ctx.save();
-  ctx.translate(pos.x, pos.y);
-  ctx.lineCap = "round";
+  function train(stat) {
+    if (!gameStarted) return;
+    if (!spendStamina(1)) return;
+    const p = state.player;
+    if (p.points <= 0) return toast("Level up for stat points.");
+    p.points--;
+    p[stat]++;
+    toast(`${cap(stat)} increased.`);
+  }
 
-  ctx.fillStyle = "rgba(184,39,36,0.94)";
-  ctx.strokeStyle = "rgba(243,195,59,0.9)";
-  ctx.lineWidth = 1.5 * ratio;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
+  function gainXp(amount) {
+    const p = state.player;
+    p.totalXp = (p.totalXp || 0) + amount;
+    const oldLevel = p.level;
+    p.level = levelFromXp(p.totalXp);
+    const currentBase = xpForLevel(p.level);
+    const nextBase = xpForLevel(p.level + 1);
+    p.xp = p.totalXp - currentBase;
+    if (p.level > oldLevel) {
+      p.points += p.level - oldLevel;
+      p.health = clamp(p.health + 12, 0, 100);
+      toast(`Level ${p.level}. Spend a stat point.`);
+    }
+  }
 
-  ctx.strokeStyle = "rgba(255,238,166,0.58)";
-  ctx.lineWidth = 0.9 * ratio;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius + 2.3 * ratio, 0, Math.PI * 2);
-  ctx.stroke();
+  function xpForLevel(level) {
+    return Math.floor((level - 1) * (level - 1) * 85);
+  }
 
-  ctx.strokeStyle = "#f3c33b";
-  ctx.lineWidth = 1.4 * ratio;
-  for (let i = 0; i < 6; i++) {
+  function levelFromXp(xp) {
+    return Math.max(1, Math.floor(Math.sqrt(xp / 85)) + 1);
+  }
+
+  function hurt(amount, reason) {
+    const p = state.player;
+    if (devMode) {
+      p.health = 100;
+      p.hunger = 100;
+      p.thirst = 100;
+      return;
+    }
+    if (p.invuln > 0 && amount > 1) return;
+    p.health -= amount;
+    if (amount > 1) {
+      p.invuln = 0.45;
+      toast(reason);
+    }
+    if (p.health <= 0) {
+      p.health = 0;
+      p.alive = false;
+      gameStarted = false;
+      publishLocalPeer("leave");
+      fallenNameEl.textContent = p.name || playerName;
+      document.getElementById("survived").textContent = state.day;
+      gameOverEl.hidden = false;
+    }
+  }
+
+  function addRes(name, qty) {
+    if (name === "bandage" || FOOD_ITEMS.includes(name)) {
+      if (!addPlayerItem(name, qty)) toast("Backpack is full.");
+      renderHotbar();
+      renderRecipes();
+      return;
+    }
+    state.resources[name] = (state.resources[name] || 0) + qty;
+    renderHotbar();
+    renderRecipes();
+  }
+
+  function nearestIsland(p) {
+    let best = null;
+    let bestD = Infinity;
+    for (const island of state.islands) {
+      const d = dist(p, island);
+      if (d < bestD) {
+        bestD = d;
+        best = island;
+      }
+    }
+    return best;
+  }
+
+  function burst(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const a = rnd(0, TAU);
+      state.particles.push({ x, y, vx: Math.cos(a) * rnd(18, 90), vy: Math.sin(a) * rnd(18, 90), color, life: rnd(0.25, 0.7), size: rnd(2, 5) });
+    }
+  }
+
+  function updateHud() {
+    const p = state.player;
+    renderHotbar();
+    renderRecipes();
+    setMeter("health", p.health);
+    setMeter("hunger", p.hunger);
+    setMeter("thirst", p.thirst);
+    setMeter("stamina", p.stamina);
+    setMeter("breath", 100 - ((p.swimTime || 0) / DROWN_TIME) * 100);
+    const currentBase = xpForLevel(p.level);
+    const nextBase = xpForLevel(p.level + 1);
+    setMeter("xp", ((p.totalXp - currentBase) / (nextBase - currentBase)) * 100);
+    for (const key of ["wood", "leaves", "scrap", "iron", "steel", "cloth", "rope", "glass", "rawFish", "cookedFish", "sharkMeat", "meat", "cookedMeat", "coconut", "tomato"]) {
+      document.querySelector(`[data-res="${key}"]`).textContent = `${cap(key)} ${state.resources[key] || 0}`;
+    }
+    document.getElementById("level").textContent = p.level;
+    document.getElementById("speed").textContent = p.speed;
+    document.getElementById("agility").textContent = p.agility;
+    document.getElementById("strength").textContent = p.strength;
+    document.getElementById("points").textContent = p.points;
+
+    const prompt = currentPrompt();
+    promptEl.textContent = prompt;
+    promptEl.classList.toggle("show", Boolean(prompt));
+  }
+
+  function currentPrompt() {
+    if (activeCannon) return `Cannon armed. A/D aim ${Math.round(((activeCannon.aimOffset || 0) * 180) / Math.PI)} degrees, click to fire.`;
+    if (buildMode) {
+      if (!isBuildRecipe(buildChoice)) return `Craft: ${label(buildChoice)}. Click to craft if you have ${recipeText(buildChoice)}. N next.`;
+      const ready = pendingBuild[buildChoice] || 0;
+      return ready > 0 ? `Build: ${label(buildChoice)} (${ready}). Click to place, R rotate, N next.` : `Build: ${label(buildChoice)}. Click to craft/place if you have ${recipeText(buildChoice)}.`;
+    }
+    const p = state.player;
+    const st = state.structures.find((s) => dist(s, p) < 56);
+    if (st) return `F: use ${label(st.type)}`;
+    const remoteSt = nearestRemoteStructure(p, 56);
+    if (remoteSt) return `F: use ${label(remoteSt.structure.type)}`;
+    const nearLoot = state.debris.some((d) => dist(d, p) < 84) || state.islands.some((is) => is.loot.some((l) => !l.dead && dist(l, p) < 46));
+    if (nearLoot) return "F: pick up";
+    if (!isOnRaft(p) && !isOnIsland(p)) {
+      return p.swimTime >= DROWN_TIME ? "You are drowning. Reach land or your raft." : "Swimming is slow and drains breath.";
+    }
+    return "";
+  }
+
+  function setMeter(cls, value) {
+    document.querySelector(`.${cls} b`).style.width = `${clamp(value, 0, 100)}%`;
+  }
+
+  function draw() {
+    const w = innerWidth;
+    const h = innerHeight;
+    ctx.clearRect(0, 0, w, h);
     ctx.save();
-    ctx.rotate((Math.PI * 2 * i) / 6 + Math.sin(clock.elapsedTime * 1.2) * 0.08);
+    ctx.translate(w / 2 - state.camera.x, h / 2 - state.camera.y);
+    drawOcean();
+    drawIslands();
+    drawDebris();
+    drawShark();
+    drawRemoteRafts();
+    drawRaft();
+    drawStructures();
+    drawCast();
+    drawAnimals();
+    drawProjectiles();
+    drawRemotePlayers();
+    drawPlayer();
+    drawParticles();
+    if (buildMode && isBuildRecipe(buildChoice)) drawBuildGhost();
+    ctx.restore();
+    drawVignette(w, h);
+    drawMinimap();
+  }
+
+  function drawOcean() {
+    ctx.fillStyle = "#0a7896";
+    ctx.fillRect(0, 0, WORLD, WORLD);
+    ctx.strokeStyle = "rgba(199,245,255,0.16)";
+    ctx.lineWidth = 2;
+    const step = 95;
+    for (let y = -step; y < WORLD + step; y += step) {
+      ctx.beginPath();
+      for (let x = -20; x < WORLD + 40; x += 36) {
+        const yy = y + Math.sin(x * 0.016 + waveTime * 1.8 + y * 0.005) * 10;
+        if (x === -20) ctx.moveTo(x, yy);
+        else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    for (let y = 35; y < WORLD; y += 180) {
+      ctx.beginPath();
+      for (let x = 0; x < WORLD; x += 46) {
+        const yy = y + Math.cos(x * 0.03 + waveTime * 2.6) * 5;
+        if (x === 0) ctx.moveTo(x, yy);
+        else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawIslands() {
+    for (const island of state.islands) {
+      const g = ctx.createRadialGradient(island.x - island.r * 0.25, island.y - island.r * 0.25, island.r * 0.2, island.x, island.y, island.r);
+      g.addColorStop(0, "#e0c47d");
+      g.addColorStop(0.64, "#caa766");
+      g.addColorStop(1, "#8bbf73");
+      ctx.fillStyle = g;
+      blob(island.x, island.y, island.r, 18, 0.12);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      for (const b of island.bushes) {
+        ctx.fillStyle = "#3f9c56";
+        circle(b.x, b.y, 13);
+        ctx.fillStyle = "#5abc62";
+        circle(b.x - 4, b.y - 3, 8);
+      }
+      for (const l of island.loot) {
+        if (l.dead) continue;
+        ctx.fillStyle = l.type === "tomato" ? "#d94b45" : "#d7d6c9";
+        roundRect(l.x - 8, l.y - 8, 16, 16, 4);
+        ctx.fill();
+      }
+      for (const tr of island.trees) {
+        if (tr.dead) continue;
+        ctx.save();
+        ctx.translate(tr.x, tr.y);
+        ctx.rotate(Math.sin(tr.x * 0.01) * 0.12);
+        ctx.fillStyle = "#8b5f3d";
+        roundRect(-5, -2, 10, 36, 5);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(61,38,25,0.35)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-4, 5);
+        ctx.lineTo(4, 28);
+        ctx.stroke();
+        for (let i = 0; i < 6; i++) {
+          ctx.save();
+          ctx.rotate((i / 6) * TAU + 0.25);
+          ctx.fillStyle = i % 2 ? "#3f9c56" : "#2f8144";
+          ellipse(17, -18, 27, 7, 0);
+          ctx.restore();
+        }
+        ctx.fillStyle = "#82522e";
+        circle(-5, -9, 5);
+        circle(3, -7, 5);
+        circle(8, -12, 4);
+        ctx.restore();
+      }
+      if (island.shipwreck) drawShipwreck(island.shipwreck);
+    }
+  }
+
+  function drawShipwreck(wreck) {
+    ctx.save();
+    ctx.translate(wreck.x, wreck.y);
+    ctx.rotate(wreck.angle);
+    ctx.scale(SHIPWRECK_SCALE, SHIPWRECK_SCALE);
+    ctx.fillStyle = "#6f482d";
+    roundRect(-112, -42, 224, 84, 28);
+    ctx.fill();
+    ctx.fillStyle = "#8d613b";
+    roundRect(-96, -29, 156, 58, 18);
+    ctx.fill();
+    ctx.fillStyle = "#34251d";
+    roundRect(-78, -24, 92, 48, 12);
+    ctx.fill();
+    ctx.fillStyle = "#c49a5c";
+    ctx.fillRect(-100, -16, 183, 6);
+    ctx.fillRect(-94, 13, 172, 6);
+    ctx.fillStyle = "#15191c";
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(1.8 * ratio, -2.0 * ratio, 4.0 * ratio, -1.2 * ratio, 5.4 * ratio, -3.4 * ratio);
+    ctx.moveTo(52, -43);
+    ctx.lineTo(118, -24);
+    ctx.lineTo(118, 24);
+    ctx.lineTo(52, 43);
+    ctx.lineTo(74, 14);
+    ctx.lineTo(74, -14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#3c2a1f";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(-60, -39);
+    ctx.lineTo(-44, -95);
+    ctx.moveTo(-44, -95);
+    ctx.lineTo(7, -61);
+    ctx.moveTo(-24, 39);
+    ctx.lineTo(-8, 85);
+    ctx.stroke();
+    ctx.restore();
+
+    for (const loot of wreck.loot) {
+      if (loot.dead) continue;
+      if (loot.type === "scrap" || loot.type === "iron" || loot.type === "steel") {
+        const colors = {
+          scrap: ["#879aa1", "#c9d8dc"],
+          iron: ["#b4bdc2", "#eef4f5"],
+          steel: ["#6f858e", "#e8fbff"]
+        }[loot.type];
+        drawScrapModel(loot.x, loot.y, 0.95, colors[0], colors[1]);
+      } else if (loot.type === "glass") {
+        drawGlassModel(loot.x, loot.y, 0.95);
+      } else if (loot.type === "rope") {
+        ctx.fillStyle = "#d0ad62";
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(loot.x, loot.y, 8, 0, TAU);
+        ctx.stroke();
+      } else {
+        roundRect(loot.x - 8, loot.y - 7, 16, 14, 4);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawScrapModel(x = 0, y = 0, scale = 1, primary = "#879aa1", highlight = "#c9d8dc") {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = primary;
+    ctx.beginPath();
+    ctx.moveTo(-13, -8);
+    ctx.lineTo(5, -12);
+    ctx.lineTo(15, -2);
+    ctx.lineTo(8, 10);
+    ctx.lineTo(-9, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = highlight;
+    ctx.beginPath();
+    ctx.moveTo(-5, -6);
+    ctx.lineTo(8, -8);
+    ctx.lineTo(11, -2);
+    ctx.lineTo(-2, 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#52646b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-10, 5);
+    ctx.lineTo(8, -7);
+    ctx.moveTo(-5, -8);
+    ctx.lineTo(9, 9);
+    ctx.stroke();
+    ctx.fillStyle = "#415159";
+    circle(-7, 1, 2);
+    circle(7, 3, 2);
+    ctx.restore();
+  }
+
+  function drawGlassModel(x = 0, y = 0, scale = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "rgba(142, 233, 255, 0.72)";
+    ctx.strokeStyle = "rgba(224, 252, 255, 0.92)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-8, -13);
+    ctx.lineTo(11, -6);
+    ctx.lineTo(5, 13);
+    ctx.lineTo(-13, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-4, -8);
+    ctx.lineTo(3, 9);
+    ctx.moveTo(2, -5);
+    ctx.lineTo(9, -2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    ellipse(-3, -5, 4, 2, -0.5);
+    ctx.restore();
+  }
+
+  function drawFlaskModel(x = 0, y = 0, scale = 1, filled = false) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "rgba(214, 248, 255, 0.78)";
+    ctx.strokeStyle = "#e9fbff";
+    ctx.lineWidth = 2;
+    roundRect(-5, -17, 10, 8, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-10, -9);
+    ctx.lineTo(10, -9);
+    ctx.lineTo(15, 13);
+    ctx.quadraticCurveTo(0, 22, -15, 13);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    if (filled) {
+      ctx.fillStyle = "rgba(82, 196, 236, 0.82)";
+      ctx.beginPath();
+      ctx.moveTo(-10, 2);
+      ctx.lineTo(12, 2);
+      ctx.lineTo(15, 13);
+      ctx.quadraticCurveTo(0, 20, -15, 13);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "rgba(255, 255, 255, 0.76)";
+    ellipse(-5, -1, 4, 8, -0.25);
+    ctx.fillStyle = "#8f6a3a";
+    roundRect(-6, -23, 12, 6, 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDebris() {
+    for (const d of state.debris) {
+      const y = d.y + Math.sin(d.bob) * 3;
+      ctx.save();
+      ctx.translate(d.x, y);
+      ctx.rotate(Math.sin(d.bob * 0.7) * 0.12);
+      if (d.type === "barrel") {
+        ctx.fillStyle = "#9d6436";
+        roundRect(-15, -12, 30, 24, 7);
+        ctx.fill();
+        ctx.strokeStyle = "#2e2020";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-10, -12);
+        ctx.lineTo(-10, 12);
+        ctx.moveTo(10, -12);
+        ctx.lineTo(10, 12);
+        ctx.stroke();
+      } else {
+        if (d.type === "rope") {
+          ctx.strokeStyle = "#d0ad62";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(0, 0, 11, 0.2, TAU + 0.2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(5, 0, 6, -0.5, TAU - 0.5);
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+        if (d.type === "leaves") {
+          ctx.fillStyle = "#63ba57";
+          for (let i = 0; i < 4; i++) {
+            ctx.save();
+            ctx.rotate(i * 1.45 + Math.sin(d.bob) * 0.12);
+            ellipse(7, 0, 12, 5, 0);
+            ctx.restore();
+          }
+          ctx.strokeStyle = "#2f7f3d";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-9, 0);
+          ctx.lineTo(10, 0);
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+        if (d.type === "cloth") {
+          ctx.fillStyle = "#e4e1cf";
+          ctx.beginPath();
+          ctx.moveTo(-14, -9);
+          ctx.quadraticCurveTo(-2, -14, 13, -7);
+          ctx.lineTo(10, 11);
+          ctx.quadraticCurveTo(-1, 6, -13, 10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "rgba(90, 101, 104, 0.35)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-8, -6);
+          ctx.quadraticCurveTo(0, -2, 8, -5);
+          ctx.moveTo(-7, 5);
+          ctx.quadraticCurveTo(0, 1, 8, 5);
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+        if (d.type === "scrap") {
+          drawScrapModel(0, 0, 1);
+          ctx.restore();
+          continue;
+        }
+        if (d.type === "glass") {
+          drawGlassModel(0, 0, 1);
+          ctx.restore();
+          continue;
+        }
+        ctx.fillStyle = {
+          wood: "#b87942",
+          leaves: "#64b957",
+          scrap: "#a9c3c8",
+          cloth: "#e4e1cf",
+          rope: "#d0ad62",
+          glass: "#9ae9ff"
+        }[d.type];
+        roundRect(-12, -7, 24, 14, 4);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawRaft() {
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      drawRaftTile(r, rt, "#b97538", "rgba(89,49,25,0.32)", 1);
+      if (rt.hp < rt.maxHp) healthBar(r.x + TILE / 2, r.y - 8, rt.hp / rt.maxHp, 38);
+    }
+  }
+
+  function drawRemoteRafts() {
+    for (const [ownerId, world] of remoteWorlds) {
+      ctx.save();
+      ctx.globalAlpha = 0.78;
+      for (const rt of world.raft || []) {
+        drawRaftTile(remoteRaftTileRect(world, rt), rt, "#9d8051", "rgba(40,56,61,0.28)", 0.78);
+      }
+      for (const st of world.structures || []) drawRemoteStructure(st);
+      ctx.restore();
+      const owner = remotePlayers.find((player) => player.id === ownerId);
+      if (owner && world.raft?.length) {
+        const first = remoteRaftTileRect(world, world.raft[0]);
+        ctx.fillStyle = "rgba(5, 16, 22, 0.58)";
+        roundRect(first.x - 4, first.y - 24, 92, 16, 6);
+        ctx.fill();
+        ctx.fillStyle = "#e9f9fb";
+        ctx.font = "800 10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`${owner.name || "Player"}'s raft`, first.x + 42, first.y - 13);
+      }
+    }
+  }
+
+  function drawRaftTile(r, rt, fill, plank, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = fill;
+    roundRect(r.x + 2, r.y + 2, TILE - 4, TILE - 4, 5);
+    ctx.fill();
+    ctx.fillStyle = plank;
+    ctx.fillRect(r.x + 7, r.y + 8, TILE - 14, 5);
+    ctx.fillRect(r.x + 7, r.y + 22, TILE - 14, 5);
+    ctx.fillRect(r.x + 7, r.y + 36, TILE - 14, 5);
+    ctx.strokeStyle = rt.hp < 35 ? "#ff7482" : "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 2;
+    roundRect(r.x + 2, r.y + 2, TILE - 4, TILE - 4, 5);
     ctx.stroke();
     ctx.restore();
   }
 
-  ctx.strokeStyle = "#e95055";
-  ctx.lineWidth = 1.7 * ratio;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius + 4.0 * ratio, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpRatio);
-  ctx.stroke();
-
-  ctx.restore();
-  return pos;
-}
-
-function updateMinimap() {
-  if (!minimapCtx || ui.minimapPanel.classList.contains("hidden")) return;
-  const canvas = ui.minimap;
-  const ratio = Math.min(devicePixelRatio || 1, 2);
-  const cssSize = Math.max(120, Math.round(canvas.clientWidth || 180));
-  const pixelSize = Math.round(cssSize * ratio);
-  if (canvas.width !== pixelSize || canvas.height !== pixelSize) {
-    canvas.width = pixelSize;
-    canvas.height = pixelSize;
+  function drawRemoteStructure(st) {
+    ctx.save();
+    ctx.translate(st.x, st.y);
+    ctx.rotate(st.angle || 0);
+    drawStructureBody(st);
+    ctx.restore();
+    if (st.hp < st.maxHp) healthBar(st.x, st.y - 30, st.hp / st.maxHp, 36);
   }
-  const ctx = minimapCtx;
-  const size = canvas.width;
-  const expanded = ui.minimapPanel.classList.contains("expanded");
-  ctx.clearRect(0, 0, size, size);
-  const sea = ctx.createLinearGradient(0, 0, size, size);
-  sea.addColorStop(0, "#8de6ee");
-  sea.addColorStop(1, "#279abd");
-  ctx.fillStyle = sea;
-  ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = "rgba(255,255,255,0.28)";
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) {
-    const p = (size / 4) * i;
-    ctx.beginPath();
-    ctx.moveTo(p, 0);
-    ctx.lineTo(p, size);
-    ctx.moveTo(0, p);
-    ctx.lineTo(size, p);
-    ctx.stroke();
-  }
-  storms.forEach((storm) => {
-    const pos = mapPoint(storm.group.position.x, storm.group.position.z);
-    const r = Math.max(8, storm.radius * size / (MINIMAP_VISIBLE_LIMIT * 2));
-    const cloud = ctx.createRadialGradient(pos.x, pos.y, r * 0.15, pos.x, pos.y, r);
-    cloud.addColorStop(0, "rgba(35,39,47,0.5)");
-    cloud.addColorStop(1, "rgba(35,39,47,0.12)");
-    ctx.fillStyle = cloud;
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(217,251,255,0.42)";
-    ctx.lineWidth = 1.2 * ratio;
-    ctx.beginPath();
-    ctx.moveTo(pos.x - 2 * ratio, pos.y - 5 * ratio);
-    ctx.lineTo(pos.x + 2 * ratio, pos.y - 1 * ratio);
-    ctx.lineTo(pos.x - 1 * ratio, pos.y - 1 * ratio);
-    ctx.lineTo(pos.x + 3 * ratio, pos.y + 5 * ratio);
-    ctx.stroke();
-  });
-  ui.toggleWindMap?.classList.toggle("active", state.showWindMarkers);
-  if (state.showWindMarkers) {
-    windCurrents.forEach((wind) => {
-      const pos = mapPoint(wind.x, wind.z);
-      const len = 8 * ratio;
+
+  function drawStructures() {
+    for (const st of state.structures) {
       ctx.save();
-      ctx.translate(pos.x, pos.y);
-      ctx.rotate(Math.PI - wind.dir);
-      ctx.strokeStyle = "rgba(255,253,242,0.72)";
-      ctx.fillStyle = "rgba(255,253,242,0.72)";
-      ctx.lineWidth = 1.2 * ratio;
+      ctx.translate(st.x, st.y);
+      ctx.rotate(st.angle || 0);
+      drawStructureBody(st);
+      ctx.restore();
+      if (st.hp < st.maxHp) healthBar(st.x, st.y - 30, st.hp / st.maxHp, 36);
+    }
+  }
+
+  function drawStructureBody(st) {
+    if (st.type === "grill") {
+      ctx.fillStyle = "#29333a";
+      roundRect(-15, -12, 30, 24, 5);
+      ctx.fill();
+      ctx.strokeStyle = "#cbd5d9";
+      ctx.lineWidth = 2;
+      for (let x = -9; x <= 9; x += 6) {
+        ctx.beginPath();
+        ctx.moveTo(x, -10);
+        ctx.lineTo(x, 10);
+        ctx.stroke();
+      }
+      if (st.timer > 0 || st.ready) {
+        ctx.fillStyle = st.ready ? "#ffd36a" : "#ff7c45";
+        circle(0, 0, st.ready ? 8 : 5 + Math.sin(waveTime * 8) * 2);
+      }
+      drawMachineProgress(st, 18);
+    } else if (st.type === "waterMaker") {
+      ctx.fillStyle = "#6fb9cb";
+      roundRect(-15, -15, 30, 30, 5);
+      ctx.fill();
+      ctx.fillStyle = st.ready ? "#d8fbff" : "#245e6d";
+      circle(0, 0, 8);
+      if (st.hasGlass || st.ready) drawFlaskModel(15, -9, 0.38, st.ready);
+      drawMachineProgress(st, 21);
+    } else if (st.type === "plantPot") {
+      ctx.fillStyle = "#8f5634";
+      roundRect(-15, -10, 30, 22, 5);
+      ctx.fill();
+      if (st.planted || st.ready || st.timer > 0) {
+        const progress = st.ready ? 1 : st.maxTimer ? 1 - st.timer / st.maxTimer : 0;
+        const red = Math.round(75 + progress * 142);
+        const green = Math.round(177 - progress * 102);
+        ctx.fillStyle = `rgb(${red}, ${green}, 70)`;
+        circle(-5, -8, 6);
+        circle(6, -9, 6);
+        ctx.fillStyle = "#4fb162";
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(-8, -18);
+        ctx.lineTo(8, -18);
+        ctx.closePath();
+        ctx.fill();
+      }
+      drawMachineProgress(st, 18);
+    } else if (st.type === "chest") {
+      ctx.fillStyle = "#8e552e";
+      roundRect(-16, -12, 32, 24, 5);
+      ctx.fill();
+      ctx.fillStyle = "#e2ba5a";
+      ctx.fillRect(-3, -12, 6, 24);
+    } else if (st.type === "wall") {
+      ctx.fillStyle = "#9c642f";
+      roundRect(-32, -14, 64, 28, 14);
+      ctx.fill();
+      ctx.fillStyle = "rgba(74, 42, 21, 0.28)";
+      roundRect(-25, -8, 50, 5, 3);
+      ctx.fill();
+      roundRect(-25, 3, 50, 5, 3);
+      ctx.fill();
+    } else if (st.type === "torch") {
+      ctx.fillStyle = "#6b4429";
+      roundRect(-4, -2, 8, 22, 3);
+      ctx.fill();
+      ctx.fillStyle = "#ffb238";
+      circle(0, -9, 9 + Math.sin(waveTime * 12) * 1.5);
+      ctx.fillStyle = "#fff1a8";
+      circle(0, -10, 4);
+    } else if (st.type === "cannon") {
+      const aim = st.aimOffset || 0;
+      if (activeCannon === st) {
+        ctx.save();
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = "#d7eef2";
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, 72, -Math.PI / 2, Math.PI / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = "#5d6470";
+      roundRect(-21, -15, 42, 30, 7);
+      ctx.fill();
+      ctx.fillStyle = "#373b43";
+      ctx.save();
+      ctx.rotate(aim);
+      roundRect(-4, -8, 46, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = "#1f2228";
+      circle(42, 0, 8);
+      ctx.restore();
+      ctx.fillStyle = "#2b2e35";
+      circle(-8, 0, 10);
+      ctx.fillStyle = activeCannon === st ? "#ffd36a" : "#99a6ad";
+      circle(-8, 0, 4);
+      if (st.cooldown > 0) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+        roundRect(-18, 19, 36, 5, 3);
+        ctx.fill();
+        ctx.fillStyle = "#ffb45d";
+        roundRect(-18, 19, 36 * (1 - st.cooldown / 1.45), 5, 3);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawMachineProgress(st, y) {
+    if (!(st.timer > 0) || !st.maxTimer) return;
+    const progress = clamp(1 - st.timer / st.maxTimer, 0, 1);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+    roundRect(-17, y, 34, 5, 3);
+    ctx.fill();
+    ctx.fillStyle = st.type === "plantPot" ? "#72d572" : st.type === "waterMaker" ? "#75d7ff" : "#ffd36a";
+    roundRect(-17, y, 34 * progress, 5, 3);
+    ctx.fill();
+  }
+
+  function drawCast() {
+    if (!cast) return;
+    ctx.strokeStyle = "rgba(240,250,255,0.76)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(state.player.x, state.player.y);
+    ctx.lineTo(cast.x, cast.y);
+    ctx.stroke();
+    ctx.fillStyle = "#f1f5f7";
+    circle(cast.x, cast.y, 5);
+    if (cast.catch?.fish) {
+      ctx.fillStyle = "#9bd3e2";
+      ellipse(cast.x, cast.y + 10, 13, 6, Math.sin(waveTime) * 0.4);
+    }
+  }
+
+  function drawAnimals() {
+    for (const a of state.animals) {
+      if (a.type === "crocodile" && a.submerged) continue;
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.wander);
+      ctx.fillStyle = a.hit > 0 ? "#fff2ed" : { crab: "#e37857", pig: "#d98c77", elephant: "#8d9495", crocodile: "#4f7f4d" }[a.type];
+      if (a.type === "crab") {
+        ellipse(0, 0, 17, 11, 0);
+        ctx.fillStyle = "#8f3e35";
+        for (let side of [-1, 1]) {
+          ctx.strokeStyle = "#8f3e35";
+          ctx.lineWidth = 2;
+          for (let y = -7; y <= 7; y += 7) {
+            ctx.beginPath();
+            ctx.moveTo(side * 10, y);
+            ctx.lineTo(side * 22, y + side * 2);
+            ctx.stroke();
+          }
+          circle(side * 15, -8, 4);
+        }
+      } else if (a.type === "crocodile") {
+        ctx.fillStyle = "#416f43";
+        ellipse(-5, 0, 45, 13, 0);
+        ctx.fillStyle = "#335d37";
+        ellipse(31, 0, 25, 9, 0);
+        ctx.fillStyle = "#dfe7c8";
+        for (let x = 27; x <= 52; x += 7) {
+          ctx.beginPath();
+          ctx.moveTo(x, -5);
+          ctx.lineTo(x + 4, 0);
+          ctx.lineTo(x, 5);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.fillStyle = "#264a2d";
+        for (let x = -35; x <= 12; x += 9) circle(x, -9, 2.8);
+        for (let x = -35; x <= 12; x += 9) circle(x, 9, 2.8);
+        ctx.strokeStyle = "#2a4f30";
+        ctx.lineWidth = 5;
+        for (const x of [-20, 2]) {
+          ctx.beginPath();
+          ctx.moveTo(x, -9);
+          ctx.lineTo(x + 5, -25);
+          ctx.moveTo(x, 9);
+          ctx.lineTo(x + 5, 25);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "#2f5732";
+        ctx.beginPath();
+        ctx.moveTo(-43, 0);
+        ctx.lineTo(-78, -11);
+        ctx.lineTo(-62, 0);
+        ctx.lineTo(-78, 11);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#172317";
+        circle(43, -4, 2.2);
+        circle(43, 4, 2.2);
+      } else if (a.type === "pig") {
+        ellipse(0, 0, 25, 15, 0);
+        ctx.fillStyle = "#f4b2a4";
+        ellipse(18, 0, 10, 8, 0);
+        ctx.fillStyle = "#5c3430";
+        circle(23, -3, 2);
+        circle(23, 3, 2);
+        ctx.fillStyle = "#d97875";
+        circle(-14, -9, 4);
+        circle(-14, 9, 4);
+      } else {
+        ellipse(0, 0, 39, 23, 0);
+        ctx.fillStyle = "#727b7e";
+        ellipse(30, 0, 15, 11, 0);
+        ctx.strokeStyle = "#eee5c4";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(39, 3);
+        ctx.lineTo(56, 11);
+        ctx.moveTo(39, -3);
+        ctx.lineTo(56, -11);
+        ctx.stroke();
+        ctx.fillStyle = "#2f383b";
+        circle(35, -5, 2);
+      }
+      ctx.restore();
+      healthBar(a.x, a.y - 28, a.hp / a.maxHp, 36);
+    }
+  }
+
+  function drawShark() {
+    for (const s of state.sharks) {
+      const surfaced = s.aggressive || s.aggro > 0 || s.hp < SHARK_HP;
+      const a = surfaced ? angleTo(s, state.player) : s.wander;
+      ctx.save();
+      ctx.translate(s.x, s.y + Math.sin(s.finBob) * 2);
+      ctx.rotate(a);
+      if (surfaced) {
+        ctx.fillStyle = "rgba(5, 20, 28, 0.22)";
+        ellipse(-4, 8, 58, 16, 0);
+        ctx.fillStyle = "#496d7a";
+        ellipse(0, 0, 58, 16, 0);
+        ctx.fillStyle = "#d8edf1";
+        ellipse(15, 5, 30, 7, 0);
+        ctx.fillStyle = "#365562";
+        ctx.beginPath();
+        ctx.moveTo(-10, -11);
+        ctx.lineTo(3, -39);
+        ctx.lineTo(16, -9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-44, 0);
+        ctx.lineTo(-72, -19);
+        ctx.lineTo(-61, 0);
+        ctx.lineTo(-72, 19);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-2, 10);
+        ctx.lineTo(14, 29);
+        ctx.lineTo(20, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-4, -10);
+        ctx.lineTo(14, -29);
+        ctx.lineTo(21, -8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#151f24";
+        circle(29, -5, 2.3);
+        ctx.strokeStyle = "#f3f7f8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(34, 5);
+        ctx.lineTo(47, 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = "rgba(13, 44, 56, 0.26)";
+        ellipse(0, 10, 50, 8, 0);
+        ctx.fillStyle = "#2f454f";
+        ctx.beginPath();
+        ctx.moveTo(-16, 9);
+        ctx.lineTo(0, -31);
+        ctx.lineTo(20, 9);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      if (surfaced) healthBar(s.x, s.y - 34, s.hp / SHARK_HP, 46);
+    }
+  }
+
+  function drawProjectiles() {
+    for (const shot of [...serverProjectiles, ...state.projectiles]) {
+      const a = Math.atan2(shot.vy, shot.vx);
+      ctx.save();
+      ctx.translate(shot.x, shot.y);
+      ctx.rotate(a);
+      if (shot.type === "musketBall") {
+        ctx.fillStyle = "rgba(5, 16, 22, 0.22)";
+        ellipse(-5, 4, 8, 3, 0);
+        ctx.fillStyle = "#30353a";
+        circle(0, 0, 3.6);
+        ctx.strokeStyle = "rgba(255, 232, 175, 0.32)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, 0);
+        ctx.lineTo(-22, 0);
+        ctx.stroke();
+      } else if (shot.type === "cannonball") {
+        ctx.fillStyle = "rgba(5, 16, 22, 0.22)";
+        ellipse(-8, 6, 13, 5, 0);
+        ctx.fillStyle = "#282b31";
+        circle(0, 0, 7);
+        ctx.fillStyle = "#4d525b";
+        circle(-2, -2, 2.4);
+        ctx.strokeStyle = "rgba(244, 231, 190, 0.38)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-8, 0);
+        ctx.lineTo(-28, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawRemotePlayers() {
+    for (const other of remotePlayers) {
+      if (!other || other.health <= 0) continue;
+      ctx.save();
+      ctx.translate(other.x, other.y);
+      ctx.rotate(other.facing || 0);
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = "#26324a";
+      ellipse(0, 0, 16, 13, 0);
+      ctx.fillStyle = "#f1c79f";
+      circle(10, 0, 9);
+      ctx.strokeStyle = "#f5e8cd";
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.moveTo(0, len * 0.65);
-      ctx.lineTo(0, -len * 0.65);
+      ctx.moveTo(4, -10);
+      ctx.lineTo(24, -15);
+      ctx.moveTo(4, 10);
+      ctx.lineTo(24, 15);
       ctx.stroke();
+      drawRemoteHeldItem(other.selectedItem);
+      ctx.restore();
+      ctx.fillStyle = "rgba(5, 16, 22, 0.65)";
+      roundRect(other.x - 31, other.y - 38, 62, 16, 6);
+      ctx.fill();
+      ctx.fillStyle = "#e9f9fb";
+      ctx.font = "800 10px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(other.name || "Player", other.x, other.y - 27);
+      healthBar(other.x, other.y - 18, (other.health || 100) / 100, 36);
+    }
+  }
+
+  function drawRemoteHeldItem(item) {
+    const spec = toolSpec(item);
+    if (hotbarResource(item) || FOOD_ITEMS.includes(item)) return drawHeldResourceItem(item);
+    if (spec?.base === "spear") return drawHeldSpear(spec);
+    if (spec?.base === "axe") return drawHeldAxe(spec);
+    if (spec?.base === "hammer") return drawHeldHammer(spec);
+    if (item === "musket") return drawHeldMusket();
+    if (item === "oar") {
+      ctx.save();
+      ctx.translate(16, 0);
+      ctx.strokeStyle = "#8c5a34";
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(0, -len * 0.85);
-      ctx.lineTo(-3 * ratio, -len * 0.35);
-      ctx.lineTo(3 * ratio, -len * 0.35);
-      ctx.closePath();
+      ctx.moveTo(-22, 0);
+      ctx.lineTo(58, 0);
+      ctx.stroke();
+      ctx.fillStyle = "#b8783f";
+      ellipse(73, 0, 18, 8, 0);
+      ctx.restore();
+    }
+  }
+
+  function drawPlayer() {
+    const p = state.player;
+    const moving = keys.has("KeyW") || keys.has("KeyA") || keys.has("KeyS") || keys.has("KeyD");
+    const handSwing = moving ? Math.sin(waveTime * 10) * 5 : Math.sin(waveTime * 3) * 1.5;
+    const item = hotbar[selected].id;
+    const heldSpec = toolSpec(item);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.facing);
+    ctx.globalAlpha = p.invuln > 0 ? 0.58 : 1;
+    ctx.fillStyle = "#2e3340";
+    ellipse(0, 0, 16, 13, 0);
+    ctx.fillStyle = "#f0c39b";
+    circle(10, 0, 9);
+    ctx.strokeStyle = "#f5e8cd";
+    ctx.lineWidth = 5;
+    const leftReach = item === "oar" && mouse.down ? Math.sin(rowingTimer) * 16 : handSwing;
+    const rightReach = item === "oar" && mouse.down ? Math.sin(rowingTimer + Math.PI) * 16 : -handSwing;
+    ctx.beginPath();
+    ctx.moveTo(5, -10);
+    ctx.lineTo(24 + leftReach, -16);
+    ctx.moveTo(5, 10);
+    ctx.lineTo(24 + rightReach, 16);
+    ctx.stroke();
+    ctx.fillStyle = "#f0c39b";
+    circle(26 + leftReach, -16, 4.6);
+    circle(26 + rightReach, 16, 4.6);
+    if (buildMode) {
+      drawHeldBuildItem();
+    } else if (hotbarResource(item) || availableFoods().includes(item)) {
+      drawHeldResourceItem(item);
+    } else if (heldSpec?.base === "spear") {
+      drawHeldSpear(heldSpec);
+    } else if (heldSpec?.base === "axe") {
+      drawHeldAxe(heldSpec);
+    } else if (heldSpec?.base === "hammer") {
+      drawHeldHammer(heldSpec);
+    } else if (item === "musket") {
+      drawHeldMusket();
+    } else if (item === "oar") {
+      ctx.save();
+      ctx.translate(16, 0);
+      ctx.rotate(Math.sin(rowingTimer) * 0.28);
+      ctx.strokeStyle = "#8c5a34";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-22, 0);
+      ctx.lineTo(58, 0);
+      ctx.stroke();
+      ctx.fillStyle = "#b8783f";
+      ellipse(73, 0, 18, 8, 0);
+      ctx.fillStyle = "#704321";
+      roundRect(-28, -4, 15, 8, 4);
       ctx.fill();
       ctx.restore();
-    });
-  }
-  islands.forEach((island) => {
-    const pos = drawMapDot(ctx, island.group.position.x, island.group.position.z, Math.max(3, island.radius * size / (MAP_LIMIT * 2.45)), "#72bf61", "#f3df9b");
-    if (shouldShowIslandLabel(island)) {
-      ctx.fillStyle = "#17313c";
-      ctx.font = `700 ${Math.max(7, size * 0.024)}px sans-serif`;
-      ctx.fillText(islandName(island), pos.x + 4, pos.y - 4);
     }
-  });
-  crates.forEach((crate) => drawMapDot(
-    ctx,
-    crate.mesh.position.x,
-    crate.mesh.position.z,
-    crate.kind === "kraken" ? 4.2 : crate.kind === "treasure" ? 3.6 : 2.2,
-    crate.kind === "kraken" ? "#6b3d69" : crate.kind === "treasure" ? "#f3c33b" : "#b87533",
-    "#fff0bc"
-  ));
-  if (krakenBoss?.group?.visible) {
-    drawKrakenMapMarker(ctx, krakenBoss.group.position.x, krakenBoss.group.position.z, ratio, krakenBoss.hp, krakenBoss.maxHp);
-  }
-  animals.forEach((animal) => {
-    if (animal.kind === "whale") drawMapDot(ctx, animal.group.position.x, animal.group.position.z, expanded ? 4.2 : 3.2, "#315f89", "#d9fbff");
-  });
-  bots.forEach((bot) => drawMapDot(ctx, bot.group.position.x, bot.group.position.z, expanded ? 4 : 3, "#cf493f", "#341918"));
-  serverBotBalloons.forEach((balloon) => {
-    if (balloon.group.visible) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.3 : 2.4, "#d36b3d", "#fff1a6");
-  });
-  remotePlayers.forEach((remote) => {
-    if (remote.group.visible) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
-    (remote.balloons || []).forEach((balloon) => {
-      if (balloon.group.visible) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.5 : 2.6, "#c565db", "#f7ecff");
-    });
-  });
-  balloons.forEach((balloon) => {
-    if (balloon.destroyed) return;
-    const pos = drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 4 : 3, "#d85842", "#fff1a6");
-    ctx.fillStyle = "#fff1a6";
-    ctx.fillRect(pos.x - 1.5 * ratio, pos.y + 3 * ratio, 3 * ratio, 2 * ratio);
-  });
-  const playerPos = state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land" ? character.position : playerShip.position;
-  const playerMap = drawMapDot(ctx, playerPos.x, playerPos.z, expanded ? 5 : 4, "#fffdf2", "#123742");
-  const rotation = state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land" ? character.rotation.y : state.rotation;
-  ctx.save();
-  ctx.translate(playerMap.x, playerMap.y);
-  ctx.rotate(Math.PI - rotation);
-  ctx.fillStyle = "#10313d";
-  ctx.beginPath();
-  ctx.moveTo(0, -8 * ratio);
-  ctx.lineTo(5 * ratio, 6 * ratio);
-  ctx.lineTo(-5 * ratio, 6 * ratio);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-  ctx.strokeStyle = "rgba(16,32,42,0.55)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, size - 2, size - 2);
-}
-
-function multiplayerPayload() {
-  return {
-    name: captainName(),
-    level: state.level,
-    gold: Math.floor(state.gold),
-    hp: state.hp,
-    shipType: state.shipType,
-    mode: state.mode,
-    viewMode: state.viewMode,
-    whalerNets: Boolean(state.shipType === "whaler" && state.whalerNets),
-    x: playerShip.position.x,
-    z: playerShip.position.z,
-    vx: state.velocity.x,
-    vz: state.velocity.z,
-    rotation: playerShip.rotation.y,
-    landX: character.position.x,
-    landY: character.position.y,
-    landZ: character.position.z,
-    landRotation: character.rotation.y,
-    charX: character.position.x,
-    charY: character.position.y,
-    charZ: character.position.z,
-    charRotation: character.rotation.y,
-    balloons: balloons
-      .filter((balloon) => !balloon.destroyed)
-      .slice(0, 5)
-      .map((balloon, index) => ({
-        id: `${captainId}-balloon-${index}`,
-        x: balloon.group.position.x,
-        y: balloon.group.position.y,
-        z: balloon.group.position.z,
-        rotation: balloon.rotation,
-        hp: balloon.hp,
-        bomb: Boolean(balloon.bomb),
-        landing: Boolean(balloon.landing),
-      })),
-  };
-}
-
-function sendMultiplayer(message) {
-  if (typeof WebSocket !== "undefined" && multiplayer.socket?.readyState === WebSocket.OPEN) {
-    multiplayer.socket.send(JSON.stringify(message));
-    return true;
-  }
-  if (multiplayer.channel) {
-    multiplayer.channel.postMessage(message);
-    return true;
-  }
-  return false;
-}
-
-function makeRemoteCharacter() {
-  const group = new THREE.Group();
-  const skin = mat(0xc88b58);
-  const cloth = mat(0x28678c);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.82, 0.3), cloth);
-  body.position.y = 1.18;
-  body.castShadow = true;
-  group.add(body);
-  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.14), mats.gold);
-  sash.position.set(0, 1.24, 0.22);
-  sash.castShadow = true;
-  group.add(sash);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), skin);
-  head.position.y = 1.78;
-  head.castShadow = true;
-  group.add(head);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.34, 8), mat(0xd9a028));
-  hat.position.y = 2.02;
-  hat.castShadow = true;
-  group.add(hat);
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.16), cloth);
-    arm.position.set(side * 0.37, 1.14, 0.01);
-    group.add(arm);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), mat(0x27364a));
-    leg.position.set(side * 0.14, 0.31, 0);
-    group.add(leg);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.32), mat(0x241a16));
-    foot.position.set(side * 0.14, 0.05, 0.06);
-    group.add(foot);
-  }
-  group.scale.setScalar(CHARACTER_SCALE / 0.34);
-  group.visible = false;
-  return group;
-}
-
-function updateRemoteLabel(remote, name) {
-  if (remote.name === name) return;
-  scene.remove(remote.label);
-  remote.label = makeLabel(name || "Captain");
-  scene.add(remote.label);
-  remote.name = name;
-}
-
-function removeRemotePlayer(id) {
-  const remote = remotePlayers.get(id);
-  if (!remote) return;
-  clearBurnVisual(remote);
-  scene.remove(remote.group, remote.avatar, remote.label);
-  (remote.balloons || []).forEach((balloon) => scene.remove(balloon.group));
-  remotePlayers.delete(id);
-}
-
-function syncRemoteBalloons(remote, dataBalloons = []) {
-  remote.balloons = remote.balloons || [];
-  const wanted = Array.isArray(dataBalloons) ? dataBalloons.slice(0, 5) : [];
-  while (remote.balloons.length > wanted.length) {
-    const removed = remote.balloons.pop();
-    scene.remove(removed.group);
-  }
-  wanted.forEach((entry, index) => {
-    let balloon = remote.balloons[index];
-    if (!balloon) {
-      balloon = { group: makeBalloonMesh(false) };
-      balloon.group.scale.setScalar(0.86);
-      scene.add(balloon.group);
-      remote.balloons[index] = balloon;
-    }
-    balloon.group.position.set(Number(entry.x) || 0, Number(entry.y) || 24, Number(entry.z) || 0);
-    balloon.group.rotation.y = Number(entry.rotation) || 0;
-    balloon.group.visible = true;
-  });
-}
-
-function upsertRemotePlayer(data) {
-  if (!data || !data.id || data.id === playerId || data.id === multiplayer.networkId) return;
-  const x = Number(data.x);
-  const z = Number(data.z);
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-
-  const shipType = data.shipType || "skiff";
-  let remote = remotePlayers.get(data.id);
-  if (!remote) {
-    const group = makeShip(shipType, true);
-    const avatar = makeRemoteCharacter();
-    const label = makeLabel(data.name || "Captain");
-    scene.add(group, avatar, label);
-    remote = { group, avatar, label, updated: 0, name: data.name || "Captain", shipType, velocity: new THREE.Vector3() };
-    remotePlayers.set(data.id, remote);
-  } else if (remote.shipType !== shipType) {
-    clearBurnVisual(remote);
-    scene.remove(remote.group);
-    remote.group = makeShip(shipType, true);
-    scene.add(remote.group);
-    remote.shipType = shipType;
+    ctx.restore();
   }
 
-  updateRemoteLabel(remote, data.name || "Captain");
-  remote.updated = clock.elapsedTime;
-  remote.mode = data.mode || "ship";
-  remote.level = data.level || 1;
-  remote.gold = Number(data.gold) || 0;
-  remote.hp = data.hp || getShipStats(shipType).hp;
-  remote.whalerNets = Boolean(data.whalerNets);
-  remote.velocity = remote.velocity || new THREE.Vector3();
-  remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
-  remote.group.position.set(x, SHIP_WATERLINE_Y, z);
-  remote.group.rotation.y = Number(data.rotation) || 0;
-  remote.group.visible = true;
-  updateWhalerNetVisuals(remote.group, remote.whalerNets, 0.18);
-
-  const remoteView = data.viewMode || "ship";
-  const avatarVisible = data.mode === "land" || remoteView === "deck" || remoteView === "swim";
-  remote.avatar.visible = avatarVisible;
-  const charX = Number.isFinite(Number(data.charX)) ? Number(data.charX) : Number(data.landX);
-  const charY = Number.isFinite(Number(data.charY)) ? Number(data.charY) : Number(data.landY);
-  const charZ = Number.isFinite(Number(data.charZ)) ? Number(data.charZ) : Number(data.landZ);
-  const charRotation = Number.isFinite(Number(data.charRotation)) ? Number(data.charRotation) : Number(data.landRotation);
-  if (avatarVisible && Number.isFinite(charX) && Number.isFinite(charZ)) {
-    const fallbackY = remoteView === "swim" ? 0.08 : data.mode === "land" ? 2.95 : SHIP_WATERLINE_Y + shipDeckLocalY(shipType);
-    remote.avatar.position.set(charX, Number.isFinite(charY) ? charY : fallbackY, charZ);
-    remote.avatar.rotation.y = charRotation || 0;
-    remote.avatar.scale.setScalar((CHARACTER_SCALE / 0.34) * (remoteView === "swim" ? 0.78 : 1));
-    remote.lookPosition = remote.avatar.position;
-    remote.label.position.set(remote.avatar.position.x, 5.8, remote.avatar.position.z);
-  } else {
-    remote.avatar.scale.setScalar(CHARACTER_SCALE / 0.34);
-    remote.lookPosition = remote.group.position;
-    remote.label.position.set(x, 7, z);
-  }
-  syncRemoteBalloons(remote, data.balloons);
-  remote.label.lookAt(camera.position);
-}
-
-function removeBot(bot) {
-  if (!bot) return;
-  clearBurnVisual(bot);
-  scene.remove(bot.group);
-  const index = bots.indexOf(bot);
-  if (index >= 0) bots.splice(index, 1);
-}
-
-function syncServerBombs(items = []) {
-  const seen = new Set();
-  items.forEach((data) => {
-    if (!data?.id) return;
-    seen.add(data.id);
-    let bomb = balloonBombs.find((item) => item.serverId === data.id);
-    if (!bomb) {
-      const mesh = makeBalloonBombMesh();
-      scene.add(mesh);
-      bomb = { serverId: data.id, mesh };
-      balloonBombs.push(bomb);
-    }
-    bomb.mesh.position.set(Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0);
-  });
-  balloonBombs.slice().forEach((bomb) => {
-    if (!bomb.serverId || seen.has(bomb.serverId)) return;
-    scene.remove(bomb.mesh);
-    balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
-  });
-}
-
-function removeServerBotBalloon(balloon, impact = false) {
-  if (!balloon) return;
-  if (impact) {
-    const pos = balloon.group.position.clone().setY(0);
-    makeSplashEffect(pos);
-    makeSplinterEffect(pos.clone().setY(0.8), new THREE.Vector3(1, 0, 0));
-  }
-  scene.remove(balloon.group);
-  const index = serverBotBalloons.indexOf(balloon);
-  if (index >= 0) serverBotBalloons.splice(index, 1);
-}
-
-function syncServerBotBalloons(items = []) {
-  const seen = new Set();
-  (Array.isArray(items) ? items : []).forEach((data) => {
-    if (!data?.id) return;
-    seen.add(data.id);
-    let balloon = serverBotBalloons.find((item) => item.serverId === data.id);
-    if (!balloon) {
-      const group = makeBalloonMesh(false);
-      group.scale.setScalar(0.9);
-      scene.add(group);
-      balloon = { serverId: data.id, group };
-      serverBotBalloons.push(balloon);
-    }
-    balloon.serverPosition = new THREE.Vector3(Number(data.x) || 0, Number(data.y) || 24, Number(data.z) || 0);
-    balloon.serverRotation = Number(data.rotation) || 0;
-    balloon.falling = Boolean(data.falling);
-    balloon.hp = Number(data.hp) || 0;
-    balloon.bomb = Boolean(data.bomb);
-    balloon.fallSpin = new THREE.Vector3(Number(data.spinX) || 0.8, Number(data.spinY) || 0.4, Number(data.spinZ) || 1.0);
-    if (!balloon.initialized) {
-      balloon.group.position.copy(balloon.serverPosition);
-      balloon.group.rotation.y = balloon.serverRotation;
-      balloon.initialized = true;
-    }
-    balloon.group.visible = true;
-  });
-  serverBotBalloons.slice().forEach((balloon) => {
-    if (!seen.has(balloon.serverId)) removeServerBotBalloon(balloon);
-  });
-}
-
-function removeAnimal(animal) {
-  if (!animal) return;
-  scene.remove(animal.group);
-  const index = animals.indexOf(animal);
-  if (index >= 0) animals.splice(index, 1);
-}
-
-function syncServerWhales(items = []) {
-  const seen = new Set();
-  animals.slice().forEach((animal) => {
-    if (animal.kind === "whale" && !animal.serverId) removeAnimal(animal);
-  });
-  (Array.isArray(items) ? items : []).forEach((data) => {
-    if (!data?.id) return;
-    seen.add(data.id);
-    let animal = animals.find((item) => item.serverId === data.id);
-    if (!animal) {
-      animal = makeWhale(data);
-    }
-    animal.hp = Number(data.hp) || animal.hp;
-    animal.maxHp = Number(data.maxHp) || animal.maxHp || 1000;
-    animal.serverPosition = new THREE.Vector3(Number(data.x) || 0, 0.05, Number(data.z) || WHALE_NORTH_CENTER_Z);
-    animal.serverRotation = Number(data.rotation) || 0;
-    animal.serverSubmerged = Boolean(data.submerged);
-    animal.submergedUntil = animal.serverSubmerged ? clock.elapsedTime + 0.5 : 0;
-  });
-  animals.slice().forEach((animal) => {
-    if (animal.kind === "whale" && animal.serverId && !seen.has(animal.serverId)) removeAnimal(animal);
-  });
-}
-
-function removeStorm(storm) {
-  if (!storm) return;
-  scene.remove(storm.group);
-  const index = storms.indexOf(storm);
-  if (index >= 0) storms.splice(index, 1);
-}
-
-function syncServerStorms(items = []) {
-  const seen = new Set();
-  storms.slice().forEach((storm) => {
-    if (!storm.serverId) removeStorm(storm);
-  });
-  (Array.isArray(items) ? items : []).forEach((data) => {
-    if (!data?.id) return;
-    seen.add(data.id);
-    let storm = storms.find((item) => item.serverId === data.id);
-    if (!storm) {
-      const group = makeStormCloud();
-      scene.add(group);
-      storm = {
-        serverId: data.id,
-        group,
-        radius: Number(data.radius) || 70,
-        born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
-        life: (Number(data.life) || 600000) / 1000,
-        strikeAt: Infinity,
-      };
-      storms.push(storm);
-    }
-    storm.radius = Number(data.radius) || storm.radius || 70;
-    storm.serverPosition = new THREE.Vector3(Number(data.x) || 0, 48, Number(data.z) || 0);
-    if (!storm.initialized) {
-      storm.group.position.copy(storm.serverPosition);
-      storm.initialized = true;
-    }
-    const shadow = storm.group.children.find((child) => child.userData.stormShadow);
-    if (shadow) shadow.scale.setScalar(storm.radius);
-  });
-  storms.slice().forEach((storm) => {
-    if (storm.serverId && !seen.has(storm.serverId)) removeStorm(storm);
-  });
-}
-
-function syncServerWorld(world) {
-  if (!world) return;
-  multiplayer.serverWorld = true;
-  const worldSentAt = Number(world.serverTime);
-  const transientWorldStale = Number.isFinite(worldSentAt) && Date.now() - worldSentAt > TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS;
-  if (Number.isFinite(Number(world.dayCycleTime))) {
-    environment.serverDayLength = Math.max(60, Number(world.dayLengthSeconds) || DAY_LENGTH_SECONDS);
-    environment.serverNightLength = Math.max(60, Number(world.nightLengthSeconds) || NIGHT_LENGTH_SECONDS);
-    environment.serverCycleTime = Number(world.dayCycleTime) % (environment.serverDayLength + environment.serverNightLength);
-    environment.serverCycleUpdatedAt = clock.elapsedTime;
+  function toolProgress(kind) {
+    if (toolAnim.kind !== kind || toolAnim.duration <= 0) return 0;
+    return 1 - toolAnim.t / toolAnim.duration;
   }
 
-  const seenBots = new Set();
-  (world.bots || []).forEach((data) => {
-    if (!data?.id) return;
-    seenBots.add(data.id);
-    let bot = bots.find((item) => item.serverId === data.id);
-    const serverPosition = new THREE.Vector3(Number(data.x) || 0, SHIP_WATERLINE_Y, Number(data.z) || 0);
-    const serverRotation = Number(data.rotation) || 0;
-    if (!bot) {
-      const group = makeShip(data.shipType || "cog", true);
-      scene.add(group);
-      bot = {
-        isBot: true,
-        serverId: data.id,
-        localId: data.id,
-        group,
-        velocity: new THREE.Vector3(),
-        turn: 0,
-        fireCooldown: 0,
-        courageous: Boolean(data.courageous),
-      };
-      bot.group.position.copy(serverPosition);
-      bot.group.rotation.y = serverRotation;
-      bots.push(bot);
-    } else if (bot.shipType !== data.shipType) {
-      clearBurnVisual(bot);
-      scene.remove(bot.group);
-      bot.group = makeShip(data.shipType || "cog", true);
-      bot.group.position.copy(serverPosition);
-      bot.group.rotation.y = serverRotation;
-      scene.add(bot.group);
-    }
-    const spec = getShipStats(data.shipType);
-    bot.shipType = data.shipType || "cog";
-    bot.hp = Number(data.hp) || spec.hp;
-    bot.level = Number(data.level) || 1;
-    bot.courageous = Boolean(data.courageous);
-    bot.netsExtended = Boolean(data.netsExtended);
-    bot.serverMaxHp = Number(data.maxHp) || spec.hp;
-    bot.serverPosition = serverPosition;
-    bot.serverRotation = serverRotation;
-    if (data.fire) {
-      bot.fire = {
-        dps: Number(data.fire.dps) || 2,
-        remaining: Number(data.fire.remaining) || 0,
-        visualOnly: true,
-        scorch: bot.fire?.scorch || null,
-        smokeTimer: bot.fire?.smokeTimer || 0,
-      };
-      if (!bot.fire.scorch) addScorchMark(bot);
-    } else if (bot.fire) {
-      clearBurnVisual(bot);
-      bot.fire = null;
-    }
-  });
-  bots.slice().forEach((bot) => {
-    if (!bot.serverId || !seenBots.has(bot.serverId)) removeBot(bot);
-  });
+  function swingCurve(kind) {
+    const p = toolProgress(kind);
+    return p <= 0 ? 0 : Math.sin(p * Math.PI);
+  }
 
-  const seenCrates = new Set();
-  (world.crates || []).forEach((data) => {
-    if (!data?.id) return;
-    seenCrates.add(data.id);
-    let crate = crates.find((item) => item.serverId === data.id);
-    const serverKind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : data.kind === "whale" ? "whale" : "crate";
-    if (!crate) {
-      const kind = serverKind;
-      crate = {
-        serverId: data.id,
-        mesh: makeCrateMesh(Number(data.x) || 0, Number(data.z) || 0, kind),
-        kind,
-        heal: Number(data.heal) || 10,
-        xp: Number(data.xp) || 16,
-        gold: Number(data.gold) || 14,
-        blubber: Number(data.blubber) || 0,
-        born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
-      };
-      crates.push(crate);
+  function toolDrawStyle(specOrMetal = false) {
+    if (typeof specOrMetal === "boolean") {
+      return { metal: specOrMetal, tierStep: specOrMetal ? 1 : 0, color: specOrMetal ? "#99a9af" : "#d4bd82" };
     }
-    crate.kind = serverKind;
-    if (Number.isFinite(Number(data.born))) crate.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
-    crate.heal = Number(data.heal) || crate.heal;
-    crate.xp = Number(data.xp) || crate.xp;
-    crate.gold = Number(data.gold) || crate.gold;
-    crate.blubber = Number(data.blubber) || crate.blubber || 0;
-    crate.mesh.position.x = Number(data.x) || crate.mesh.position.x;
-    crate.mesh.position.z = Number(data.z) || crate.mesh.position.z;
-  });
-  crates.slice().forEach((crate) => {
-    if (!crate.serverId || !seenCrates.has(crate.serverId)) removeCrate(crate);
-  });
-  syncServerLeviathan(world.leviathan);
-  syncKraken(world.kraken);
-  syncServerBombs(transientWorldStale ? [] : (world.bombs || []));
-  syncServerBotBalloons(world.botBalloons || []);
-  syncServerWhales(world.whales || []);
-  syncServerStorms(world.storms || []);
-  syncIslandClaims([]);
-  syncBuildingPieces([]);
-}
+    const spec = specOrMetal || TOOL_TIERS.wood;
+    return { metal: spec.tier !== "wood", tierStep: tierIndex(spec.tier || "wood"), color: spec.color || TOOL_TIERS.wood.color };
+  }
 
-function applyCrateReward(crate) {
-  if (!crate) return;
-  const local = crates.find((item) => item.serverId === crate.id);
-  if (local) removeCrate(local);
-  if (crate.kind === "whale") {
-    const amount = Math.max(1, Math.floor(Number(crate.blubber) || 1));
-    if (canAddBlubber(amount)) {
-      state.cargo["Whale Blubber"] = blubberCount() + amount;
-      toast("Recovered whale blubber.");
+  function drawHeldSpear(specOrMetal = false) {
+    const style = toolDrawStyle(specOrMetal);
+    const jab = swingCurve("spear") * 26;
+    ctx.save();
+    ctx.translate(jab, 0);
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = style.metal ? 5 : 4;
+    ctx.beginPath();
+    ctx.moveTo(8, -8);
+    ctx.lineTo(style.metal ? 66 : 58, -8);
+    ctx.stroke();
+    ctx.fillStyle = style.metal ? "#e7eef0" : "#b7ccd0";
+    ctx.beginPath();
+    ctx.moveTo(style.metal ? 78 : 68, -8);
+    ctx.lineTo(style.metal ? 62 : 55, style.metal ? -17 : -15);
+    ctx.lineTo(style.metal ? 62 : 55, style.metal ? 1 : -1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHeldAxe(specOrMetal = false) {
+    const style = toolDrawStyle(specOrMetal);
+    const swing = swingCurve("axe");
+    ctx.save();
+    ctx.translate(15, -4);
+    ctx.rotate(-0.55 + swing * 1.55);
+    ctx.strokeStyle = style.metal ? "#5e6b70" : "#8b5b35";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-4, 8);
+    ctx.lineTo(39, -8);
+    ctx.stroke();
+    ctx.fillStyle = style.metal ? style.color : "#c3d1d6";
+    roundRect(32, -20, style.metal ? 20 : 16, 21, 4);
+    ctx.fill();
+    ctx.fillStyle = style.metal ? "#eef7f9" : "#eef6f8";
+    ctx.beginPath();
+    ctx.moveTo(style.metal ? 50 : 47, style.metal ? -22 : -19);
+    ctx.lineTo(style.metal ? 64 : 58, -11);
+    ctx.lineTo(style.metal ? 50 : 48, style.metal ? 0 : -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHeldHammer(specOrMetal = false) {
+    const style = toolDrawStyle(specOrMetal);
+    const swing = swingCurve("hammer");
+    ctx.save();
+    ctx.translate(15, 4);
+    ctx.rotate(0.5 - swing * 1.45);
+    ctx.strokeStyle = style.metal ? "#617178" : "#7a5133";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-3, -6);
+    ctx.lineTo(38, 9);
+    ctx.stroke();
+    ctx.fillStyle = style.metal ? style.color : "#9aaab0";
+    roundRect(32, -1, style.metal ? 30 : 24, style.metal ? 16 : 14, 4);
+    ctx.fill();
+    ctx.fillStyle = "#cad5d8";
+    ctx.fillRect(38, 1, 5, style.metal ? 13 : 12);
+    ctx.restore();
+  }
+
+  function drawHeldMusket() {
+    ctx.save();
+    ctx.translate(18, 0);
+    ctx.strokeStyle = "#6b4328";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-10, 5);
+    ctx.lineTo(60, -2);
+    ctx.stroke();
+    ctx.strokeStyle = "#4d555b";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(16, -4);
+    ctx.lineTo(72, -8);
+    ctx.stroke();
+    ctx.fillStyle = "#2d3238";
+    roundRect(28, -8, 12, 7, 2);
+    ctx.fill();
+    ctx.fillStyle = musketCooldown > 0 ? "#ffbb66" : "#dbe6e8";
+    circle(73, -8, 3);
+    if (musketCooldown > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      roundRect(5, 12, 48, 5, 3);
+      ctx.fill();
+      ctx.fillStyle = "#ffbb66";
+      roundRect(5, 12, 48 * (1 - musketCooldown / 7), 5, 3);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHeldBuildItem() {
+    if (!isBuildRecipe(buildChoice)) {
+      const spec = toolSpec(buildChoice);
+      if (buildChoice === "bandage") return drawHeldResourceItem("bandage");
+      if (buildChoice === "flask") return drawHeldResourceItem("flask");
+      if (spec?.base === "spear") return drawHeldSpear(spec);
+      if (spec?.base === "axe") return drawHeldAxe(spec);
+      if (spec?.base === "hammer") return drawHeldHammer(spec);
+      if (buildChoice === "musket") return drawHeldMusket();
+    }
+    ctx.save();
+    ctx.translate(34, 0);
+    ctx.rotate(buildAngle);
+    ctx.globalAlpha = 0.92;
+    const f = footprint(buildChoice);
+    ctx.fillStyle = buildChoice === "raft" ? "#b97538" : buildChoice === "waterMaker" ? "#6fb9cb" : buildChoice === "plantPot" ? "#8f5634" : buildChoice === "wall" ? "#9c642f" : buildChoice === "torch" ? "#ffb238" : buildChoice === "cannon" ? "#4d525b" : "#8e552e";
+    if (buildChoice === "raft") {
+      roundRect(-18, -14, 36, 28, 5);
+      ctx.fill();
+      ctx.fillStyle = "rgba(89,49,25,0.32)";
+      ctx.fillRect(-13, -7, 26, 4);
+      ctx.fillRect(-13, 6, 26, 4);
+    } else if (buildChoice === "torch") {
+      ctx.fillStyle = "#6b4429";
+      roundRect(-3, -3, 6, 22, 3);
+      ctx.fill();
+      ctx.fillStyle = "#ffb238";
+      circle(0, -9, 8);
+    } else if (buildChoice === "wall") {
+      roundRect(-f.w / 2, -f.h / 2, f.w, f.h, f.h / 2);
+      ctx.fill();
+    } else if (buildChoice === "cannon") {
+      roundRect(-f.w / 2, -f.h / 2, f.w, f.h, 7);
+      ctx.fill();
+      ctx.fillStyle = "#252931";
+      roundRect(0, -7, 31, 14, 7);
+      ctx.fill();
     } else {
-      toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
+      roundRect(-f.w / 2, -f.h / 2, f.w, f.h, 5);
+      ctx.fill();
     }
-    return;
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
-  state.hp = clamp(state.hp + (Number(crate.heal) || 0), 0, maxHp());
-  addXP(Number(crate.xp) || 0);
-  state.gold += Number(crate.gold) || 0;
-  toast(`${crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate"} recovered: repairs, gold, and XP.`);
-}
 
-function applyRemotePlayerSunk(message) {
-  if (multiplayer.serverWorld) return;
-  const x = Number(message.x);
-  const z = Number(message.z);
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-  const count = clamp(Math.floor(Number(message.count) || 1), 1, 15);
-  const pos = new THREE.Vector3(x, 0, z);
-  dropCrates(pos, count);
-  dropBlubberBits(pos, message.blubber);
-}
-
-function spawnRemoteShot(data) {
-  if (!data || data.owner === playerId || data.owner === multiplayer.networkId) return;
-  const sentAt = Number(data.sentAt);
-  if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
-  if (data.id) {
-    if (seenRemoteShots.has(data.id)) return;
-    seenRemoteShots.add(data.id);
-    if (seenRemoteShots.size > 220) {
-      const oldest = seenRemoteShots.values().next().value;
-      seenRemoteShots.delete(oldest);
-    }
-  }
-  const pos = new THREE.Vector3(Number(data.x), 0, Number(data.z));
-  const dir = new THREE.Vector3(Number(data.dirX), 0, Number(data.dirZ));
-  if (![pos.x, pos.z, dir.x, dir.z].every(Number.isFinite) || dir.lengthSq() < 0.01) return;
-  const target = Number.isFinite(Number(data.targetX)) && Number.isFinite(Number(data.targetZ))
-    ? new THREE.Vector3(Number(data.targetX), 0, Number(data.targetZ))
-    : null;
-  makeProjectile(data.owner || "remote", pos, dir.normalize(), Number(data.damage) || 20, Number(data.range) || 36, {
-    target,
-    targetKind: data.targetKind || "any",
-    ammoType: data.ammoType || "basic",
-  });
-}
-
-function handleMultiplayerMessage(message) {
-  if (!message) return;
-  if (message.type === "welcome") {
-    multiplayer.networkId = message.id;
-  } else if (message.type === "state") {
-    upsertRemotePlayer(message.player);
-  } else if (message.type === "leave") {
-    removeRemotePlayer(message.id);
-  } else if (message.type === "shot") {
-    spawnRemoteShot(message.shot);
-  } else if (message.type === "world") {
-    syncServerWorld(message);
-  } else if (message.type === "crateReward") {
-    applyCrateReward(message.crate);
-  } else if (message.type === "crateRemove") {
-    removeCrate(crates.find((crate) => crate.serverId === message.id));
-  } else if (message.type === "bombHit") {
-    const sentAt = Number(message.sentAt);
-    if (Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS) return;
-    if (state.mode === "ship") damageTarget(state, Number(message.damage) || BALLOON_BOMB_DAMAGE, { ignoreArmor: true });
-  } else if (message.type === "whaleRam") {
-    if (state.mode === "ship") {
-      const origin = new THREE.Vector3(Number(message.x) || playerShip.position.x, 0, Number(message.z) || playerShip.position.z);
-      const away = playerShip.position.clone().sub(origin);
-      away.y = 0;
-      if (away.lengthSq() < 0.01) away.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
-      away.normalize();
-      damageTarget(state, Number(message.damage) || 50);
-      state.velocity.add(away.multiplyScalar(10));
-      toast("A whale rammed your ship.");
-    }
-  } else if (message.type === "stormHit") {
-    if (state.mode === "ship") damageTarget(state, Number(message.damage) || 50, { fire: message.fire || { dps: 10, duration: 3 }, hitPosition: playerShip.position.clone() });
-  } else if (message.type === "balloonLightning") {
-    const hit = balloons.find((balloon) => !balloon.destroyed && dist2(balloon.group.position, new THREE.Vector3(Number(message.x) || 0, 0, Number(message.z) || 0)) < 5);
-    if (hit) destroyBalloon(hit, "lightning");
-  } else if (message.type === "lightningStrike") {
-    showServerLightning(message.x, message.z);
-  } else if (message.type === "bombExplode") {
-    const sentAt = Number(message.sentAt);
-    const stale = Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS;
-    const bomb = balloonBombs.find((item) => item.serverId === message.id);
-    if (bomb) {
-      scene.remove(bomb.mesh);
-      balloonBombs.splice(balloonBombs.indexOf(bomb), 1);
-    }
-    if (stale) return;
-    const x = Number(message.x);
-    const z = Number(message.z);
-    if (Number.isFinite(x) && Number.isFinite(z)) detonateBalloonBomb(new THREE.Vector3(x, 0, z), { visualOnly: true, affectAnimals: true });
-  } else if (message.type === "botBalloonCrash") {
-    const balloon = serverBotBalloons.find((item) => item.serverId === message.id);
-    if (balloon) removeServerBotBalloon(balloon, true);
-    else if (Number.isFinite(Number(message.x)) && Number.isFinite(Number(message.z))) {
-      const pos = new THREE.Vector3(Number(message.x), 0, Number(message.z));
-      makeSplashEffect(pos);
-      makeSplinterEffect(pos.clone().setY(0.8), new THREE.Vector3(1, 0, 0));
-    }
-  } else if (message.type === "playerSunk") {
-    applyRemotePlayerSunk(message);
-  } else if (message.type === "krakenAttack") {
-    applyKrakenAttack({ ...(message.attack || {}), sentAt: Number(message.attack?.sentAt) || Number(message.sentAt) || undefined });
-  } else if (message.type === "leviathanStrike") {
-    applyServerLeviathanStrike(message);
-  } else if (message.type === "leviathanDamage") {
-    applyServerLeviathanDamage(message);
-  } else if (message.type === "krakenDefeated") {
-    // The dropped tentacle reward is visible in-world; no popup needed.
-  } else if (message.type === "botReward") {
-    state.gold += Number(message.gold) || 0;
-    addXP(Number(message.xp) || 0);
-    toast(`Sank a level ${message.level || 1} ship. Crates overboard!`);
-  } else if (
-    message.type === "buildInventory"
-    || message.type === "buildError"
-    || message.type === "islandClaimed"
-    || message.type === "claimIsland"
-    || message.type === "buildingPlaced"
-    || message.type === "placeBuilding"
-    || message.type === "buildingRemoved"
-  ) {
-    syncIslandClaims([]);
-    syncBuildingPieces([]);
-  } else if (message.x !== undefined) {
-    upsertRemotePlayer(message);
-  }
-}
-
-function startLocalMultiplayer(message) {
-  if (multiplayer.channel || typeof BroadcastChannel === "undefined") return;
-  try {
-    multiplayer.channel = new BroadcastChannel("islandwake");
-    multiplayer.mode = "local";
-    multiplayer.serverWorld = false;
-    multiplayer.channel.onmessage = (event) => handleMultiplayerMessage(event.data);
-    if (message) toast(message);
-  } catch {
-    multiplayer.channel = null;
-  }
-}
-
-function scheduleMultiplayerReconnect() {
-  if (multiplayer.reconnectTimer || !location.protocol.startsWith("http")) return;
-  multiplayer.mode = "reconnecting";
-  const delay = clamp(1 + multiplayer.reconnectAttempts * 0.75, 1, 6);
-  multiplayer.reconnectAttempts += 1;
-  multiplayer.reconnectTimer = setTimeout(() => {
-    multiplayer.reconnectTimer = null;
-    setupMultiplayer(true);
-  }, delay * 1000);
-}
-
-function setupMultiplayer(reconnecting = false) {
-  const canUseSocket = typeof WebSocket !== "undefined" && location.protocol.startsWith("http");
-  if (!canUseSocket) {
-    startLocalMultiplayer("Local tab multiplayer is active.");
-    return;
-  }
-  if (multiplayer.socket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(multiplayer.socket.readyState)) return;
-
-  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const socket = new WebSocket(`${protocol}//${location.host}`);
-  multiplayer.socket = socket;
-  let opened = false;
-
-  socket.addEventListener("open", () => {
-    opened = true;
-    multiplayer.hasConnected = true;
-    multiplayer.reconnectAttempts = 0;
-    multiplayer.mode = "online";
-    if (multiplayer.channel) {
-      multiplayer.channel.close();
-      multiplayer.channel = null;
-    }
-    if (state.joined) sendMultiplayer({ type: "hello", player: multiplayerPayload() });
-    toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
-  });
-
-  socket.addEventListener("message", (event) => {
-    try {
-      handleMultiplayerMessage(JSON.parse(event.data));
-    } catch {
-      // Ignore malformed network packets.
-    }
-  });
-
-  socket.addEventListener("error", () => {
-    if (!opened && !multiplayer.hasConnected) startLocalMultiplayer("Multiplayer server unavailable. Local tab multiplayer is active.");
-  });
-
-  socket.addEventListener("close", () => {
-    if (multiplayer.socket === socket) multiplayer.socket = null;
-    if (opened || multiplayer.hasConnected) {
-      if (multiplayer.mode !== "reconnecting") toast("Multiplayer disconnected. Reconnecting...");
-      scheduleMultiplayerReconnect();
+  function drawHeldResourceItem(name) {
+    ctx.save();
+    ctx.translate(35, 0);
+    const color = {
+      wood: "#b87942",
+      leaves: "#64b957",
+      scrap: "#a9c3c8",
+      iron: "#d6dde0",
+      steel: "#e7f3f5",
+      cloth: "#e4e1cf",
+      rope: "#d0ad62",
+      glass: "#9ae9ff",
+      flask: "#9ae9ff",
+      waterFlask: "#52c4ec",
+      rawFish: "#9bd3e2",
+      cookedFish: "#f0a85d",
+      sharkMeat: "#d96d70",
+      meat: "#c75b55",
+      cookedMeat: "#b96242",
+      coconut: "#82522e",
+      tomato: "#d94b45"
+    }[name] || "#d8eef4";
+    ctx.fillStyle = color;
+    if (name === "rope") {
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, TAU);
+      ctx.stroke();
+    } else if (name === "scrap" || name === "iron" || name === "steel") {
+      const colors = {
+        scrap: ["#879aa1", "#c9d8dc"],
+        iron: ["#b4bdc2", "#eef4f5"],
+        steel: ["#6f858e", "#e8fbff"]
+      }[name];
+      drawScrapModel(0, 0, 0.82, colors[0], colors[1]);
+    } else if (name === "glass") {
+      drawGlassModel(0, 0, 0.82);
+    } else if (name === "flask" || name === "waterFlask") {
+      drawFlaskModel(0, 0, 0.72, name === "waterFlask");
+    } else if (name === "coconut" || name === "tomato") {
+      circle(0, 0, 10);
+    } else if (name.includes("Fish") || name === "rawFish") {
+      ellipse(0, 0, 16, 7, 0);
     } else {
-      startLocalMultiplayer("Multiplayer server unavailable. Local tab multiplayer is active.");
+      roundRect(-11, -8, 22, 16, 4);
+      ctx.fill();
     }
-  });
-}
-
-addEventListener("beforeunload", () => {
-  if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
-});
-
-function publishShot(origin, dir, damage, range, target = null, ammoType = "basic") {
-  sendMultiplayer({
-    type: "shot",
-    shot: {
-      id: crypto.randomUUID(),
-      owner: playerId,
-      sentAt: Date.now(),
-      x: origin.x,
-      z: origin.z,
-      dirX: dir.x,
-      dirZ: dir.z,
-      targetX: target?.x,
-      targetZ: target?.z,
-      damage,
-      range,
-      targetKind: "any",
-      ammoType,
-    },
-  });
-}
-
-function publishMultiplayer() {
-  if (!state.joined) return;
-  if (clock.elapsedTime - multiplayer.lastSent >= 0.16) {
-    multiplayer.lastSent = clock.elapsedTime;
-    const player = multiplayerPayload();
-    sendMultiplayer({
-      type: "state",
-      player: { ...player, id: playerId },
-    });
+    ctx.restore();
   }
-  remotePlayers.forEach((remote, id) => {
-    if (clock.elapsedTime - remote.updated > 5) {
-      removeRemotePlayer(id);
+
+  function drawParticles() {
+    for (const p of state.particles) {
+      ctx.globalAlpha = clamp(p.life * 2, 0, 1);
+      ctx.fillStyle = p.color;
+      circle(p.x, p.y, p.size);
+      ctx.globalAlpha = 1;
     }
-  });
-}
-
-function animateSea() {
-  const t = clock.elapsedTime;
-  seaDriftObjects.forEach((obj) => {
-    obj.position.x += Math.sin(t + obj.userData.drift) * 0.004;
-    obj.position.z += 0.014;
-    if (obj.position.z > SEA_SIZE * 0.5) obj.position.z = -SEA_SIZE * 0.5;
-  });
-  cloudObjects.forEach((obj) => {
-    obj.position.x += obj.userData.cloud * 0.006;
-    if (obj.position.x > SEA_SIZE * 0.38) obj.position.x = -SEA_SIZE * 0.38;
-  });
-  waterfallObjects.forEach((obj) => {
-    obj.material.opacity = 0.34 + Math.sin(t * 2.6 + obj.position.x * 0.01 + obj.position.z * 0.01) * 0.08;
-  });
-  waterfallFoamObjects.forEach((obj) => {
-    obj.scale.z = 1 + Math.sin(t * 3.2 + obj.position.x * 0.01) * 0.08;
-  });
-  waterfallMistObjects.forEach((obj) => {
-    obj.position.y -= 0.025;
-    obj.material.opacity = 0.1 + Math.sin(t + obj.userData.waterfallMist) * 0.05;
-    if (obj.position.y < -44) obj.position.y = -6;
-  });
-}
-
-function frame() {
-  const dt = Math.min(0.033, clock.getDelta());
-  if (state.joined) {
-    if (state.mode === "ship") updateShip(dt);
-    else updateWalker(dt);
-    updateBots(dt);
-    remotePlayers.forEach((remote) => updateFireDamage(remote, dt, remote.velocity?.length?.() || 0));
-    resolveShipContacts();
-    updateProjectiles(dt);
-    updateImpactEffects(dt);
-    updateWaveHazards(dt);
-    updateFish(dt);
-    updateAnimals(dt);
-    updateBalloons(dt);
-    updateBalloonReticle();
-    updateStorms(dt);
-    updateLeviathan(dt);
-    updateKraken(dt);
   }
-  updateCamera(dt);
-  updateDayNightCycle();
-  animateSea();
-  publishMultiplayer();
-  updateHud();
-  updateMinimap();
-  renderer.render(scene, camera);
-  requestAnimationFrame(frame);
-}
 
-initWorld();
-refreshLanguageUI();
-setupNameGate();
-setupMultiplayer();
-setupTransientResumeCleanup();
-updateHud();
-frame();
+  function drawBuildGhost() {
+    const spot = buildPlacementPoint();
+    const legal = buildChoice === "raft" ? true : Boolean(buildSiteAt(spot.x, spot.y));
+    ctx.globalAlpha = 0.58;
+    ctx.fillStyle = legal ? "#64fff0" : "#ff6b80";
+    if (buildChoice === "raft") {
+      const gx = Math.round((spot.x - state.raftOffset.x - TILE / 2) / TILE);
+      const gy = Math.round((spot.y - state.raftOffset.y - TILE / 2) / TILE);
+      roundRect(state.raftOffset.x + gx * TILE + 2, state.raftOffset.y + gy * TILE + 2, TILE - 4, TILE - 4, 5);
+    } else {
+      const f = footprint(buildChoice);
+      ctx.save();
+      ctx.translate(spot.x, spot.y);
+      ctx.rotate(state.player.facing + buildAngle);
+      roundRect(-f.w / 2, -f.h / 2, f.w, f.h, buildChoice === "wall" ? f.h / 2 : 5);
+      ctx.restore();
+    }
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawVignette(w, h) {
+    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.62);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,0.26)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawMinimap() {
+    const s = mini.width;
+    mctx.clearRect(0, 0, s, s);
+    mctx.fillStyle = "#0b6f8b";
+    mctx.fillRect(0, 0, s, s);
+    const scale = s / WORLD;
+    for (const island of state.islands) {
+      mctx.fillStyle = island.kind === "large" ? "#d5b66a" : "#c8a45f";
+      mctx.beginPath();
+      mctx.arc(island.x * scale, island.y * scale, island.r * scale, 0, TAU);
+      mctx.fill();
+    }
+    mctx.fillStyle = "#d79045";
+    for (const rt of state.raft) {
+      const r = raftTileRect(rt);
+      mctx.fillRect(r.x * scale, r.y * scale, Math.max(1, TILE * scale), Math.max(1, TILE * scale));
+    }
+    mctx.fillStyle = "#d2b783";
+    for (const world of remoteWorlds.values()) {
+      for (const rt of world.raft || []) {
+        const r = remoteRaftTileRect(world, rt);
+        mctx.fillRect(r.x * scale, r.y * scale, Math.max(1, TILE * scale), Math.max(1, TILE * scale));
+      }
+    }
+    for (const shark of state.sharks) {
+      mctx.fillStyle = shark.aggressive || shark.aggro > 0 ? "#ff6576" : "#2f454f";
+      mctx.beginPath();
+      mctx.arc(shark.x * scale, shark.y * scale, 2.2, 0, TAU);
+      mctx.fill();
+    }
+    mctx.fillStyle = "#ffffff";
+    mctx.beginPath();
+    mctx.arc(state.player.x * scale, state.player.y * scale, 3, 0, TAU);
+    mctx.fill();
+  }
+
+  function healthBar(x, y, ratio, width) {
+    ratio = clamp(ratio, 0, 1);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    roundRect(x - width / 2, y, width, 5, 3);
+    ctx.fill();
+    ctx.fillStyle = ratio > 0.45 ? "#68df73" : "#ff677d";
+    roundRect(x - width / 2, y, width * ratio, 5, 3);
+    ctx.fill();
+  }
+
+  function blob(x, y, r, points, wobble) {
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * TAU;
+      const rr = r * (1 + Math.sin(i * 2.17 + x) * wobble + Math.cos(i * 1.71 + y) * wobble);
+      const px = x + Math.cos(a) * rr;
+      const py = y + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  function circle(x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  }
+
+  function ellipse(x, y, rx, ry, rot) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, TAU);
+    ctx.fill();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function cap(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1).replace(/[A-Z]/g, (m) => ` ${m.toLowerCase()}`);
+  }
+
+  function label(s) {
+    const spec = toolSpec(s);
+    if (spec) return spec.label;
+    return {
+      raft: "Raft Tile",
+      grill: "Grill",
+      waterMaker: "Water Maker",
+      plantPot: "Plant Pot",
+      chest: "Chest",
+      wall: "Wall",
+      torch: "Torch",
+      cannon: "Cannon",
+      flask: "Empty Water Flask",
+      waterFlask: "Filled Water Flask",
+      musket: "Musket",
+      sharkMeat: "Raw Shark Meat",
+      rawFish: "Raw Fish",
+      cookedFish: "Cooked Fish",
+      meat: "Raw Meat",
+      cookedMeat: "Cooked Meat"
+    }[s] || cap(s);
+  }
+})();
