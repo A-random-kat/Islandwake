@@ -887,6 +887,7 @@ const buildingPieces = [];
 const buildingPieceMap = new Map();
 let buildPreview = null;
 let buildPreviewType = null;
+let lastBuildPreviewAt = 0;
 let lastShopPointerHandledAt = 0;
 let lastInventoryPointerHandledAt = 0;
 const labels = [];
@@ -4245,8 +4246,17 @@ function snapBuildByFootprints(island, point, type, rotation) {
   if (!previewFootprints.length) return null;
   let best = null;
   const rotationChoices = [rotation];
+  let nearestPiece = null;
+  let nearestDistance = Infinity;
   buildingPieces.forEach((piece) => {
     if (piece.island !== island.name) return;
+    const distance = Math.hypot(point.x - piece.x, point.z - piece.z);
+    if (distance >= nearestDistance) return;
+    nearestPiece = piece;
+    nearestDistance = distance;
+  });
+  if (!nearestPiece || nearestDistance > BUILD_GRID_SIZE * 2.4) return null;
+  [nearestPiece].forEach((piece) => {
     const existingFootprints = buildPlacementFootprints(piece.type, piece, piece.rotation || 0);
     if (!existingFootprints.length) return;
     rotationChoices.forEach((candidateRotation) => {
@@ -4324,8 +4334,8 @@ function rotateSelectedBuildItem() {
     toast("Select a building piece first.");
     return;
   }
-  state.buildRotationOffset = (state.buildRotationOffset + Math.PI / 2) % (Math.PI * 2);
-  updateBuildPreview();
+  state.buildRotationOffset = (state.buildRotationOffset - Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+  updateBuildPreview(true);
   toast("Building rotated.");
 }
 
@@ -4487,12 +4497,15 @@ function ensureBuildPreview(type) {
   return buildPreview;
 }
 
-function updateBuildPreview() {
+function updateBuildPreview(force = false) {
   const type = state.selectedBuildItem;
   if (!BUILD_ITEMS[type] || buildInventoryCount(type) <= 0 || state.mode !== "land") {
     hideBuildPreview();
     return;
   }
+  const now = performance.now();
+  if (!force && now - lastBuildPreviewAt < 70) return;
+  lastBuildPreviewAt = now;
   const placement = buildPlacementForSelected();
   if (!placement.point || !placement.island?.unnamed || !placement.island?.claimable) {
     hideBuildPreview();
@@ -4564,16 +4577,19 @@ function placeSelectedBuildItem() {
 
 function removeLookedAtBuilding() {
   if (state.mode !== "land") return;
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const hits = buildingPieces
-    .map((piece) => {
-      const hit = raycaster.intersectObject(piece.group, true)[0];
-      return hit ? { piece, distance: hit.distance } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.distance - b.distance);
-  const target = hits.find((hit) => hit.distance < 28)?.piece;
-  if (!target) return;
+  const findTarget = (pointer, maxDistance) => {
+    raycaster.setFromCamera(pointer, camera);
+    return buildingPieces
+      .map((piece) => {
+        const hit = raycaster.intersectObject(piece.group, true)[0];
+        return hit ? { piece, distance: hit.distance } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distance - b.distance)
+      .find((hit) => hit.distance < maxDistance)?.piece || null;
+  };
+  const target = findTarget(mouse, BUILD_PLACE_MAX_DISTANCE) || findTarget(new THREE.Vector2(0, 0), 30);
+  if (!target) return toast("Aim at one of your buildings to remove it.");
   if (!buildingPieceIsMine(target)) return toast(t("ownedIslandOnly"));
   if (multiplayer.serverWorld) {
     sendMultiplayer({ type: "removeBuilding", id: target.id });
@@ -9437,7 +9453,7 @@ function renderShop() {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
       const description = ammoDescription(ammo);
-      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button></div></div>`;
+      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button></div></div>`;
     }).join("") + balloonRow;
   } else if (state.shopTab === "build") {
     ui.shopBody.innerHTML = `<p class="stats">${t("buildShopIntro")}</p>` + BUILD_ITEM_ORDER.map((id) => {
@@ -9500,7 +9516,7 @@ function handleShopBodyAction(event) {
   if (button.dataset.buyAmmo) {
     const ammo = CANNONBALL_TYPES[button.dataset.buyAmmo];
     if (!ammo || ammo.infinite) return;
-    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 20);
+    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 25);
     const cost = ammo.price * amount;
     if (state.gold < cost) return toast("Not enough gold.");
     state.gold -= cost;
