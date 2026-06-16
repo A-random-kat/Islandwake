@@ -3899,16 +3899,6 @@ function addBuildingMeshPart(group, mesh) {
   return mesh;
 }
 
-function addSquareBuildBase(group, material = mats.plank) {
-  const base = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_GRID_SIZE), material);
-  base.position.y = 0.08;
-  addBuildingMeshPart(group, base);
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 0.92, 0.05, BUILD_GRID_SIZE * 0.92), mats.wood);
-  trim.position.y = 0.19;
-  addBuildingMeshPart(group, trim);
-  return base;
-}
-
 function makeBuildingMesh(piece) {
   const group = new THREE.Group();
   const type = piece.type || "floor";
@@ -3920,7 +3910,6 @@ function makeBuildingMesh(piece) {
     floor.position.y = BUILD_FLOOR_THICKNESS * 0.5;
     addBuildingMeshPart(group, floor);
   } else if (type === "wall") {
-    addSquareBuildBase(group, wood);
     const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
     wall.position.y = 1.18;
     addBuildingMeshPart(group, wall);
@@ -3928,7 +3917,6 @@ function makeBuildingMesh(piece) {
     cap.position.y = 2.42;
     addBuildingMeshPart(group, cap);
   } else if (type === "cornerWall") {
-    addSquareBuildBase(group, wood);
     const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
     wallA.position.set(BUILD_GRID_SIZE * 0.25, 1.18, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, wallA);
@@ -3945,7 +3933,6 @@ function makeBuildingMesh(piece) {
     post.position.set(-BUILD_GRID_SIZE * 0.25, 1.28, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, post);
   } else if (type === "door") {
-    addSquareBuildBase(group, wood);
     for (const x of [-1, 1]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, 0.34), wood);
       post.position.set(x * 1.28, 1.18, 0);
@@ -4405,8 +4392,18 @@ function buildAimPointForIsland(island, type) {
 
 function buildPlacementFootprints(type, point, rotation) {
   const base = { x: point.x, z: point.z, rot: rotation || 0 };
-  if (type === "wall" || type === "cornerWall" || type === "door") {
-    return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_GRID_SIZE }];
+  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.42 }];
+  if (type === "cornerWall") {
+    return [
+      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.42 },
+      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.42, d: BUILD_GRID_SIZE },
+    ];
+  }
+  if (type === "door") {
+    return [
+      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
+      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
+    ];
   }
   if (type === "table") return [{ ...base, w: 2.35, d: 1.35 }];
   if (type === "flag") return [{ ...base, w: 1.0, d: 1.0 }];
