@@ -119,6 +119,8 @@ const CANNONBALL_TYPES = {
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
 const BUILD_GRID_SIZE = 3.2;
+const BUILD_FLOOR_THICKNESS = 0.04;
+const BUILD_FLOOR_SURFACE_Y = BUILD_FLOOR_THICKNESS;
 const BUILD_PLACE_MAX_DISTANCE = 58;
 const BUILD_EDGE_MARGIN = 2.4;
 const BUILD_ITEMS = {
@@ -3897,6 +3899,16 @@ function addBuildingMeshPart(group, mesh) {
   return mesh;
 }
 
+function addSquareBuildBase(group, material = mats.plank) {
+  const base = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.16, BUILD_GRID_SIZE), material);
+  base.position.y = 0.08;
+  addBuildingMeshPart(group, base);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 0.92, 0.05, BUILD_GRID_SIZE * 0.92), mats.wood);
+  trim.position.y = 0.19;
+  addBuildingMeshPart(group, trim);
+  return base;
+}
+
 function makeBuildingMesh(piece) {
   const group = new THREE.Group();
   const type = piece.type || "floor";
@@ -3904,15 +3916,11 @@ function makeBuildingMesh(piece) {
   const darkWood = mats.wood;
   const cloth = mat(0xd84c3f);
   if (type === "floor") {
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 0.18, BUILD_GRID_SIZE), wood);
-    floor.position.y = 0.09;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, BUILD_FLOOR_THICKNESS, BUILD_GRID_SIZE), wood);
+    floor.position.y = BUILD_FLOOR_THICKNESS * 0.5;
     addBuildingMeshPart(group, floor);
-    for (const z of [-1, 1]) {
-      const plankLine = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE * 0.92, 0.04, 0.08), darkWood);
-      plankLine.position.set(0, 0.21, z * BUILD_GRID_SIZE * 0.22);
-      addBuildingMeshPart(group, plankLine);
-    }
   } else if (type === "wall") {
+    addSquareBuildBase(group, wood);
     const wall = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
     wall.position.y = 1.18;
     addBuildingMeshPart(group, wall);
@@ -3920,6 +3928,7 @@ function makeBuildingMesh(piece) {
     cap.position.y = 2.42;
     addBuildingMeshPart(group, cap);
   } else if (type === "cornerWall") {
+    addSquareBuildBase(group, wood);
     const wallA = new THREE.Mesh(new THREE.BoxGeometry(BUILD_GRID_SIZE, 2.35, 0.34), wood);
     wallA.position.set(BUILD_GRID_SIZE * 0.25, 1.18, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, wallA);
@@ -3936,6 +3945,7 @@ function makeBuildingMesh(piece) {
     post.position.set(-BUILD_GRID_SIZE * 0.25, 1.28, -BUILD_GRID_SIZE * 0.25);
     addBuildingMeshPart(group, post);
   } else if (type === "door") {
+    addSquareBuildBase(group, wood);
     for (const x of [-1, 1]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.62, 2.35, 0.34), wood);
       post.position.set(x * 1.28, 1.18, 0);
@@ -4046,7 +4056,7 @@ function buildingSurfaceYAt(island, point, baseY) {
     if (piece.island !== island.name) return;
     const type = piece.type;
     if (type !== "floor" && type !== "roof") return;
-    const surfaceY = piece.y + (type === "floor" ? 0.2 : 2.36);
+    const surfaceY = piece.y + (type === "floor" ? BUILD_FLOOR_SURFACE_Y : 2.36);
     const currentY = Number.isFinite(point.y) ? point.y : y;
     if (surfaceY - currentY > 1.35) return;
     if (localPointInRotatedRect(point, { x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.08, d: BUILD_GRID_SIZE * 1.08, rot: piece.rotation }, 0.08)) {
@@ -4058,7 +4068,7 @@ function buildingSurfaceYAt(island, point, baseY) {
 
 function buildingSupportTopY(piece, placementType) {
   if (!piece) return null;
-  if (piece.type === "floor" && placementType !== "roof") return piece.y + 0.2;
+  if (piece.type === "floor" && placementType !== "roof") return piece.y + BUILD_FLOOR_SURFACE_Y;
   if (placementType === "roof" && (piece.type === "wall" || piece.type === "door" || piece.type === "cornerWall")) {
     return piece.y + 2.54;
   }
@@ -4189,6 +4199,101 @@ function snapSocketWorld(piece, socket, rotation = piece.rotation || 0) {
   return { x: piece.x + offset.x, z: piece.z + offset.z };
 }
 
+function buildFootprintSnapPoints(footprint) {
+  const halfW = footprint.w * 0.5;
+  const halfD = footprint.d * 0.5;
+  const locals = [
+    { x: -halfW, z: -halfD, kind: "vertex" },
+    { x: halfW, z: -halfD, kind: "vertex" },
+    { x: halfW, z: halfD, kind: "vertex" },
+    { x: -halfW, z: halfD, kind: "vertex" },
+    { x: 0, z: -halfD, kind: "edge" },
+    { x: halfW, z: 0, kind: "edge" },
+    { x: 0, z: halfD, kind: "edge" },
+    { x: -halfW, z: 0, kind: "edge" },
+  ];
+  return locals.map((local) => {
+    const offset = rotateBuildLocal(local, footprint.rot || 0);
+    return {
+      x: footprint.x + offset.x,
+      z: footprint.z + offset.z,
+      localX: local.x,
+      localZ: local.z,
+      kind: local.kind,
+    };
+  });
+}
+
+function buildFootprintsOverlap(a, b, pad = 0.02) {
+  const corners = (rect) => buildFootprintSnapPoints(rect).slice(0, 4);
+  const axes = (rect) => {
+    const rot = rect.rot || 0;
+    return [
+      { x: Math.cos(rot), z: -Math.sin(rot) },
+      { x: Math.sin(rot), z: Math.cos(rot) },
+    ];
+  };
+  const project = (points, axis) => {
+    let min = Infinity;
+    let max = -Infinity;
+    points.forEach((point) => {
+      const value = point.x * axis.x + point.z * axis.z;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    });
+    return { min, max };
+  };
+  const aCorners = corners(a);
+  const bCorners = corners(b);
+  return axes(a).concat(axes(b)).every((axis) => {
+    const ap = project(aCorners, axis);
+    const bp = project(bCorners, axis);
+    return Math.min(ap.max, bp.max) - Math.max(ap.min, bp.min) > pad;
+  });
+}
+
+function snapBuildByFootprints(island, point, type, rotation) {
+  const previewFootprints = buildPlacementFootprints(type, point, rotation);
+  if (!previewFootprints.length) return null;
+  let best = null;
+  const rotationChoices = [rotation];
+  buildingPieces.forEach((piece) => {
+    if (piece.island !== island.name) return;
+    const existingFootprints = buildPlacementFootprints(piece.type, piece, piece.rotation || 0);
+    if (!existingFootprints.length) return;
+    rotationChoices.forEach((candidateRotation) => {
+      const candidateFootprints = buildPlacementFootprints(type, point, candidateRotation);
+      existingFootprints.forEach((existingFootprint) => {
+        const existingPoints = buildFootprintSnapPoints(existingFootprint);
+        candidateFootprints.forEach((candidateFootprint) => {
+          const candidatePoints = buildFootprintSnapPoints(candidateFootprint);
+          existingPoints.forEach((existingPoint) => {
+            candidatePoints.forEach((candidatePoint) => {
+              const snapped = {
+                x: point.x + existingPoint.x - candidatePoint.x,
+                z: point.z + existingPoint.z - candidatePoint.z,
+              };
+              const moved = Math.hypot(snapped.x - point.x, snapped.z - point.z);
+              if (moved > BUILD_GRID_SIZE * 0.74) return;
+              const snappedFootprint = {
+                ...candidateFootprint,
+                x: candidateFootprint.x + snapped.x - point.x,
+                z: candidateFootprint.z + snapped.z - point.z,
+              };
+              if (buildFootprintsOverlap(snappedFootprint, existingFootprint)) return;
+              const kindBonus = existingPoint.kind === candidatePoint.kind ? 0 : 0.08;
+              const score = moved + kindBonus;
+              if (best && score >= best.score) return;
+              best = { point: snapped, rotation: candidateRotation, score };
+            });
+          });
+        });
+      });
+    });
+  });
+  return best;
+}
+
 function snapBuildPlacement(island, point, type, rotation) {
   const result = { point, rotation };
   if (!state.buildSnap || type === "flag") return result;
@@ -4201,42 +4306,11 @@ function snapBuildPlacement(island, point, type, rotation) {
     result.stack = stack;
     return result;
   }
-  const newSockets = buildSnapSockets(type);
-  let best = BUILD_GRID_SIZE * 1.35;
-  let bestPoint = null;
-  let bestRotation = rotation;
-  buildingPieces.forEach((piece) => {
-    if (piece.island !== island.name) return;
-    const existingSockets = buildSnapSockets(piece.type);
-    if (!newSockets.length || !existingSockets.length) return;
-    const rotationChoices = [rotation];
-    if ((type === "wall" || type === "door" || type === "cornerWall") && Number.isFinite(piece.rotation)) {
-      rotationChoices.push(piece.rotation);
-      rotationChoices.push(piece.rotation + Math.PI / 2);
-      rotationChoices.push(piece.rotation - Math.PI / 2);
-    }
-    existingSockets.forEach((existingSocket) => {
-      const existingWorld = snapSocketWorld(piece, existingSocket);
-      rotationChoices.forEach((candidateRotation) => {
-        newSockets.forEach((newSocket) => {
-          const newOffset = rotateBuildLocal(newSocket, candidateRotation);
-          const candidate = {
-            x: existingWorld.x - newOffset.x,
-            z: existingWorld.z - newOffset.z,
-          };
-          const distance = Math.hypot(point.x - candidate.x, point.z - candidate.z);
-          if (distance >= best) return;
-          best = distance;
-          bestPoint = candidate;
-          bestRotation = candidateRotation;
-        });
-      });
-    });
-  });
-  if (bestPoint) {
-    point.x = bestPoint.x;
-    point.z = bestPoint.z;
-    result.rotation = bestRotation;
+  const footprintSnap = snapBuildByFootprints(island, point, type, rotation);
+  if (footprintSnap) {
+    point.x = footprintSnap.point.x;
+    point.z = footprintSnap.point.z;
+    result.rotation = footprintSnap.rotation;
     return result;
   }
   if (type !== "table") {
@@ -4331,18 +4405,8 @@ function buildAimPointForIsland(island, type) {
 
 function buildPlacementFootprints(type, point, rotation) {
   const base = { x: point.x, z: point.z, rot: rotation || 0 };
-  if (type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.42 }];
-  if (type === "cornerWall") {
-    return [
-      { ...base, x: point.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: 0.42 },
-      { ...base, x: point.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: point.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: 0.42, d: BUILD_GRID_SIZE },
-    ];
-  }
-  if (type === "door") {
-    return [
-      { ...base, x: point.x + Math.cos(base.rot) * 1.28, z: point.z - Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
-      { ...base, x: point.x - Math.cos(base.rot) * 1.28, z: point.z + Math.sin(base.rot) * 1.28, w: 0.72, d: 0.42 },
-    ];
+  if (type === "wall" || type === "cornerWall" || type === "door") {
+    return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_GRID_SIZE }];
   }
   if (type === "table") return [{ ...base, w: 2.35, d: 1.35 }];
   if (type === "flag") return [{ ...base, w: 1.0, d: 1.0 }];
