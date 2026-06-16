@@ -4056,6 +4056,73 @@ function buildingSurfaceYAt(island, point, baseY) {
   return y;
 }
 
+function buildingSupportTopY(piece, placementType) {
+  if (!piece) return null;
+  if (piece.type === "floor" && placementType !== "roof") return piece.y + 0.2;
+  if (placementType === "roof" && (piece.type === "wall" || piece.type === "door" || piece.type === "cornerWall")) {
+    return piece.y + 2.54;
+  }
+  return null;
+}
+
+function buildingSupportsPlacement(supportType, placementType) {
+  if (placementType === "flag") return false;
+  if (placementType === "roof") return supportType === "wall" || supportType === "door" || supportType === "cornerWall";
+  return supportType === "floor";
+}
+
+function buildingSupportRects(piece, placementType) {
+  const rot = piece.rotation || 0;
+  if (piece.type === "floor" && placementType !== "roof") {
+    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE * 1.06, d: BUILD_GRID_SIZE * 1.06, rot }];
+  }
+  if (piece.type === "wall" || piece.type === "door") {
+    return [{ x: piece.x, z: piece.z, w: BUILD_GRID_SIZE + 0.46, d: 0.92, rot }];
+  }
+  if (piece.type === "cornerWall") {
+    return [
+      { x: piece.x + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE + 0.46, d: 0.92, rot },
+      { x: piece.x - Math.sin(rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(rot) * BUILD_GRID_SIZE * 0.25, w: 0.92, d: BUILD_GRID_SIZE + 0.46, rot },
+    ];
+  }
+  return [];
+}
+
+function buildStackSupportAt(island, point, type, rotation) {
+  if (type === "flag") return null;
+  let best = null;
+  const pointY = Number.isFinite(point.y) ? point.y : island.landY;
+  const maxRise = type === "roof" ? 3.35 : 1.4;
+  const maxDrop = type === "roof" ? 1.8 : 0.82;
+  buildingPieces.forEach((piece) => {
+    if (piece.island !== island.name || !buildingPieceIsMine(piece)) return;
+    if (!buildingSupportsPlacement(piece.type, type)) return;
+    const topY = buildingSupportTopY(piece, type);
+    if (!Number.isFinite(topY)) return;
+    if (topY - pointY > maxRise || pointY - topY > maxDrop) return;
+    const pad = type === "roof" ? 0.72 : 0.38;
+    if (!buildingSupportRects(piece, type).some((rect) => localPointInRotatedRect(point, rect, pad))) return;
+    const distance = Math.hypot(point.x - piece.x, point.z - piece.z);
+    if (best && (topY < best.y - 0.05 || (Math.abs(topY - best.y) < 0.05 && distance >= best.distance))) return;
+    best = {
+      piece,
+      x: type === "roof" ? piece.x : point.x,
+      y: topY,
+      z: type === "roof" ? piece.z : point.z,
+      rotation: type === "roof" ? (piece.rotation || 0) : rotation,
+      distance,
+    };
+  });
+  return best;
+}
+
+function buildPlacementSurfaceYAt(island, point, type, rotation) {
+  const stack = buildStackSupportAt(island, point, type, rotation);
+  if (stack) return stack.y;
+  if (type === "roof") return null;
+  return islandGroundY(island, point);
+}
+
 function buildingCollisionBoxes(piece) {
   const base = { x: piece.x, z: piece.z, rot: piece.rotation || 0, minY: piece.y - 0.15, maxY: piece.y + 2.7 };
   if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: 0.34 }];
@@ -4076,11 +4143,15 @@ function buildingCollisionBoxes(piece) {
   return [];
 }
 
-function pointBlockedByBuildings(island, point) {
+function pointBlockedByBuildings(island, point, options = {}) {
   return buildingPieces.some((piece) => {
     if (piece.island !== island.name) return false;
+    const pointY = Number.isFinite(point.y) ? point.y : island.landY;
+    if (options.ignoreSupportForType && buildingSupportsPlacement(piece.type, options.ignoreSupportForType)) {
+      const topY = buildingSupportTopY(piece, options.ignoreSupportForType);
+      if (Number.isFinite(topY) && Math.abs(pointY - topY) < 0.86) return false;
+    }
     return buildingCollisionBoxes(piece).some((box) => {
-      const pointY = Number.isFinite(point.y) ? point.y : island.landY;
       if (pointY < box.minY || pointY > box.maxY) return false;
       return localPointInRotatedRect(point, box, 0.2);
     });
@@ -4121,6 +4192,15 @@ function snapSocketWorld(piece, socket, rotation = piece.rotation || 0) {
 function snapBuildPlacement(island, point, type, rotation) {
   const result = { point, rotation };
   if (!state.buildSnap || type === "flag") return result;
+  const stack = buildStackSupportAt(island, point, type, rotation);
+  if (stack) {
+    point.x = stack.x;
+    point.y = stack.y;
+    point.z = stack.z;
+    result.rotation = stack.rotation;
+    result.stack = stack;
+    return result;
+  }
   const newSockets = buildSnapSockets(type);
   let best = BUILD_GRID_SIZE * 1.35;
   let bestPoint = null;
@@ -4166,9 +4246,19 @@ function snapBuildPlacement(island, point, type, rotation) {
   return result;
 }
 
+function cardinalBuildLookRotation() {
+  const look = new THREE.Vector3();
+  camera.getWorldDirection(look);
+  look.y = 0;
+  const yaw = look.lengthSq() > 0.0001
+    ? Math.atan2(look.x, look.z)
+    : character.rotation.y;
+  return Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2);
+}
+
 function buildRotationForType(type) {
-  if (type === "floor" || type === "roof" || type === "table" || type === "flag") return 0;
-  return Math.round(character.rotation.y / (Math.PI / 2)) * (Math.PI / 2);
+  if (type === "flag") return 0;
+  return cardinalBuildLookRotation();
 }
 
 function renderInventory() {
@@ -4190,8 +4280,34 @@ function setInventoryOpen(open) {
   renderInventory();
 }
 
-function buildAimPointForIsland(island) {
+function worldFaceNormal(hit) {
+  if (!hit?.face?.normal || !hit.object?.matrixWorld) return new THREE.Vector3(0, 1, 0);
+  return hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+}
+
+function buildAimBuildingSurface(island, type) {
+  if (type === "flag") return null;
+  const hits = [];
+  buildingPieces.forEach((piece) => {
+    if (piece.island !== island.name || !buildingPieceIsMine(piece)) return;
+    if (!buildingSupportsPlacement(piece.type, type)) return;
+    const hit = raycaster.intersectObject(piece.group, true)[0];
+    if (!hit || hit.distance > BUILD_PLACE_MAX_DISTANCE) return;
+    const normal = worldFaceNormal(hit);
+    const topY = buildingSupportTopY(piece, type);
+    const closeToTop = Number.isFinite(topY) && Math.abs(hit.point.y - topY) < 0.36;
+    if (type !== "roof" && normal.y < 0.32 && !closeToTop) return;
+    hits.push({ piece, point: hit.point.clone(), distance: hit.distance });
+  });
+  hits.sort((a, b) => a.distance - b.distance);
+  const best = hits[0];
+  return best ? { point: best.point, supportPiece: best.piece } : null;
+}
+
+function buildAimPointForIsland(island, type) {
   raycaster.setFromCamera(mouse, camera);
+  const buildingAim = buildAimBuildingSurface(island, type);
+  if (buildingAim) return buildingAim;
   const hits = raycaster
     .intersectObject(island.group, true)
     .filter((hit) => hit.distance <= BUILD_PLACE_MAX_DISTANCE && islandSurfaceContains(island, hit.point, BUILD_EDGE_MARGIN * 0.35));
@@ -4199,7 +4315,7 @@ function buildAimPointForIsland(island) {
     const groundY = islandGroundY(island, hit.point);
     if (groundY === null) continue;
     if (Math.abs(hit.point.y - groundY) < 2.6 || hit.face?.normal?.y > 0.18) {
-      return new THREE.Vector3(hit.point.x, groundY, hit.point.z);
+      return { point: new THREE.Vector3(hit.point.x, groundY, hit.point.z) };
     }
   }
   const topPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -island.landY);
@@ -4207,7 +4323,7 @@ function buildAimPointForIsland(island) {
   if (raycaster.ray.intersectPlane(topPlane, planePoint)) {
     const groundY = islandGroundY(island, planePoint);
     if (groundY !== null && islandSurfaceContains(island, planePoint, BUILD_EDGE_MARGIN * 0.35)) {
-      return new THREE.Vector3(planePoint.x, groundY, planePoint.z);
+      return { point: new THREE.Vector3(planePoint.x, groundY, planePoint.z) };
     }
   }
   return null;
@@ -4236,8 +4352,8 @@ function buildPlacementFootprints(type, point, rotation) {
 function buildPlacementValid(island, type, point, rotation) {
   if (!Number.isFinite(point.x) || !Number.isFinite(point.z) || !Number.isFinite(point.y)) return false;
   if (!islandSurfaceContains(island, point, BUILD_EDGE_MARGIN * 0.25)) return false;
-  const groundY = islandGroundY(island, point);
-  if (groundY === null || Math.abs(point.y - groundY) > 0.7) return false;
+  const surfaceY = buildPlacementSurfaceYAt(island, point, type, rotation);
+  if (surfaceY === null || Math.abs(point.y - surfaceY) > 0.72) return false;
   const footprints = buildPlacementFootprints(type, point, rotation);
   return footprints.every((footprint) => {
     const samples = [
@@ -4249,10 +4365,12 @@ function buildPlacementValid(island, type, point, rotation) {
     ];
     return samples.every((sample) => {
       const samplePoint = new THREE.Vector3(sample.x, point.y, sample.z);
-      const sampleY = islandGroundY(island, samplePoint);
-      if (sampleY === null || Math.abs(sampleY - point.y) > 1.15) return false;
+      if (type !== "roof") {
+        const sampleY = buildPlacementSurfaceYAt(island, samplePoint, type, rotation);
+        if (sampleY === null || Math.abs(sampleY - point.y) > 1.15) return false;
+      }
       if (!islandSurfaceContains(island, samplePoint, 0.55)) return false;
-      if (pointBlockedOnIsland(island, samplePoint)) return false;
+      if (pointBlockedOnIsland(island, samplePoint, { ignoreSupportForType: type })) return false;
       return true;
     });
   });
@@ -4266,16 +4384,16 @@ function buildPlacementForSelected() {
   }
   const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
   if (!island || state.mode !== "land") return { type, valid: false, reason: "island" };
-  const aimed = buildAimPointForIsland(island);
+  const aimed = buildAimPointForIsland(island, type);
   if (!aimed) return { type, island, valid: false, reason: "aim" };
-  const point = aimed.clone();
+  const point = aimed.point.clone();
   if (!islandSurfaceContains(island, point, 0.2)) return { type, island, point, valid: false, reason: "surface" };
   let rotation = buildRotationForType(type);
   const snapped = snapBuildPlacement(island, point, type, rotation);
   rotation = snapped.rotation;
-  const groundY = islandGroundY(island, point);
-  if (groundY === null) return { type, island, point, rotation, valid: false, reason: "surface" };
-  point.y = groundY;
+  const surfaceY = buildPlacementSurfaceYAt(island, point, type, rotation);
+  if (surfaceY === null) return { type, island, point, rotation, valid: false, reason: "surface" };
+  point.y = surfaceY;
   if (type === "flag") {
     if (!island.claimable || !island.unnamed) return { type, island, point, rotation, valid: false, reason: "claimFirst" };
     if (islandClaimFor(island)) return { type, island, point, rotation, valid: false, reason: "alreadyClaimed" };
@@ -4491,9 +4609,9 @@ function islandGroundY(island, point) {
   return y;
 }
 
-function pointBlockedOnIsland(island, point) {
+function pointBlockedOnIsland(island, point, options = {}) {
   if (island.obstacles.some((obstacle) => dist2(point, obstacle) < obstacle.r + 0.72)) return true;
-  if (pointBlockedByBuildings(island, point)) return true;
+  if (pointBlockedByBuildings(island, point, options)) return true;
   return island.collisionBoxes?.some((box) => {
     const pointY = Number.isFinite(point.y) ? point.y : 0;
     if (box.minY !== undefined && pointY < box.minY) return false;
