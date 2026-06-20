@@ -479,6 +479,74 @@ function shipWeight(type) {
   return Math.max(35, Math.round(42 + spec.tier * 26 + spec.hp / 180 - spec.speed * 0.08));
 }
 
+function botIslandClearance(type) {
+  return Math.max(22, shipRadius(type) * 1.65 + 18);
+}
+
+function botIslandKeepoutRadius(island, type, extra = 0) {
+  return island.radius + botIslandClearance(type) + extra;
+}
+
+function botIslandBlocker(point, type, extra = 0) {
+  let blocker = null;
+  let bestDistance = Infinity;
+  for (const island of islandCenters) {
+    const distance = Math.hypot(point.x - island.x, point.z - island.z) - botIslandKeepoutRadius(island, type, extra);
+    if (distance < bestDistance) {
+      blocker = island;
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= 0 ? { island: blocker, distance: bestDistance } : null;
+}
+
+function botRouteIslandBlocker(bot, target, extra = 0) {
+  const dx = target.x - bot.x;
+  const dz = target.z - bot.z;
+  const lengthSq = dx * dx + dz * dz;
+  if (lengthSq < 1) return null;
+  let blocker = null;
+  let bestIntrusion = 0;
+  for (const island of islandCenters) {
+    const toIslandX = island.x - bot.x;
+    const toIslandZ = island.z - bot.z;
+    const along = clamp((toIslandX * dx + toIslandZ * dz) / lengthSq, 0, 1);
+    const closestX = bot.x + dx * along;
+    const closestZ = bot.z + dz * along;
+    const clearance = Math.hypot(closestX - island.x, closestZ - island.z);
+    const intrusion = botIslandKeepoutRadius(island, bot.shipType, extra) - clearance;
+    if (intrusion > bestIntrusion) {
+      blocker = island;
+      bestIntrusion = intrusion;
+    }
+  }
+  return blocker ? { island: blocker, intrusion: bestIntrusion } : null;
+}
+
+function pushBotOutsideIsland(bot, island, extra = 0) {
+  const safeDistance = botIslandKeepoutRadius(island, bot.shipType, extra) + 0.8;
+  let dx = bot.x - island.x;
+  let dz = bot.z - island.z;
+  let distance = Math.hypot(dx, dz);
+  if (distance < 0.001) {
+    dx = Math.sin(bot.rotation || 0);
+    dz = Math.cos(bot.rotation || 0);
+    distance = 1;
+  }
+  const nx = dx / distance;
+  const nz = dz / distance;
+  bot.x = island.x + nx * safeDistance;
+  bot.z = island.z + nz * safeDistance;
+  const inwardSpeed = bot.vx * nx + bot.vz * nz;
+  if (inwardSpeed < 0) {
+    bot.vx += nx * (-inwardSpeed + 0.35);
+    bot.vz += nz * (-inwardSpeed + 0.35);
+  }
+  bot.vx *= 0.42;
+  bot.vz *= 0.42;
+  return { nx, nz };
+}
+
 function leviathanTargetZone(player) {
   const x = Math.abs(Number(player?.x) || 0);
   const z = Math.abs(Number(player?.z) || 0);
@@ -1015,10 +1083,11 @@ function islandDetourPoint(bot, island) {
   const tangentSign = Math.random() < 0.5 ? -1 : 1;
   const tx = -nz * tangentSign;
   const tz = nx * tangentSign;
-  const margin = island.radius + shipRadius(bot.shipType) * 1.25 + 22;
+  const margin = island.radius + botIslandClearance(bot.shipType) + 14;
+  const sweep = 58 + shipRadius(bot.shipType) * 4;
   return {
-    x: clamp(island.x + nx * margin + tx * 54, -worldBounds * 0.94, worldBounds * 0.94),
-    z: clamp(island.z + nz * margin + tz * 54, -worldBounds * 0.94, worldBounds * 0.94),
+    x: clamp(island.x + nx * margin + tx * sweep, -worldBounds * 0.94, worldBounds * 0.94),
+    z: clamp(island.z + nz * margin + tz * sweep, -worldBounds * 0.94, worldBounds * 0.94),
   };
 }
 
@@ -2261,6 +2330,14 @@ function updateWorld() {
       bot.netsExtended = false;
     }
     const controllingBalloon = bot.shipType === "ballooner" && (bot.balloonControlUntil || 0) > now;
+    const currentIslandBlocker = botIslandBlocker(bot, bot.shipType, 3);
+    if (currentIslandBlocker) {
+      pushBotOutsideIsland(bot, currentIslandBlocker.island, 4);
+      const point = islandDetourPoint(bot, currentIslandBlocker.island);
+      bot.targetX = point.x;
+      bot.targetZ = point.z;
+      bot.turn = Math.max(bot.turn, 2.8);
+    }
     if (bot.targetPlayer && bot.angerUntil && bot.angerUntil < now) bot.targetPlayer = null;
     let targetSocket = bot.targetPlayer ? playerSocket(bot.targetPlayer) : null;
     if (targetSocket?.player?.mode === "land") targetSocket = null;
@@ -2394,8 +2471,8 @@ function updateWorld() {
     }
     bot.pickupTargetId = pickupTarget?.id || null;
 
-    const toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
-    const distance = Math.hypot(toTarget.x, toTarget.z);
+    let toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
+    let distance = Math.hypot(toTarget.x, toTarget.z);
     if (!fleeingKraken && !targetSocket && !targetBot && !targetKraken && !pickupTarget && distance < 9) {
       bot.vx *= 0.62;
       bot.vz *= 0.62;
@@ -2403,6 +2480,17 @@ function updateWorld() {
       bot.targetX = point.x;
       bot.targetZ = point.z;
       bot.turn = 3 + Math.random() * 5;
+      toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
+      distance = Math.hypot(toTarget.x, toTarget.z);
+    }
+    const routeBlocker = distance > 14 ? botRouteIslandBlocker(bot, { x: bot.targetX, z: bot.targetZ }, 5) : null;
+    if (routeBlocker) {
+      const point = islandDetourPoint(bot, routeBlocker.island);
+      bot.targetX = point.x;
+      bot.targetZ = point.z;
+      bot.turn = Math.max(bot.turn, 2.4);
+      toTarget = { x: bot.targetX - bot.x, z: bot.targetZ - bot.z };
+      distance = Math.hypot(toTarget.x, toTarget.z);
     }
     if (distance > 0.01) {
       const avoidance = { x: 0, z: 0 };
@@ -2410,9 +2498,9 @@ function updateWorld() {
         const dx = bot.x - island.x;
         const dz = bot.z - island.z;
         const d = Math.hypot(dx, dz);
-        const danger = island.radius + shipRadius(bot.shipType) * 1.9 + 12;
+        const danger = botIslandKeepoutRadius(island, bot.shipType, 18);
         if (d > 0.001 && d < danger) {
-          const force = ((danger - d) / danger) * 38;
+          const force = ((danger - d) / danger) * 68;
           avoidance.x += (dx / d) * force;
           avoidance.z += (dz / d) * force;
         }
@@ -2421,12 +2509,12 @@ function updateWorld() {
           const closeX = bot.x + toTarget.x * along;
           const closeZ = bot.z + toTarget.z * along;
           const clearance = Math.hypot(closeX - island.x, closeZ - island.z);
-          const routeDanger = island.radius + shipRadius(bot.shipType) * 1.25 + 14;
+          const routeDanger = botIslandKeepoutRadius(island, bot.shipType, 8);
           if (along > 0.08 && along < 0.96 && clearance < routeDanger) {
             const tangentX = -dz / d;
             const tangentZ = dx / d;
             const sign = tangentX * toTarget.x + tangentZ * toTarget.z >= 0 ? 1 : -1;
-            const force = ((routeDanger - clearance) / routeDanger) * 76;
+            const force = ((routeDanger - clearance) / routeDanger) * 116;
             avoidance.x += tangentX * sign * force;
             avoidance.z += tangentZ * sign * force;
           }
@@ -2515,22 +2603,27 @@ function updateWorld() {
       bot.vx *= 0.976;
       bot.vz *= 0.976;
       const next = { x: bot.x + bot.vx * dt, z: bot.z + bot.vz * dt };
-      const nearIsland = nearestIsland(next, 12);
-      if (nearIsland.distance > 0) {
+      const islandBlocker = botIslandBlocker(next, bot.shipType, 2) || botRouteIslandBlocker(bot, next, 2);
+      if (!islandBlocker) {
         bot.x = next.x;
         bot.z = next.z;
       } else {
-        const away = Math.atan2(bot.x - nearIsland.island.x, bot.z - nearIsland.island.z);
-        bot.vx *= 0.15;
-        bot.vz *= 0.15;
-        bot.rotation = bot.rotation + clamp(angleDelta(away, bot.rotation), -1.2 * dt, 1.2 * dt);
+        const normal = pushBotOutsideIsland(bot, islandBlocker.island, 3);
+        const botSeed = Number.isFinite(Number(bot.id)) ? Number(bot.id) : (bot.x * 0.13 + bot.z * 0.17);
+        const tangentSign = Math.sin(botSeed * 12.989 + now * 0.0004) >= 0 ? 1 : -1;
+        const tangentX = -normal.nz * tangentSign;
+        const tangentZ = normal.nx * tangentSign;
+        const away = Math.atan2(normal.nx + tangentX * 0.72, normal.nz + tangentZ * 0.72);
+        bot.vx += tangentX * Math.min(bot.speed * 0.18, 1.7);
+        bot.vz += tangentZ * Math.min(bot.speed * 0.18, 1.7);
+        bot.rotation = bot.rotation + clamp(angleDelta(away, bot.rotation), -1.5 * dt, 1.5 * dt);
         if (!targetSocket && !targetBot && !targetKraken && !pickupTarget) {
           bot.targetPlayer = null;
           bot.angerUntil = 0;
           bot.targetBot = null;
           bot.botFightUntil = 0;
         }
-        const point = islandDetourPoint(bot, nearIsland.island);
+        const point = islandDetourPoint(bot, islandBlocker.island);
         bot.targetX = point.x;
         bot.targetZ = point.z;
         bot.turn = 2 + Math.random() * 3;
@@ -2972,13 +3065,13 @@ function handleMessage(socket, text) {
 }
 
 function broadcast(message, except) {
+  const frame = encodeFrame(message);
   for (const client of clients.values()) {
-    if (client !== except) send(client, message);
+    if (client !== except) writeFrame(client, frame);
   }
 }
 
-function send(socket, message) {
-  if (socket.destroyed) return;
+function encodeFrame(message) {
   const payload = Buffer.from(JSON.stringify(message));
   let header;
   if (payload.length < 126) {
@@ -2994,7 +3087,16 @@ function send(socket, message) {
     header[1] = 127;
     header.writeBigUInt64BE(BigInt(payload.length), 2);
   }
-  socket.write(Buffer.concat([header, payload]));
+  return Buffer.concat([header, payload]);
+}
+
+function writeFrame(socket, frame) {
+  if (socket.destroyed) return;
+  socket.write(frame);
+}
+
+function send(socket, message) {
+  writeFrame(socket, encodeFrame(message));
 }
 
 server.listen(port, () => {
