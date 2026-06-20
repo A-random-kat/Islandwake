@@ -109,12 +109,14 @@ const BALLOON_BOMB_KNOCKBACK = 22;
 const AIRBURST_DAMAGE = 60;
 const AIRBURST_RADIUS = BALLOON_BOMB_BLAST_RADIUS * (2 / 3);
 const BALLOON_COST = 600;
+const CANNONBALL_GRAVITY = 5.2;
+const GRAPESHOT_SPREAD = 0.46;
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
-  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: 0.46, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
+  grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: GRAPESHOT_SPREAD, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
   hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 23, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
   harpoon: { id: "harpoon", name: "Harpoon", short: "Harpoon", price: 20, pellets: 1, fixedDamage: 20, whaleDamage: 100, rangeScale: 0.86, spread: 0, radius: 0.16, color: 0xd8d0bd, trail: 0xf8f4e5, noRangeDamage: true },
-  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: 0.46, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
+  airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: GRAPESHOT_SPREAD, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
@@ -319,7 +321,7 @@ const islandData = [
   { name: "Seville", culture: "Spanish", x: 182, z: -138, radius: 24, color: 0xd4ad65, accent: 0xc94f3f, theme: "iberian", shipMarket: ["caravel", "carrack", "galleon", "merchantman"], goods: { Silk: 64, Spice: 38, Iron: 48, Tea: 68, Pearls: 112 } },
   { name: "Venice", culture: "Venetian", x: 116, z: 142, radius: 21, color: 0x82bd72, accent: 0xd7b44a, theme: "lagoon", shipMarket: ["galley", "tartane", "polacre", "xebec", "brigantine"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "chassemaree", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
-  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
+  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "galleon", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
   { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "polacre", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
   { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
   { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop", "ballooner", "windrunner"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
@@ -348,7 +350,6 @@ const islandData = [
   { name: "Morrow Rock", culture: "Uncharted", x: -44, z: 76, radius: 4.8, color: 0x89c76d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Clearwater Key", culture: "Uncharted", x: 122, z: 84, radius: 5.4, color: 0x70b976, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Lowtide Holm", culture: "Uncharted", x: -156, z: 46, radius: 5.1, color: 0x75caa5, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
-  { name: "Cinder Spit", culture: "Uncharted", x: 186, z: -32, radius: 4.7, color: 0x88c478, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Driftmark Cay", culture: "Uncharted", x: -282, z: 108, radius: 5.8, color: 0x77b56c, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Northwind Cay", culture: "Uncharted", x: 284, z: 150, radius: 5.5, color: 0x72bf8e, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Coralhook Isle", culture: "Uncharted", x: -196, z: -294, radius: 5.3, color: 0x8bc36d, accent: 0xf3d178, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
@@ -517,17 +518,32 @@ function deriveShipWeight(ship) {
   return Math.round(clamp(hullMass + structureMass + cargoMass - speedTrim, 35, 320));
 }
 
+function broadsidePriceFloor(ship) {
+  const cannons = shipSideCannons(ship.id);
+  const floors = [0, 0, 2800, 7600, 11200, 16500, 22000, 28000, 35200];
+  return floors[cannons] || 0;
+}
+
 function deriveFairShipPrice(ship) {
   if (ship.id === STARTER_SHIP) return 0;
+  const cannons = shipSideCannons(ship.id);
+  const broadsideValue = Math.max(0, cannons - 1) * 900
+    + Math.max(0, cannons - 3) * 650
+    + Math.max(0, cannons - 5) * 1000;
   const value = ship.hp * 2.2
     + ship.speed * 95
     + ship.regen * 260
     + ship.capacity * 65
     + ship.armor * 8500
-    + ship.hitbox * 260;
+    + ship.hitbox * 260
+    + broadsideValue;
   const sizePremium = 1 + Math.max(0, (ship.hitbox || 3) - 3) * 0.18;
   const blended = ship.price * 0.55 + value * sizePremium * 0.45;
-  return Math.max(ship.price, Math.round(blended / 50) * 50);
+  return Math.max(ship.price, broadsidePriceFloor(ship), Math.round(blended / 50) * 50);
+}
+
+function keepExactShipPrice(shipId) {
+  return ["whaler", "ballooner", "windrunner"].includes(shipId);
 }
 
 for (const ship of shipCatalog) {
@@ -536,7 +552,9 @@ for (const ship of shipCatalog) {
   Object.assign(ship, balance);
   ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
-  ship.price = balance.fixedPrice ? balance.price : deriveFairShipPrice(ship);
+  ship.price = balance.fixedPrice && keepExactShipPrice(ship.id)
+    ? Math.max(balance.price, broadsidePriceFloor(ship))
+    : deriveFairShipPrice(ship);
   if (ship.price < 2500) {
     const progress = clamp(ship.price / 2500, 0, 1);
     ship.hp = Math.min(ship.hp, Math.round(420 + progress * 380));
@@ -1053,6 +1071,108 @@ function shipTier(type) {
   if (price >= 2500) return 2;
   if (price >= 900) return 1;
   return 0;
+}
+
+function shipSideCannons(type = state.shipType) {
+  const explicit = {
+    skiff: 1,
+    shallop: 1,
+    pinnace: 1,
+    yawl: 1,
+    felucca: 1,
+    cat: 1,
+    dart: 1,
+    sloop: 1,
+    longship: 1,
+    hoy: 2,
+    balinger: 2,
+    bilander: 2,
+    cog: 2,
+    dogger: 2,
+    dhow: 2,
+    knarr: 2,
+    lugger: 2,
+    tartane: 2,
+    pink: 2,
+    junk: 2,
+    ketch: 2,
+    schooner: 2,
+    galley: 2,
+    xebec: 2,
+    brigantine: 3,
+    caravel: 3,
+    snow: 3,
+    packet: 3,
+    chassemaree: 3,
+    barquentine: 3,
+    clipper: 3,
+    fluyt: 3,
+    polacre: 3,
+    bombketch: 3,
+    brig: 3,
+    barque: 3,
+    storm: 3,
+    corvette: 3,
+    whaler: 3,
+    ballooner: 3,
+    frigate: 4,
+    postship: 4,
+    sixthrate: 4,
+    carrack: 4,
+    merchantman: 5,
+    eastindiaman: 5,
+    galleon: 5,
+    razee: 5,
+    treasure: 6,
+    fourthrate: 6,
+    grandfrigate: 7,
+    windrunner: 6,
+    firstrate: 8,
+    manowar: 7,
+  };
+  if (explicit[type]) return explicit[type];
+  return clamp(1 + Math.floor((shipTier(type) + 1) / 2), 1, 8);
+}
+
+function broadsideVectors(rotation = 0) {
+  const forward = new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation)).normalize();
+  const right = new THREE.Vector3(Math.cos(rotation), 0, -Math.sin(rotation)).normalize();
+  return { forward, right, left: right.clone().multiplyScalar(-1) };
+}
+
+function broadsideSideForDirection(rotation, direction) {
+  const flat = direction.clone ? direction.clone() : new THREE.Vector3(direction.x || 0, 0, direction.z || 0);
+  flat.y = 0;
+  if (flat.lengthSq() < 0.0001) return { side: 1, alignment: 0, direction: broadsideVectors(rotation).right };
+  flat.normalize();
+  const { right, left } = broadsideVectors(rotation);
+  const rightDot = right.dot(flat);
+  const leftDot = left.dot(flat);
+  const side = rightDot >= leftDot ? 1 : -1;
+  return { side, alignment: Math.max(rightDot, leftDot), direction: side > 0 ? right : left };
+}
+
+function broadsideGunSlots(ship, type = state.shipType, sides = [-1, 1]) {
+  if (!ship) return [];
+  const count = shipSideCannons(type);
+  const { length, width } = shipHullDimensions(type);
+  const scale = shipVisualScale(type);
+  const rotation = ship.rotation?.y || ship.rotation || 0;
+  const { right } = broadsideVectors(rotation);
+  const y = 1.2 * scale;
+  const sideOffset = width * 0.53 + 0.18 * scale;
+  const zSpan = Math.max(1.2, length * 0.58);
+  const slots = [];
+  sides.forEach((side) => {
+    const sideDir = right.clone().multiplyScalar(side).normalize();
+    for (let i = 0; i < count; i++) {
+      const t = count === 1 ? 0.5 : i / (count - 1);
+      const local = new THREE.Vector3(side * sideOffset, y, -zSpan * 0.5 + t * zSpan);
+      const origin = ship.localToWorld ? ship.localToWorld(local.clone()) : ship.position.clone().add(local);
+      slots.push({ side, index: i, origin, dir: sideDir.clone() });
+    }
+  });
+  return slots;
 }
 
 function crateDropCount(target) {
@@ -5905,7 +6025,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if ((tier >= 4 && !["whaler", "ballooner"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
-  if (gunDeckTypes.has(type) || tier >= 4) addCannonPorts(group, 1 + Math.min(5, tier), hullWidth, hullLength, scale, profile);
+  addCannonPorts(group, shipSideCannons(type), hullWidth, hullLength, scale, profile);
   if (!customCabinTypes.has(type)) {
     if (tier >= 2) addCabin(group, 0, hullLength * 0.22, Math.min(2.4, hullWidth * 0.68), 1.35 + tier * 0.18, scale, 0x7a5030);
     if (tier >= 3) {
@@ -6271,17 +6391,6 @@ function makeShip(type = "skiff", remote = false) {
     addSail(group, 0, 0.2, 0.86);
   }
   addHistoricalDetails(group, type, hullSize[0], hullSize[1], scale, spec, profile);
-  const hasBuiltInGuns = [
-    "bombketch", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "ironclad", "manowar", "merchantman", "eastindiaman", "razee", "storm",
-    "treasure", "firstrate", "snow", "brig", "sixthrate", "postship",
-  ].includes(type);
-  if (!hasBuiltInGuns) {
-    const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.2 * scale, 1.5 * scale, 8), mats.dark);
-    cannon.rotation.z = Math.PI / 2;
-    cannon.position.set(0, 1.58 * scale, -1.65 * scale);
-    group.add(cannon);
-  }
   addShipNightLights(group, hullSize[0], hullSize[1], scale, shipTier(type), profile);
   const visual = new THREE.Group();
   while (group.children.length) visual.add(group.children[0]);
@@ -6343,13 +6452,23 @@ function makeCharacter() {
 
 function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const ammo = CANNONBALL_TYPES[options.ammoType] || CANNONBALL_TYPES.basic;
+  const shotDir = dir.clone().normalize();
   const target = options.target
     ? options.target.clone()
-    : pos.clone().add(dir.clone().normalize().multiplyScalar(range));
+    : pos.clone().add(shotDir.clone().multiplyScalar(range));
   target.y = ammo.airburst ? 24 : 0;
   const start = pos.clone();
-  start.y = 1.15;
+  start.y = Number.isFinite(Number(options.startY)) ? Number(options.startY) : 1.15;
   const distance = Math.max(1, ammo.airburst ? start.distanceTo(target) : dist2(start, target));
+  const ballistic = Boolean(options.ballistic) && !ammo.airburst;
+  const gravity = Number(options.gravity) || CANNONBALL_GRAVITY;
+  const shotSpeed = CANNONBALL_SPEED * (Number(ammo.speedScale) || 1);
+  const flightTime = Math.max(0.1, distance / shotSpeed);
+  const verticalVelocity = Number.isFinite(Number(options.verticalVelocity))
+    ? Number(options.verticalVelocity)
+    : ballistic
+      ? (0.5 * gravity * flightTime * flightTime - Math.max(0.35, start.y)) / flightTime
+      : 0;
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(ammo.radius || 0.35, 10, 8),
     new THREE.MeshStandardMaterial({ color: ammo.color || 0x2f3342, roughness: 0.84, metalness: 0.04 })
@@ -6369,19 +6488,30 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     trailPoints: [start.clone()],
     start,
     target,
-    dir: dir.clone().normalize(),
-    speed: CANNONBALL_SPEED,
+    dir: shotDir,
+    speed: shotSpeed,
     traveled: 0,
     distance,
     damage,
+    baseDamage: Number(options.baseDamage) || damage,
+    rangeDamage: Boolean(options.rangeDamage),
     targetKind: options.targetKind || "any",
     ammoType: ammo.id,
     airburst: Boolean(ammo.airburst),
+    ballistic,
+    gravity,
+    verticalVelocity,
     fire: ammo.fire ? { ...ammo.fire } : null,
     arcHeight: ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5),
     createdWallAt: Date.now(),
-    maxWallAge: Math.max(2200, (distance / CANNONBALL_SPEED + 1.2) * 1000),
+    maxWallAge: Math.max(2200, (distance / shotSpeed + 1.2) * 1000),
   });
+}
+
+function projectileDamageAtImpact(shot) {
+  const base = Number(shot?.baseDamage ?? shot?.damage) || 0;
+  if (!shot?.rangeDamage) return Number(shot?.damage) || base;
+  return scaleDamageByRange(base, Math.min(Number(shot.traveled) || 0, Number(shot.distance) || 1), Number(shot.distance) || 1);
 }
 
 function removeProjectile(shot, impact = "none") {
@@ -8349,9 +8479,10 @@ function projectileHitsAnimal(shot, animal) {
 
 function damageAnimal(animal, shot) {
   if (animal.kind !== "whale") return false;
+  const impactDamage = projectileDamageAtImpact(shot);
   const damage = shot.ammoType === "harpoon"
     ? CANNONBALL_TYPES.harpoon.whaleDamage * (state.shipType === "whaler" ? 1.5 : 1)
-    : shot.damage * 0.5;
+    : impactDamage * 0.5;
   if (animal.serverId && multiplayer.serverWorld) {
     animal.aggressiveUntil = clock.elapsedTime + 18;
     animal.submergedUntil = 0;
@@ -9111,6 +9242,51 @@ function openIslandShop() {
   openShop(island);
 }
 
+function fireBroadsideVolley({
+  owner,
+  ship,
+  shipType,
+  sides = [-1, 1],
+  ammo = CANNONBALL_TYPES.basic,
+  range = BOT_CANNON_RANGE,
+  baseDamage = 34,
+  targetKind = "any",
+  publish = false,
+} = {}) {
+  if (!ship) return 0;
+  const slots = broadsideGunSlots(ship, shipType, sides);
+  let fired = 0;
+  slots.forEach((slot) => {
+    const pellets = ammo.pellets || 1;
+    for (let i = 0; i < pellets; i++) {
+      const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
+      const shotDir = rotateFlatDirection(slot.dir, spread).normalize();
+      const shotRange = range * (ammo.rangeScale || 1);
+      const directDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : baseDamage * (ammo.damageScale || 1);
+      const target = slot.origin.clone().add(shotDir.clone().multiplyScalar(shotRange));
+      target.y = 0;
+      makeProjectile(owner, slot.origin, shotDir, directDamage, shotRange, {
+        target,
+        ammoType: ammo.id,
+        targetKind,
+        ballistic: !ammo.airburst,
+        startY: slot.origin.y,
+        baseDamage: directDamage,
+        rangeDamage: !ammo.noRangeDamage,
+      });
+      if (publish) publishShot(slot.origin, shotDir, directDamage, shotRange, target, ammo.id, {
+        ballistic: !ammo.airburst,
+        startY: slot.origin.y,
+        baseDamage: directDamage,
+        rangeDamage: !ammo.noRangeDamage,
+        targetKind,
+      });
+      fired++;
+    }
+  });
+  return fired;
+}
+
 function useTool() {
   if (nameGateOpen()) return;
   if (ui.shop.classList.contains("hidden") === false) return;
@@ -9124,7 +9300,8 @@ function useTool() {
   raycaster.ray.intersectPlane(aimPlane, aimPoint);
   const dir = aimPoint.clone().sub(playerShip.position);
   dir.y = 0;
-  if (dir.lengthSq() < 0.1) return;
+  const aimDistance = dir.length();
+  if (dir.lengthSq() < 0.1 && state.tool !== "cannon") return;
   dir.normalize();
   if (state.tool === "cannon") {
     const fireDelay = cannonReload();
@@ -9132,20 +9309,18 @@ function useTool() {
     const ammo = currentAmmoType();
     if (!consumeAmmo(ammo)) return;
     state.cooldown = fireDelay;
-    const range = cannonRange() * (ammo.rangeScale || 1);
-    const targetDistance = clamp(dist2(playerShip.position, aimPoint), 4, range);
-    const pellets = ammo.pellets || 1;
-    for (let i = 0; i < pellets; i++) {
-      const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
-      const shotDir = rotateFlatDirection(dir, spread);
-      const baseDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : cannonDamage() * (ammo.damageScale || 1);
-      const damage = ammo.noRangeDamage ? baseDamage : scaleDamageByRange(baseDamage, targetDistance, range);
-      const target = playerShip.position.clone().add(shotDir.clone().multiplyScalar(targetDistance));
-      target.y = 0;
-      const origin = playerShip.position.clone().add(shotDir.clone().multiplyScalar(3.8));
-      makeProjectile(playerId, origin, shotDir, damage, range, { target, ammoType: ammo.id });
-      publishShot(origin, shotDir, damage, range, target, ammo.id);
-    }
+    const range = clamp(aimDistance, 4, cannonRange());
+    fireBroadsideVolley({
+      owner: playerId,
+      ship: playerShip,
+      shipType: state.shipType,
+      sides: [-1, 1],
+      ammo,
+      range,
+      baseDamage: cannonDamage(),
+      targetKind: "any",
+      publish: true,
+    });
   } else if (state.tool === "rod") {
     if (state.rodCooldown > 0) return;
     state.rodCooldown = 1.1;
@@ -9422,7 +9597,7 @@ function renderShop() {
       const previewMarkup = preview
         ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
         : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? t("sailing") : t("buy")}</button></div><p>${shipRoleDescription(ship)}</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })}</p>${shipCompareMarkup(ship)}</div></div>`;
+      return `<div class="row ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-ship="${ship.id}" ${owned ? "disabled" : ""}>${owned ? t("sailing") : t("buy")}</button></div><p>${shipRoleDescription(ship)}</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })} / Cannons ${shipSideCannons(ship.id)}/side</p>${shipCompareMarkup(ship)}</div></div>`;
     }).join("");
   } else if (state.shopTab === "ammo") {
     const slotStatus = `<div class="ammo-slot-status">${state.ammoSlots.map((type, index) => {
@@ -10031,7 +10206,9 @@ function updateShip(dt) {
   const effectiveSpeed = state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed;
   const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
   const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
-  state.rotation += turn * dt * (1.7 + effectiveSpeed / 28);
+  const rudderSpeedRatio = clamp(state.velocity.length() / Math.max(1, effectiveSpeed * 0.65), 0, 1);
+  const rudderAuthority = rudderSpeedRatio * rudderSpeedRatio * (3 - 2 * rudderSpeedRatio);
+  state.rotation += turn * dt * (1.7 + effectiveSpeed / 28) * rudderAuthority;
   const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
   state.velocity.add(forward.multiplyScalar(throttle * effectiveSpeed * dt));
   const wind = windAt(playerShip.position);
@@ -10389,9 +10566,14 @@ function updateBots(dt) {
         }
       }
       const steerTarget = toTarget.clone().add(avoidance);
-      const desired = Math.atan2(steerTarget.x, steerTarget.z);
-      const delta = angleDelta(desired, bot.rotation);
+      const baseDesired = Math.atan2(steerTarget.x, steerTarget.z);
+      let desired = baseDesired;
       const inCombat = aggressive || Boolean(fightingBot);
+      if (inCombat && targetDistance < botCannonRange(bot) * 1.25) {
+        const side = broadsideSideForDirection(bot.rotation, steerTarget).side;
+        desired = baseDesired - side * Math.PI / 2;
+      }
+      const delta = angleDelta(desired, bot.rotation);
       const chasingPickup = Boolean(pickupTarget);
       const evadingKraken = Boolean(krakenEvade);
       const turnRate = evadingKraken ? 1.25 + spec.speed / 40 : inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
@@ -10426,30 +10608,26 @@ function updateBots(dt) {
     const shotTarget = aggressive ? playerShip : fightingBot?.group;
     const shotDir = shotTarget ? shotTarget.position.clone().sub(bot.group.position) : new THREE.Vector3();
     shotDir.y = 0;
-    const facing = shotDir.lengthSq()
-      ? new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation)).dot(shotDir.clone().normalize())
-      : 0;
     const shotDistance = shotDir.length();
-    const canFire = shotTarget && bot.fireCooldown <= 0 && facing > 0.45;
     const botRange = botCannonRange(bot);
-    if (canFire && shotDistance <= botRange && shotDistance > 0.01) {
+    if (shotTarget && bot.fireCooldown <= 0 && shotDistance <= botRange && shotDistance > 0.01) {
       const targetVelocity = fightingBot ? fightingBot.velocity : state.velocity;
       const origin = bot.group.position.clone();
       const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, botRange);
-      const shot = targetPoint.clone().sub(origin);
-      shot.y = 0;
-      if (shot.lengthSq() < 0.01) return;
-      shot.normalize();
-      const damage = scaleDamageByRange(botCannonDamage(bot), shotDistance, botRange);
-      makeProjectile(
-        bot.localId,
-        origin.add(shot.clone().multiplyScalar(3.4)),
-        shot,
-        damage,
-        botRange,
-        { target: targetPoint, targetKind: fightingBot ? "bot" : "player" },
-      );
-      bot.fireCooldown = botCannonReload(bot);
+      const broadside = broadsideSideForDirection(bot.rotation, targetPoint.clone().sub(origin));
+      if (broadside.alignment > 0.72) {
+        fireBroadsideVolley({
+          owner: bot.localId,
+          ship: bot.group,
+          shipType: bot.shipType,
+          sides: [broadside.side],
+          ammo: CANNONBALL_TYPES.basic,
+          range: botRange,
+          baseDamage: botCannonDamage(bot),
+          targetKind: fightingBot ? "bot" : "player",
+        });
+        bot.fireCooldown = botCannonReload(bot);
+      }
     }
   });
 }
@@ -10463,16 +10641,27 @@ function updateProjectiles(dt) {
     }
     shot.traveled += shot.speed * dt;
     const progress = clamp(shot.traveled / shot.distance, 0, 1);
-    shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
-    if (!shot.airburst) {
-      shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    if (shot.ballistic) {
+      shot.mesh.position.copy(shot.start).add(shot.dir.clone().multiplyScalar(shot.traveled));
+      const flightTime = shot.traveled / Math.max(0.001, shot.speed);
+      shot.mesh.position.y = shot.start.y + (shot.verticalVelocity || 0) * flightTime - 0.5 * (shot.gravity || CANNONBALL_GRAVITY) * flightTime * flightTime;
     } else {
+      shot.mesh.position.lerpVectors(shot.start, shot.target, progress);
+    }
+    if (!shot.airburst && !shot.ballistic) {
+      shot.mesh.position.y = 1.05 + Math.sin(progress * Math.PI) * shot.arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    } else if (shot.airburst) {
       shot.mesh.position.y += Math.sin(progress * Math.PI) * 1.8;
     }
     shot.trailPoints.push(shot.mesh.position.clone());
     while (shot.trailPoints.length > 7) shot.trailPoints.shift();
     shot.trail.geometry.setFromPoints(shot.trailPoints);
     shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
+    if (shot.ballistic && shot.mesh.position.y <= 0.02 && shot.traveled > 1.2) {
+      shot.target.copy(shot.mesh.position).setY(0);
+      removeProjectile(shot, "splash");
+      return;
+    }
     if (shot.airburst && progress >= 0.92) {
       detonateAirburst(shot);
       removeProjectile(shot);
@@ -10490,26 +10679,29 @@ function updateProjectiles(dt) {
         bots.forEach((bot) => {
           if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
             const hitPosition = shot.mesh.position.clone();
+            const impactDamage = projectileDamageAtImpact(shot);
             if (multiplayer.serverWorld && bot.serverId) {
-              sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: shot.damage, fire: shot.fire || null });
+              sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: impactDamage, fire: shot.fire || null });
               if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
             } else {
-              damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition });
+              damageTarget(bot, impactDamage, { fire: shot.fire, hitPosition });
             }
-            addXP(1 + Math.floor(shot.damage / 27));
+            addXP(1 + Math.floor(impactDamage / 27));
             hit = true;
           }
         });
         remotePlayers.forEach((remote) => {
           if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
-            if (remote.mode !== "land") addXP(2 + Math.floor(shot.damage / 24));
+            const impactDamage = projectileDamageAtImpact(shot);
+            if (remote.mode !== "land") addXP(2 + Math.floor(impactDamage / 24));
             if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
             hit = true;
           }
         });
         if (!hit && projectileHitsKraken(shot)) {
-          if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: shot.damage });
-          krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - shot.damage);
+          const impactDamage = projectileDamageAtImpact(shot);
+          if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: impactDamage });
+          krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - impactDamage);
           hit = true;
         }
       }
@@ -10519,14 +10711,14 @@ function updateProjectiles(dt) {
           damageCharacter(CHARACTER_MAX_HP, { hitPosition: shot.mesh.position.clone() });
           hit = true;
         } else if (state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
-          damageTarget(state, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+          damageTarget(state, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
           hit = true;
         }
       }
       if (!hit && !multiplayer.serverWorld && shot.targetKind !== "player") {
         bots.forEach((bot) => {
           if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            damageTarget(bot, shot.damage, { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+            damageTarget(bot, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
             hit = true;
           }
         });
@@ -11792,7 +11984,7 @@ function spawnRemoteShot(data) {
       seenRemoteShots.delete(oldest);
     }
   }
-  const pos = new THREE.Vector3(Number(data.x), 0, Number(data.z));
+  const pos = new THREE.Vector3(Number(data.x), Number.isFinite(Number(data.y)) ? Number(data.y) : 0, Number(data.z));
   const dir = new THREE.Vector3(Number(data.dirX), 0, Number(data.dirZ));
   if (![pos.x, pos.z, dir.x, dir.z].every(Number.isFinite) || dir.lengthSq() < 0.01) return;
   const target = Number.isFinite(Number(data.targetX)) && Number.isFinite(Number(data.targetZ))
@@ -11802,6 +11994,10 @@ function spawnRemoteShot(data) {
     target,
     targetKind: data.targetKind || "any",
     ammoType: data.ammoType || "basic",
+    ballistic: Boolean(data.ballistic),
+    startY: Number.isFinite(Number(data.startY)) ? Number(data.startY) : undefined,
+    baseDamage: Number(data.baseDamage) || Number(data.damage) || 20,
+    rangeDamage: Boolean(data.rangeDamage),
   });
 }
 
@@ -11970,7 +12166,7 @@ addEventListener("beforeunload", () => {
   if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
 });
 
-function publishShot(origin, dir, damage, range, target = null, ammoType = "basic") {
+function publishShot(origin, dir, damage, range, target = null, ammoType = "basic", options = {}) {
   sendMultiplayer({
     type: "shot",
     shot: {
@@ -11978,15 +12174,20 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
       owner: playerId,
       sentAt: Date.now(),
       x: origin.x,
+      y: origin.y,
       z: origin.z,
       dirX: dir.x,
       dirZ: dir.z,
       targetX: target?.x,
       targetZ: target?.z,
       damage,
+      baseDamage: Number(options.baseDamage) || damage,
       range,
-      targetKind: "any",
+      targetKind: options.targetKind || "any",
       ammoType,
+      ballistic: Boolean(options.ballistic),
+      startY: Number(options.startY) || origin.y,
+      rangeDamage: Boolean(options.rangeDamage),
     },
   });
 }

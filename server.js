@@ -100,7 +100,6 @@ const islandCenters = [
   { name: "Morrow Rock", x: -44, z: 76, radius: 4.8 },
   { name: "Clearwater Key", x: 122, z: 84, radius: 5.4 },
   { name: "Lowtide Holm", x: -156, z: 46, radius: 5.1 },
-  { name: "Cinder Spit", x: 186, z: -32, radius: 4.7 },
   { name: "Driftmark Cay", x: -282, z: 108, radius: 5.8 },
   { name: "Northwind Cay", x: 284, z: 150, radius: 5.5 },
   { name: "Coralhook Isle", x: -196, z: -294, radius: 5.3 },
@@ -723,6 +722,108 @@ function botCannonRangeFor(botOrLevel = 1) {
 
 function scaleDamageByRange(baseDamage, distance, range) {
   return Math.round(baseDamage * (1 + clamp(distance / Math.max(1, range), 0, 1) * 0.5));
+}
+
+function shipSideCannons(type = "skiff") {
+  const explicit = {
+    skiff: 1,
+    shallop: 1,
+    pinnace: 1,
+    yawl: 1,
+    felucca: 1,
+    cat: 1,
+    dart: 1,
+    sloop: 1,
+    longship: 1,
+    hoy: 2,
+    balinger: 2,
+    bilander: 2,
+    cog: 2,
+    dogger: 2,
+    dhow: 2,
+    knarr: 2,
+    lugger: 2,
+    tartane: 2,
+    pink: 2,
+    junk: 2,
+    ketch: 2,
+    schooner: 2,
+    galley: 2,
+    xebec: 2,
+    brigantine: 3,
+    caravel: 3,
+    snow: 3,
+    packet: 3,
+    chassemaree: 3,
+    barquentine: 3,
+    clipper: 3,
+    fluyt: 3,
+    polacre: 3,
+    bombketch: 3,
+    brig: 3,
+    barque: 3,
+    storm: 3,
+    corvette: 3,
+    whaler: 3,
+    ballooner: 3,
+    frigate: 4,
+    postship: 4,
+    sixthrate: 4,
+    carrack: 4,
+    merchantman: 5,
+    eastindiaman: 5,
+    galleon: 5,
+    razee: 5,
+    treasure: 6,
+    fourthrate: 6,
+    grandfrigate: 7,
+    windrunner: 6,
+    firstrate: 8,
+    manowar: 7,
+  };
+  if (explicit[type]) return explicit[type];
+  return clamp(1 + Math.floor((shipSpec(type).tier + 1) / 2), 1, 8);
+}
+
+function broadsideVectors(rotation = 0) {
+  const forward = { x: Math.sin(rotation), z: Math.cos(rotation) };
+  const right = { x: Math.cos(rotation), z: -Math.sin(rotation) };
+  return { forward, right, left: { x: -right.x, z: -right.z } };
+}
+
+function broadsideSideForDirection(rotation, dx, dz) {
+  const length = Math.hypot(dx, dz);
+  if (length <= 0.001) return { side: 1, alignment: 0 };
+  const nx = dx / length;
+  const nz = dz / length;
+  const { right, left } = broadsideVectors(rotation);
+  const rightDot = right.x * nx + right.z * nz;
+  const leftDot = left.x * nx + left.z * nz;
+  return rightDot >= leftDot
+    ? { side: 1, alignment: rightDot, dirX: right.x, dirZ: right.z }
+    : { side: -1, alignment: leftDot, dirX: left.x, dirZ: left.z };
+}
+
+function botBroadsideOrigins(bot, side) {
+  const count = shipSideCannons(bot.shipType);
+  const radius = shipRadius(bot.shipType);
+  const { forward, right } = broadsideVectors(bot.rotation);
+  const sideX = right.x * side;
+  const sideZ = right.z * side;
+  const sideOffset = radius * 0.72;
+  const zSpan = Math.max(1.2, radius * 1.15);
+  const origins = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const along = -zSpan * 0.5 + t * zSpan;
+    origins.push({
+      x: bot.x + sideX * sideOffset + forward.x * along,
+      z: bot.z + sideZ * sideOffset + forward.z * along,
+      dirX: sideX,
+      dirZ: sideZ,
+    });
+  }
+  return origins;
 }
 
 function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
@@ -2389,9 +2490,15 @@ function updateWorld() {
           avoidance.z += (dz / d) * force;
         }
       }
-      const desired = Math.atan2(toTarget.x + avoidance.x, toTarget.z + avoidance.z);
-      const delta = angleDelta(desired, bot.rotation);
+      const steerX = toTarget.x + avoidance.x;
+      const steerZ = toTarget.z + avoidance.z;
+      const baseDesired = Math.atan2(steerX, steerZ);
       const inCombat = Boolean(targetSocket || targetBot || targetKraken);
+      const broadsideTarget = inCombat && distance < botCannonRangeFor(bot) * 1.25
+        ? broadsideSideForDirection(bot.rotation, steerX, steerZ)
+        : null;
+      const desired = broadsideTarget ? baseDesired - broadsideTarget.side * Math.PI / 2 : baseDesired;
+      const delta = angleDelta(desired, bot.rotation);
       const chasingPickup = Boolean(pickupTarget);
       const turnRate = fleeingKraken ? 1.25 + bot.speed / 40 : inCombat ? 0.95 + bot.speed / 46 : chasingPickup ? 0.86 + bot.speed / 52 : 0.6 + bot.speed / 64;
       bot.rotation += clamp(delta, -turnRate * dt, turnRate * dt);
@@ -2464,42 +2571,50 @@ function updateWorld() {
         continue;
       }
       if (controllingBalloon) continue;
-      const forwardX = Math.sin(bot.rotation);
-      const forwardZ = Math.cos(bot.rotation);
-      const facing = shotDistance > 0.01 ? (forwardX * dx + forwardZ * dz) / shotDistance : 0;
       const shotRange = botCannonRangeFor(bot);
-      if (shotDistance <= shotRange && shotDistance > 0.01 && facing > 0.45) {
+      if (shotDistance <= shotRange && shotDistance > 0.01) {
         const { targetX, targetZ } = aimBotShot(bot, shotTarget, shotRange);
         const aimDx = targetX - bot.x;
         const aimDz = targetZ - bot.z;
         const aimDistance = Math.hypot(aimDx, aimDz);
         if (aimDistance <= 0.01) continue;
-        const dirX = aimDx / aimDistance;
-        const dirZ = aimDz / aimDistance;
-        const damage = scaleDamageByRange(botCannonDamage(bot), shotDistance, shotRange);
-        broadcast({
-          type: "shot",
-          shot: {
-            id: crypto.randomUUID(),
-            owner: bot.id,
-            sentAt: now,
-            x: bot.x + dirX * 3.6,
-            z: bot.z + dirZ * 3.6,
-            dirX,
-            dirZ,
-            targetX,
-            targetZ,
-            targetKind: shotTarget.kind,
-            damage,
-            range: shotRange,
-          },
-        });
+        const broadside = broadsideSideForDirection(bot.rotation, aimDx, aimDz);
+        if (broadside.alignment <= 0.72) continue;
+        const baseDamage = botCannonDamage(bot);
+        const damage = scaleDamageByRange(baseDamage, shotDistance, shotRange);
+        const origins = botBroadsideOrigins(bot, broadside.side);
+        for (const origin of origins) {
+          const targetX = origin.x + origin.dirX * shotRange;
+          const targetZ = origin.z + origin.dirZ * shotRange;
+          broadcast({
+            type: "shot",
+            shot: {
+              id: crypto.randomUUID(),
+              owner: bot.id,
+              sentAt: now,
+              x: origin.x,
+              y: 1.15,
+              z: origin.z,
+              dirX: origin.dirX,
+              dirZ: origin.dirZ,
+              targetX,
+              targetZ,
+              targetKind: shotTarget.kind,
+              damage: baseDamage,
+              baseDamage,
+              rangeDamage: true,
+              ballistic: true,
+              startY: 1.15,
+              range: shotRange,
+            },
+          });
+        }
         if (shotTarget.bot) {
-          damageBot(shotTarget.bot, damage);
+          damageBot(shotTarget.bot, damage * origins.length);
           shotTarget.bot.targetBot = bot.id;
           shotTarget.bot.botFightUntil = now + 9000;
         } else if (shotTarget.kraken) {
-          damageKraken(damage * 0.45);
+          damageKraken(damage * origins.length * 0.45);
         }
         bot.fireCooldown = botCannonReload(bot);
       }
