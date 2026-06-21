@@ -419,7 +419,7 @@ const shipCatalog = [
   { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
   { id: "postship", name: "Post Ship", price: 10350, hp: 640, armor: 0.11, speed: 22, regen: 2.8, color: 0x5d7fb2, model: "frigate" },
   { id: "carrack", name: "Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
-  { id: "treasure", name: "Treasure Junk", price: 11800, hp: 900, armor: 0.14, speed: 9, regen: 3.5, color: 0xd6a83c, model: "treasure" },
+  { id: "treasure", name: "Treasure Junk", price: 32000, hp: 3500, armor: 0.14, speed: 9, regen: 5.0, color: 0xd6a83c, model: "treasure" },
   { id: "whaler", name: "Whaler", price: 10600, hp: 1750, armor: 0.1, speed: 12, regen: 2.0, color: 0x6f8792, model: "frigate" },
   { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
   { id: "ballooner", name: "Ballooner", price: 15000, hp: 1350, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
@@ -477,7 +477,7 @@ const shipBalance = {
   carrack: { name: "Carrack", price: 12600, hp: 2340, armor: 0.11, speed: 10, regen: 4, capacity: 30, hitbox: 4.4 },
   galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
   eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
-  treasure: { name: "Treasure Junk", price: 16800, hp: 2700, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 4.9 },
+  treasure: { name: "Treasure Junk", price: 32000, fixedPrice: true, hp: 3500, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 6.1, weight: 320 },
   whaler: { name: "Whaler", price: 10600, fixedPrice: true, hp: 1750, armor: 0.1, speed: 12, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
   ballooner: { name: "Ballooner", price: 15000, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
@@ -1166,7 +1166,7 @@ function shipSideCannons(type = state.shipType) {
     eastindiaman: 5,
     galleon: 5,
     razee: 5,
-    treasure: 6,
+    treasure: 7,
     fourthrate: 6,
     grandfrigate: 7,
     windrunner: 6,
@@ -1175,6 +1175,10 @@ function shipSideCannons(type = state.shipType) {
   };
   if (explicit[type]) return explicit[type];
   return clamp(1 + Math.floor((shipTier(type) + 1) / 2), 1, 8);
+}
+
+function shipUsesCenterlineGun(type = state.shipType) {
+  return false;
 }
 
 function broadsideVectors(rotation = 0) {
@@ -1195,14 +1199,30 @@ function broadsideSideForDirection(rotation, direction) {
   return { side, alignment: Math.max(rightDot, leftDot), direction: side > 0 ? right : left };
 }
 
+function cannonSideForDirection(rotation, direction, type = state.shipType) {
+  if (!shipUsesCenterlineGun(type)) return broadsideSideForDirection(rotation, direction);
+  const flat = direction.clone ? direction.clone() : new THREE.Vector3(direction.x || 0, 0, direction.z || 0);
+  flat.y = 0;
+  const { forward } = broadsideVectors(rotation);
+  if (flat.lengthSq() < 0.0001) return { side: 0, alignment: 0, direction: forward };
+  flat.normalize();
+  return { side: 0, alignment: forward.dot(flat), direction: forward };
+}
+
 function broadsideGunSlots(ship, type = state.shipType, sides = [-1, 1]) {
   if (!ship) return [];
   const count = shipSideCannons(type);
   const { length, width } = shipHullDimensions(type);
   const scale = shipVisualScale(type);
+  const profile = getShipStats(type).model || type;
   const rotation = ship.rotation?.y || ship.rotation || 0;
-  const { right } = broadsideVectors(rotation);
+  const { forward, right } = broadsideVectors(rotation);
   const y = 1.2 * scale;
+  if (shipUsesCenterlineGun(type)) {
+    const local = new THREE.Vector3(0, y, length * 0.23 * scale);
+    const origin = ship.localToWorld ? ship.localToWorld(local.clone()) : ship.position.clone().add(local);
+    return [{ side: 0, index: 0, origin, dir: forward.clone() }];
+  }
   const sideOffset = width * 0.53 + 0.18 * scale;
   const zSpan = Math.max(1.2, length * 0.58);
   const slots = [];
@@ -1210,7 +1230,10 @@ function broadsideGunSlots(ship, type = state.shipType, sides = [-1, 1]) {
     const sideDir = right.clone().multiplyScalar(side).normalize();
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0.5 : i / (count - 1);
-      const local = new THREE.Vector3(side * sideOffset, y, -zSpan * 0.5 + t * zSpan);
+      const localZ = -zSpan * 0.5 + t * zSpan;
+      const hullSide = hullSideXAt(length, width, scale, localZ, 0.98, profile);
+      const localX = count === 1 ? side * (hullSide + 0.2 * scale) : side * sideOffset;
+      const local = new THREE.Vector3(localX, y, localZ);
       const origin = ship.localToWorld ? ship.localToWorld(local.clone()) : ship.position.clone().add(local);
       slots.push({ side, index: i, origin, dir: sideDir.clone() });
     }
@@ -1276,7 +1299,7 @@ function shipVisualScale(type = state.shipType) {
     merchantman: 1.28,
     eastindiaman: 1.34,
     carrack: 1.34,
-    treasure: 1.48,
+    treasure: 1.52,
     fourthrate: 1.38,
     manowar: 1.42,
     firstrate: 1.5,
@@ -1337,7 +1360,7 @@ function shipHullDimensions(type = state.shipType) {
     fluyt: [7.0, 3.4],
     merchantman: [7.4, 3.45],
     eastindiaman: [7.8, 3.55],
-    treasure: [8.0, 4.15],
+    treasure: [12.0, 4.45],
     whaler: [8.3, 3.05],
     ballooner: [8.0, 3.05],
     ironclad: [7.8, 3.7],
@@ -1413,7 +1436,7 @@ function shipStructureBoxes(type = state.shipType) {
   const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "treasure", "windrunner"]);
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner", "turtle"].includes(type);
   if (hasLargeArchitecture) {
-    const sternRoofY = type === "postship" ? 2.48 * scale : 2.08 * scale;
+    const sternRoofY = type === "postship" ? 2.48 * scale : type === "treasure" ? 2.72 * scale : 2.08 * scale;
     if (largeInteriorTypes.has(type)) {
       const sternCenterZ = -length * 0.34;
       boxes.push({
@@ -1461,6 +1484,47 @@ function shipStructureBoxes(type = state.shipType) {
           z: sternCenterZ + length * 0.03,
           w: 0.5 * scale,
           d: 0.38 * scale,
+          floorY: deckY,
+          roofY: 1.62 * scale,
+          noRoofWalk: true,
+        });
+      }
+      if (type === "treasure") {
+        boxes.push({
+          id: "treasure-chart-table",
+          z: sternCenterZ + length * 0.018,
+          w: 1.04 * scale,
+          d: 0.58 * scale,
+          floorY: deckY,
+          roofY: 1.68 * scale,
+          noRoofWalk: true,
+        });
+        boxes.push({
+          id: "treasure-screen-left",
+          x: -width * 0.18,
+          z: sternCenterZ - length * 0.04,
+          w: 0.08 * scale,
+          d: 0.9 * scale,
+          floorY: deckY,
+          roofY: 2.02 * scale,
+          noRoofWalk: true,
+        });
+        boxes.push({
+          id: "treasure-screen-right",
+          x: width * 0.18,
+          z: sternCenterZ - length * 0.04,
+          w: 0.08 * scale,
+          d: 0.9 * scale,
+          floorY: deckY,
+          roofY: 2.02 * scale,
+          noRoofWalk: true,
+        });
+        boxes.push({
+          id: "treasure-lacquer-chest",
+          x: width * 0.2,
+          z: sternCenterZ + length * 0.055,
+          w: 0.58 * scale,
+          d: 0.42 * scale,
           floorY: deckY,
           roofY: 1.62 * scale,
           noRoofWalk: true,
@@ -1597,18 +1661,38 @@ function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   return inner || door;
 }
 
+function shipStructureBarrierAt(localPoint, type = state.shipType, currentLocalY = shipDeckLocalY(type)) {
+  for (const box of shipStructureBoxes(type)) {
+    if (!localPointInShipBox(localPoint, box)) continue;
+    const alreadyOnRoof = !box.noRoofWalk && currentLocalY >= box.roofY - 0.34;
+    if (alreadyOnRoof) continue;
+    if (box.interior) {
+      if (!shipInteriorAllowed(localPoint, box, type)) return box;
+      continue;
+    }
+    if (localPoint.y <= box.roofY + 0.45) return box;
+  }
+  return null;
+}
+
 function shipWalkSurfaceAt(localPoint, type = state.shipType, currentLocalY = shipDeckLocalY(type)) {
   const deckY = shipDeckLocalY(type);
   const onHullDeck = localPointOnShipDeck(localPoint, type);
   let surface = onHullDeck ? { y: deckY, kind: "deck" } : null;
   for (const box of shipStructureBoxes(type)) {
     if (!localPointInShipBox(localPoint, box)) continue;
-    if (!box.noRoofWalk && (box.id === "balloon-platform" || currentLocalY >= box.roofY - 0.34 || localPoint.y >= box.roofY - 0.24)) {
+    const alreadyOnRoof = !box.noRoofWalk && currentLocalY >= box.roofY - 0.34;
+    if (box.interior) {
+      if (shipInteriorAllowed(localPoint, box, type)) return { y: box.floorY, kind: "interior" };
+      if (alreadyOnRoof) {
+        surface = { y: box.roofY, kind: "roof" };
+        continue;
+      }
+      return null;
+    }
+    if (!box.noRoofWalk && (box.id === "balloon-platform" || alreadyOnRoof || localPoint.y >= box.roofY - 0.24)) {
       surface = { y: box.roofY, kind: "roof" };
       continue;
-    }
-    if (box.interior && shipInteriorAllowed(localPoint, box, type)) {
-      return { y: box.floorY, kind: "interior" };
     }
     return null;
   }
@@ -2821,11 +2905,12 @@ function makeIsland(data) {
       baseIntensity: 0,
     });
     const wallPad = 0.08;
-    addCollisionBox(x, z - d * 0.5, w, 0.28, wallPad);
-    addCollisionBox(x - w * 0.5, z, 0.28, d, wallPad);
-    addCollisionBox(x + w * 0.5, z, 0.28, d, wallPad);
-    addCollisionBox(x - w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
-    addCollisionBox(x + w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad);
+    const wallOptions = { solidWall: true };
+    addCollisionBox(x, z - d * 0.5, w, 0.28, wallPad, 0, wallOptions);
+    addCollisionBox(x - w * 0.5, z, 0.28, d, wallPad, 0, wallOptions);
+    addCollisionBox(x + w * 0.5, z, 0.28, d, wallPad, 0, wallOptions);
+    addCollisionBox(x - w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad, 0, wallOptions);
+    addCollisionBox(x + w * 0.33, z + d * 0.5, w * 0.34, 0.28, wallPad, 0, wallOptions);
     addWalkPlatform(x, z, Math.max(0.8, w - 0.36), Math.max(0.8, d - 0.36), 3.16, 0, { maxRise: 0.7 });
     return house;
   };
@@ -3345,7 +3430,13 @@ function makeIsland(data) {
     addCollisionBox(castleX + castleW * 0.32, castleZ + castleD * 0.5, castleW * 0.36, 0.85, 0.12);
     collisionBoxes.slice(-7).forEach((box) => {
       box.walkableTopY = topY - 0.25;
+      box.solidWall = true;
     });
+    const topWallOptions = { minY: topY - 0.45, solidWall: true };
+    addCollisionBox(castleX, castleZ - castleD * 0.5 - ledgeWidth * 0.5 + 0.16, castleW + 1.25, 0.34, 0.04, 0, topWallOptions);
+    addCollisionBox(castleX, castleZ + castleD * 0.5 + ledgeWidth * 0.5 - 0.16, castleW + 1.25, 0.34, 0.04, 0, topWallOptions);
+    addCollisionBox(castleX - castleW * 0.5 - ledgeWidth * 0.5 + 0.16, castleZ, 0.34, castleD + 1.25, 0.04, 0, topWallOptions);
+    addCollisionBox(castleX + castleW * 0.5 + ledgeWidth * 0.5 - 0.16, castleZ, 0.34, castleD + 1.25, 0.04, 0, topWallOptions);
     addWalkPlatform(castleX, castleZ, castleW - 1.4, castleD - 1.4, baseY + 0.13, 0, { maxRise: 0.9 });
   };
   const addCrownHarborCastle = () => {
@@ -3470,6 +3561,11 @@ function makeIsland(data) {
       addPiece(new THREE.Mesh(new THREE.BoxGeometry(walk.w, 0.26, walk.d), paleStone), walk.x, topY - 0.13, walk.z);
       addWalkPlatform(castleX + walk.x, castleZ + walk.z, walk.w - 0.2, walk.d - 0.2, topY, 0, { maxRise: 1.2 });
     });
+    const crownTopWallOptions = { minY: topY - 0.45, solidWall: true };
+    addCollisionBox(castleX, castleZ - fortD * 0.5 - 1.46, fortW + 1.35, 0.34, 0.04, 0, crownTopWallOptions);
+    addCollisionBox(castleX, castleZ + fortD * 0.5 + 1.46, fortW + 1.35, 0.34, 0.04, 0, crownTopWallOptions);
+    addCollisionBox(castleX - fortW * 0.5 - 1.46, castleZ, 0.34, fortD + 1.35, 0.04, 0, crownTopWallOptions);
+    addCollisionBox(castleX + fortW * 0.5 + 1.46, castleZ, 0.34, fortD + 1.35, 0.04, 0, crownTopWallOptions);
     for (let i = 0; i < 9; i++) {
       const x = -fortW * 0.42 + i * fortW * 0.105;
       addPiece(new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.72, 0.72), darkStone), x, topY + 0.34, -fortD * 0.5);
@@ -3648,22 +3744,25 @@ function makeIsland(data) {
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) addCollisionBox(castleX + sx * (fortW * 0.5 + 1.45), castleZ + sz * (fortD * 0.5 + 1.45), 5.3, 5.3, 0.12, Math.PI / 4);
     }
-    addCollisionBox(castleX + keepX, castleZ + keepZ - 3.55, 6.4, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX - 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX + 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX - 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
-    addCollisionBox(castleX + keepX + 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25 });
+    collisionBoxes.slice(-9).forEach((box) => {
+      box.solidWall = true;
+    });
+    addCollisionBox(castleX + keepX, castleZ + keepZ - 3.55, 6.4, 0.38, 0.08, 0, { maxY: baseY + 6.25, solidWall: true });
+    addCollisionBox(castleX + keepX - 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25, solidWall: true });
+    addCollisionBox(castleX + keepX + 3.45, castleZ + keepZ, 0.38, 6.1, 0.08, 0, { maxY: baseY + 6.25, solidWall: true });
+    addCollisionBox(castleX + keepX - 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25, solidWall: true });
+    addCollisionBox(castleX + keepX + 2.1, castleZ + keepZ + 3.45, 2.35, 0.38, 0.08, 0, { maxY: baseY + 6.25, solidWall: true });
     addCollisionBox(castleX + keepX - 1.25, castleZ + keepZ - 0.55, 1.05, 1.05, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.1 });
     addCollisionBox(castleX + keepX - 2.62, castleZ + keepZ + 0.62, 0.62, 1.62, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.55 });
     addCollisionBox(castleX + keepX + 1.68, castleZ + keepZ - 1.35, 1.18, 0.82, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.05 });
     addCollisionBox(castleX + keepX + 1.38, castleZ + keepZ + 1.26, 1.9, 0.58, 0.05, Math.PI * 0.18, { minY: baseY - 0.1, maxY: baseY + 0.9 });
     addCollisionBox(castleX + keepX + 2.72, castleZ + keepZ + 0.08, 0.5, 1.5, 0.05, 0, { minY: baseY - 0.1, maxY: baseY + 1.75 });
     const hallWallMaxY = baseY + 3.7;
-    addCollisionBox(castleX + hallX, castleZ + hallZ - hallD * 0.5, hallW, 0.28, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX - hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX + hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX - hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
-    addCollisionBox(castleX + hallX + hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY });
+    addCollisionBox(castleX + hallX, castleZ + hallZ - hallD * 0.5, hallW, 0.28, 0.08, 0, { maxY: hallWallMaxY, solidWall: true });
+    addCollisionBox(castleX + hallX - hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY, solidWall: true });
+    addCollisionBox(castleX + hallX + hallW * 0.5, castleZ + hallZ, 0.28, hallD, 0.08, 0, { maxY: hallWallMaxY, solidWall: true });
+    addCollisionBox(castleX + hallX - hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY, solidWall: true });
+    addCollisionBox(castleX + hallX + hallW * 0.32, castleZ + hallZ + hallD * 0.5, hallW * 0.28, 0.28, 0.08, 0, { maxY: hallWallMaxY, solidWall: true });
     addCollisionBox(castleX + fortW * 0.08, castleZ - fortD * 0.18, 2.75, 1.35, 0.06, 0, { minY: baseY - 0.15, maxY: baseY + 1.2 });
     addWalkPlatform(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, baseY + 0.12, 0, { maxRise: 0.7 });
     addCollisionBox(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, 0.08, 0, { maxY: baseY + 0.65, walkableTopY: baseY + 0.1 });
@@ -4420,17 +4519,17 @@ function buildPlacementSurfaceYAt(island, point, type, rotation) {
 
 function buildingCollisionBoxes(piece) {
   const base = { x: piece.x, z: piece.z, rot: piece.rotation || 0, minY: piece.y - 0.15, maxY: piece.y + 2.7 };
-  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH }];
+  if (piece.type === "wall") return [{ ...base, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH, solidWall: true }];
   if (piece.type === "cornerWall") {
     return [
-      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH },
-      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE },
+      { ...base, x: piece.x + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_GRID_SIZE, d: BUILD_WALL_DEPTH, solidWall: true },
+      { ...base, x: piece.x - Math.sin(base.rot) * BUILD_GRID_SIZE * 0.25, z: piece.z + Math.cos(base.rot) * BUILD_GRID_SIZE * 0.25, w: BUILD_WALL_DEPTH, d: BUILD_GRID_SIZE, solidWall: true },
     ];
   }
   if (piece.type === "door") {
     return [
-      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
-      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH },
+      { ...base, x: piece.x + Math.cos(base.rot) * 1.28, z: piece.z - Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH, solidWall: true },
+      { ...base, x: piece.x - Math.cos(base.rot) * 1.28, z: piece.z + Math.sin(base.rot) * 1.28, w: 0.62, d: BUILD_WALL_DEPTH, solidWall: true },
     ];
   }
   if (piece.type === "table") return [{ ...base, w: 2.25, d: 1.25, maxY: piece.y + 1.1 }];
@@ -4447,7 +4546,7 @@ function pointBlockedByBuildings(island, point, options = {}) {
       if (Number.isFinite(topY) && Math.abs(pointY - topY) < 0.86) return false;
     }
     return buildingCollisionBoxes(piece).some((box) => {
-      if (pointY < box.minY || pointY > box.maxY) return false;
+      if (pointY < box.minY || (!box.solidWall && pointY > box.maxY)) return false;
       return localPointInRotatedRect(point, box, 0.2);
     });
   });
@@ -4979,7 +5078,7 @@ function pointBlockedOnIsland(island, point, options = {}) {
   return island.collisionBoxes?.some((box) => {
     const pointY = Number.isFinite(point.y) ? point.y : 0;
     if (box.minY !== undefined && pointY < box.minY) return false;
-    if (box.maxY !== undefined && pointY > box.maxY) return false;
+    if (!box.solidWall && box.maxY !== undefined && pointY > box.maxY) return false;
     if (box.walkableTopY !== undefined && point.y >= box.walkableTopY) return false;
     const pad = box.pad ?? 0.45;
     const dx = point.x - box.x;
@@ -5427,7 +5526,7 @@ const HULL_TUNING = {
   manowar: { stern: 0.72, bow: 0.06, mid: 1.12, fullness: 0.92, bowLift: 0.15, sternLift: 0.12, keel: 0.82 },
   frigate: { stern: 0.52, bow: 0.04, mid: 1.0, fullness: 0.72, bowLift: 0.18, sternLift: 0.08, keel: 0.7 },
   turtle: { stern: 0.82, bow: 0.12, mid: 1.12, fullness: 1.05, bowLift: 0.08, sternLift: 0.08, keel: 0.6 },
-  treasure: { stern: 0.82, bow: 0.1, mid: 1.14, fullness: 1.0, bowLift: 0.12, sternLift: 0.16, keel: 0.72 },
+  treasure: { stern: 0.72, bow: 0.06, mid: 1.04, fullness: 0.82, bowLift: 0.18, sternLift: 0.2, keel: 0.76 },
   longship: { stern: 0.05, bow: 0.04, mid: 0.68, fullness: 0.55, bowLift: 0.3, sternLift: 0.24, keel: 0.45 },
   galley: { stern: 0.08, bow: 0.03, mid: 0.72, fullness: 0.52, bowLift: 0.26, sternLift: 0.16, keel: 0.44 },
   cat: { stern: 0.18, bow: 0.04, mid: 0.65, fullness: 0.55, bowLift: 0.18, sternLift: 0.08, keel: 0.34 },
@@ -5715,19 +5814,52 @@ function addSternGallery(group, length, width, scale, color) {
 }
 
 function addCannonPorts(group, count, width, length, scale, profile = "skiff") {
+  const gunScale = profile === "treasure" ? 1.35 : 1;
+  const gunY = (profile === "treasure" ? 1.34 : 1.25) * scale;
   for (let i = 0; i < count; i++) {
-    const z = (-length * 0.28 + (i / Math.max(1, count - 1)) * length * 0.55) * scale;
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const z = (-length * 0.29 + t * length * 0.58) * scale;
     for (let side of [-1, 1]) {
-      const port = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.28 * scale, 0.32 * scale), mats.dark);
+      const port = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale * gunScale, 0.28 * scale * gunScale, 0.32 * scale * gunScale), mats.dark);
       const sideX = side * hullSideXAt(length, width, scale, z, 0.98, profile);
-      port.position.set(sideX, 1.25 * scale, z);
+      port.position.set(sideX, gunY, z);
       group.add(port);
-      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.08 * scale, 0.5 * scale, 8), mats.dark);
+      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale * gunScale, 0.08 * scale * gunScale, 0.5 * scale * gunScale, 8), mats.dark);
       muzzle.rotation.z = Math.PI / 2;
-      muzzle.position.set(sideX + side * 0.18 * scale, 1.25 * scale, z);
+      muzzle.position.set(sideX + side * 0.2 * scale * gunScale, gunY, z);
       group.add(muzzle);
+      if (profile === "treasure") {
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.145 * scale * gunScale, 0.035 * scale, 0.42 * scale * gunScale), mats.gold);
+        trim.position.set(sideX + side * 0.01 * scale, gunY + 0.22 * scale, z);
+        group.add(trim);
+      }
     }
   }
+}
+
+function addCenterlineDeckCannon(group, length, scale) {
+  const deckZ = -length * 0.23 * scale;
+  const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.2 * scale, 0.62 * scale), mat(0x3a261b));
+  carriage.position.set(0, 1.24 * scale, deckZ);
+  carriage.castShadow = true;
+  group.add(carriage);
+
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075 * scale, 0.105 * scale, 0.95 * scale, 10), mats.dark);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 1.36 * scale, deckZ - 0.24 * scale);
+  barrel.castShadow = true;
+  group.add(barrel);
+
+  const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * scale, 0.105 * scale, 0.12 * scale, 10), mats.dark);
+  muzzle.rotation.x = Math.PI / 2;
+  muzzle.position.set(0, 1.36 * scale, deckZ - 0.76 * scale);
+  muzzle.castShadow = true;
+  group.add(muzzle);
+
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * scale, 0.16 * scale, 0.18 * scale, 10), mats.wood);
+  pivot.position.set(0, 1.26 * scale, deckZ);
+  pivot.castShadow = true;
+  group.add(pivot);
 }
 
 function addTurtleGunModels(group, length, width, scale, profile = "turtle") {
@@ -6023,10 +6155,12 @@ function mastPlan(type, length) {
   if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
   if (type === "whaler") return [-length * 0.22, length * 0.03];
   if (type === "ballooner") return [-length * 0.27, -length * 0.02];
-  if (type === "grandfrigate") return [-length * 0.3, -length * 0.06, length * 0.09];
-  if (type === "windrunner") return [-length * 0.32, -length * 0.08, length * 0.08];
+  if (type === "grandfrigate") return [-length * 0.38, -length * 0.16, length * 0.12, length * 0.35];
+  if (type === "windrunner") return [-length * 0.38, -length * 0.15, length * 0.13, length * 0.36];
+  if (type === "manowar" || type === "firstrate") return [-length * 0.37, -length * 0.14, length * 0.13, length * 0.36];
+  if (type === "treasure") return [-length * 0.4, -length * 0.24, -length * 0.08, length * 0.09, length * 0.25, length * 0.39];
   if (["sloop", "storm", "dart", "lugger", "dogger", "tartane", "chassemaree"].includes(type)) return [-length * 0.18, length * 0.11];
-  if (["galleon", "carrack", "merchantman", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "frigate", "razee", "sixthrate", "postship"].includes(type)) {
+  if (["galleon", "carrack", "merchantman", "eastindiaman", "fourthrate", "frigate", "razee", "sixthrate", "postship"].includes(type)) {
     return [-length * 0.3, -length * 0.04, length * 0.1];
   }
   return [-length * 0.24, length * 0.1];
@@ -6312,14 +6446,15 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "treasure", "windrunner"]);
   const hasInterior = interiorTypes.has(type);
   const postShipCabin = type === "postship";
+  const treasureCabin = type === "treasure";
   const sternWallMat = mat(castleColor);
   if (hasInterior) {
     sternWallMat.side = THREE.DoubleSide;
     sternWallMat.needsUpdate = true;
   }
-  const sternDeckHeight = postShipCabin ? 1.04 * scale : 0.7 * scale;
-  const sternDeckY = postShipCabin ? 1.74 * scale : 1.57 * scale;
-  const sternRoofY = postShipCabin ? 2.34 * scale : 2.01 * scale;
+  const sternDeckHeight = treasureCabin ? 1.22 * scale : postShipCabin ? 1.04 * scale : 0.7 * scale;
+  const sternDeckY = treasureCabin ? 1.86 * scale : postShipCabin ? 1.74 * scale : 1.57 * scale;
+  const sternRoofY = treasureCabin ? 2.62 * scale : postShipCabin ? 2.34 * scale : 2.01 * scale;
   const sternDeck = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, sternDeckHeight, actualLength * 0.17), sternWallMat);
   sternDeck.position.set(0, sternDeckY, sternZ);
   sternDeck.castShadow = true;
@@ -6333,22 +6468,23 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   sternRoof.position.set(0, sternRoofY, sternZ);
   sternRoof.castShadow = true;
   group.add(sternRoof);
-  addWindowRow(group, width, sternZ + actualLength * 0.09, (postShipCabin ? 1.92 : 1.68) * scale, scale, 0xd99928, tier >= 5 ? 7 : 5);
-  if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
+  addWindowRow(group, width, sternZ + actualLength * 0.09, (treasureCabin ? 2.08 : postShipCabin ? 1.92 : 1.68) * scale, scale, 0xd99928, treasureCabin ? 8 : tier >= 5 ? 7 : 5);
+  if (treasureCabin) addWindowRow(group, width * 0.86, sternZ + actualLength * 0.09, 1.64 * scale, scale, 0xffd36a, 6);
+  else if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
   if (hasInterior) {
     const doorZ = sternZ - actualLength * 0.087;
-    const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
-    const doorWidth = generousCabinDoor ? 0.96 : 0.76;
-    const doorHeight = postShipCabin ? 0.96 : 0.68;
+    const generousCabinDoor = ["grandfrigate", "postship", "treasure", "windrunner"].includes(type);
+    const doorWidth = treasureCabin ? 1.12 : generousCabinDoor ? 0.96 : 0.76;
+    const doorHeight = treasureCabin ? 1.05 : postShipCabin ? 0.96 : 0.68;
     const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, doorHeight * scale, 0.055 * scale), mats.dark);
-    door.position.set(0, (postShipCabin ? 1.62 : 1.48) * scale, doorZ - 0.012 * scale);
+    door.position.set(0, (treasureCabin ? 1.72 : postShipCabin ? 1.62 : 1.48) * scale, doorZ - 0.012 * scale);
     door.castShadow = false;
     group.add(door);
     const threshold = new THREE.Mesh(new THREE.BoxGeometry(0.86 * scale, 0.045 * scale, 0.2 * scale), mats.plank);
     threshold.position.set(0, 1.18 * scale, doorZ - 0.08 * scale);
     threshold.castShadow = true;
     group.add(threshold);
-    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * (postShipCabin ? 0.54 : 0.46), 0.035 * scale, actualLength * (postShipCabin ? 0.105 : 0.08)), mats.plank);
+    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * (treasureCabin ? 0.62 : postShipCabin ? 0.54 : 0.46), 0.035 * scale, actualLength * (treasureCabin ? 0.13 : postShipCabin ? 0.105 : 0.08)), mats.plank);
     interiorFloor.position.set(0, 1.23 * scale, sternZ - actualLength * 0.005);
     interiorFloor.receiveShadow = true;
     group.add(interiorFloor);
@@ -6367,17 +6503,17 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
     const innerMat = mat(0x5a4638);
     innerMat.side = THREE.DoubleSide;
     innerMat.needsUpdate = true;
-    const interiorWallHeight = postShipCabin ? 0.94 : 0.56;
-    const interiorWallY = postShipCabin ? 1.72 : 1.54;
-    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.54, interiorWallHeight * scale, 0.035 * scale), innerMat);
+    const interiorWallHeight = treasureCabin ? 1.08 : postShipCabin ? 0.94 : 0.56;
+    const interiorWallY = treasureCabin ? 1.86 : postShipCabin ? 1.72 : 1.54;
+    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * (treasureCabin ? 0.62 : 0.54), interiorWallHeight * scale, 0.035 * scale), innerMat);
     rearWall.position.set(0, interiorWallY * scale, sternZ + actualLength * 0.071);
     group.add(rearWall);
     for (const side of [-1, 1]) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, interiorWallHeight * scale, actualLength * 0.115), innerMat);
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, interiorWallHeight * scale, actualLength * (treasureCabin ? 0.135 : 0.115)), innerMat);
       sideWall.position.set(side * actualWidth * 0.32, interiorWallY * scale, sternZ + actualLength * 0.002);
       group.add(sideWall);
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09 * scale, 8, 6), mats.gold);
-      lamp.position.set(side * actualWidth * 0.25, (postShipCabin ? 2.02 : 1.72) * scale, sternZ - actualLength * 0.022);
+      lamp.position.set(side * actualWidth * 0.25, (treasureCabin ? 2.28 : postShipCabin ? 2.02 : 1.72) * scale, sternZ - actualLength * 0.022);
       group.add(lamp);
     }
     if (type === "postship") {
@@ -6422,6 +6558,37 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
         group.add(ceilingBeam);
       }
     }
+    if (type === "treasure") {
+      const chart = new THREE.Mesh(new THREE.BoxGeometry(0.62 * scale, 0.03 * scale, 0.42 * scale), mat(0xd8c28f));
+      chart.position.set(0.02 * scale, 1.52 * scale, sternZ + actualLength * 0.012);
+      chart.rotation.y = -0.1;
+      group.add(chart);
+      for (const side of [-1, 1]) {
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.06 * scale, 0.62 * scale, 0.82 * scale), mat(0xaa3e2e));
+        screen.position.set(side * actualWidth * 0.18, 1.66 * scale, sternZ - actualLength * 0.04);
+        screen.castShadow = true;
+        group.add(screen);
+        const screenTrim = new THREE.Mesh(new THREE.BoxGeometry(0.075 * scale, 0.08 * scale, 0.9 * scale), mats.gold);
+        screenTrim.position.set(side * actualWidth * 0.18, 1.98 * scale, sternZ - actualLength * 0.04);
+        group.add(screenTrim);
+        const hangingLamp = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.11 * scale, 0.22 * scale, 8), mats.gold);
+        hangingLamp.position.set(side * actualWidth * 0.2, 2.24 * scale, sternZ + actualLength * 0.028);
+        group.add(hangingLamp);
+      }
+      const lacquerChest = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.32 * scale, 0.34 * scale), mat(0x7a231e));
+      lacquerChest.position.set(actualWidth * 0.2, 1.4 * scale, sternZ + actualLength * 0.055);
+      lacquerChest.castShadow = true;
+      group.add(lacquerChest);
+      const chestBand = new THREE.Mesh(new THREE.BoxGeometry(0.54 * scale, 0.05 * scale, 0.36 * scale), mats.gold);
+      chestBand.position.copy(lacquerChest.position).y += 0.18 * scale;
+      group.add(chestBand);
+      for (const side of [-1, 1]) {
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.08 * scale, actualLength * 0.13), mats.wood);
+        beam.position.set(side * actualWidth * 0.21, 2.44 * scale, sternZ);
+        beam.castShadow = true;
+        group.add(beam);
+      }
+    }
   }
 
   const quarterDepth = actualLength * 0.12;
@@ -6461,6 +6628,100 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   });
 }
 
+function addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile = "treasure") {
+  const actualLength = hullLength * scale;
+  const actualWidth = hullWidth * scale;
+  const redWood = mat(0x7e3d2a);
+  const lacquer = mat(0x9f3428);
+  const deckGold = mat(0xd6a83c);
+  const centerWalk = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.5, 0.045 * scale, actualLength * 0.58), mats.plank);
+  centerWalk.position.set(0, 1.56 * scale, -actualLength * 0.02);
+  centerWalk.castShadow = true;
+  centerWalk.receiveShadow = true;
+  group.add(centerWalk);
+  const bowStructureZ = -actualLength * 0.43;
+  const bowBase = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.46, 0.46 * scale, actualLength * 0.18), lacquer);
+  bowBase.position.set(0, 1.46 * scale, bowStructureZ);
+  bowBase.castShadow = true;
+  group.add(bowBase);
+  const bowConnector = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.42, 0.08 * scale, actualLength * 0.1), redWood);
+  bowConnector.position.set(0, 1.58 * scale, -actualLength * 0.31);
+  bowConnector.castShadow = true;
+  group.add(bowConnector);
+  const bowPlatform = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.52, 0.12 * scale, actualLength * 0.19), redWood);
+  bowPlatform.position.set(0, 1.7 * scale, bowStructureZ);
+  bowPlatform.castShadow = true;
+  group.add(bowPlatform);
+  const bowFront = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.38, 0.3 * scale, 0.08 * scale), mat(0x6b261f));
+  bowFront.position.set(0, 1.54 * scale, -actualLength * 0.535);
+  bowFront.castShadow = true;
+  group.add(bowFront);
+  addWindowRow(group, hullWidth * 0.42, -actualLength * 0.535, 1.57 * scale, scale, 0xffd36a, 3);
+  const aftHouse = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, 0.92 * scale, actualLength * 0.32), redWood);
+  aftHouse.position.set(0, 2.08 * scale, actualLength * 0.39);
+  aftHouse.castShadow = true;
+  group.add(aftHouse);
+  const aftCover = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.82, 0.14 * scale, actualLength * 0.36), mats.hullDark);
+  aftCover.position.set(0, 2.62 * scale, actualLength * 0.39);
+  aftCover.castShadow = true;
+  group.add(aftCover);
+  const aftDeckLip = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.78, 0.16 * scale, actualLength * 0.2), redWood);
+  aftDeckLip.position.set(0, 2.78 * scale, actualLength * 0.44);
+  aftDeckLip.castShadow = true;
+  group.add(aftDeckLip);
+  const aftHullCover = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, 0.86 * scale, actualLength * 0.12), redWood);
+  aftHullCover.position.set(0, 1.58 * scale, actualLength * 0.535);
+  aftHullCover.castShadow = true;
+  aftHullCover.receiveShadow = true;
+  group.add(aftHullCover);
+  const aftLowerCap = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.68, 0.16 * scale, actualLength * 0.18), redWood);
+  aftLowerCap.position.set(0, 1.12 * scale, actualLength * 0.5);
+  aftLowerCap.castShadow = true;
+  aftLowerCap.receiveShadow = true;
+  group.add(aftLowerCap);
+  for (const side of [-1, 1]) {
+    const galleryZ = actualLength * 0.02;
+    const galleryX = side * hullSideXAt(hullLength, hullWidth, scale, galleryZ, 0.91, profile);
+    const gallery = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.42 * scale, actualLength * 0.36), lacquer);
+    gallery.position.set(galleryX, 1.55 * scale, galleryZ);
+    gallery.castShadow = true;
+    group.add(gallery);
+    const galleryBack = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.36 * scale, actualLength * 0.36), redWood);
+    galleryBack.position.set(galleryX - side * 0.16 * scale, 1.51 * scale, galleryZ);
+    galleryBack.castShadow = true;
+    group.add(galleryBack);
+    for (let i = 0; i < 7; i++) {
+      const z = galleryZ - actualLength * 0.16 + (i / 6) * actualLength * 0.32;
+      const window = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, 0.18 * scale, 0.26 * scale), mats.gold);
+      window.position.set(galleryX + side * 0.18 * scale, 1.62 * scale, z);
+      group.add(window);
+    }
+  }
+  for (let i = 0; i < 8; i++) {
+    const t = i / 7;
+    const z = -actualLength * 0.34 + t * actualLength * 0.68;
+    const ribWidth = deckWidthAt(hullLength, hullWidth, scale, z, profile) * 0.96;
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(ribWidth, 0.07 * scale, 0.1 * scale), mats.hullDark);
+    rib.position.set(0, 1.68 * scale, z);
+    rib.castShadow = true;
+    group.add(rib);
+  }
+  const sternFace = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.66, 0.72 * scale, 0.08 * scale), redWood);
+  sternFace.position.set(0, 2.1 * scale, actualLength * 0.535);
+  sternFace.castShadow = true;
+  group.add(sternFace);
+  addWindowRow(group, hullWidth * 0.72, actualLength * 0.515, 2.04 * scale, scale, 0xffd36a, 5);
+  const prow = new THREE.Mesh(new THREE.ConeGeometry(0.26 * scale, 1.22 * scale, 8), deckGold);
+  prow.rotation.x = Math.PI / 2.2;
+  prow.position.set(0, 1.5 * scale, -actualLength * 0.59);
+  prow.castShadow = true;
+  group.add(prow);
+  const prowFin = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.56 * scale, 0.5 * scale), lacquer);
+  prowFin.position.set(0, 1.72 * scale, -actualLength * 0.53);
+  prowFin.castShadow = true;
+  group.add(prowFin);
+}
+
 function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, profile = "skiff") {
   const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   const customCabinTypes = new Set([
@@ -6490,7 +6751,12 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
-  addCannonPorts(group, shipSideCannons(type), hullWidth, hullLength, scale, profile);
+  if (type === "treasure") addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile);
+  if (shipUsesCenterlineGun(type)) {
+    addCenterlineDeckCannon(group, hullLength, scale);
+  } else {
+    addCannonPorts(group, shipSideCannons(type), hullWidth, hullLength, scale, profile);
+  }
   if (!customCabinTypes.has(type)) {
     if (tier >= 2) addCabin(group, 0, hullLength * 0.22, Math.min(2.4, hullWidth * 0.68), 1.35 + tier * 0.18, scale, 0x7a5030);
     if (tier >= 3) {
@@ -6560,13 +6826,14 @@ function makeShip(type = "skiff", remote = false) {
     fluyt: [7.0, 3.4],
     merchantman: [7.4, 3.45],
     eastindiaman: [7.8, 3.55],
-    treasure: [8.0, 4.15],
+    treasure: [12.0, 4.45],
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
   const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
-  const hullMaterial = darkHulled ? mats.hullDark : mats.hull;
-  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, 1.15 * scale, hullMaterial, profile));
+  const hullMaterial = type === "treasure" ? mat(0x6f3f25) : darkHulled ? mats.hullDark : mats.hull;
+  const hullHeight = (type === "treasure" ? 1.34 : 1.15) * scale;
+  group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, hullHeight, hullMaterial, profile));
   addHullEndCaps(group, hullSize[0], hullSize[1], scale, hullMaterial, profile);
   [-1, 1].forEach((side) => {
     addHullSideLine(
@@ -6584,8 +6851,8 @@ function makeShip(type = "skiff", remote = false) {
       profile,
     );
   });
-  const deck = hullMesh(hullSize[0] * 0.58 * scale, hullSize[1] * 0.62 * scale, 0.24 * scale, mats.wood, profile);
-  deck.position.y = 1.08 * scale;
+  const deck = hullMesh(hullSize[0] * (type === "treasure" ? 0.64 : 0.58) * scale, hullSize[1] * (type === "treasure" ? 0.68 : 0.62) * scale, (type === "treasure" ? 0.28 : 0.24) * scale, mats.wood, profile);
+  deck.position.y = (type === "treasure" ? 1.24 : 1.08) * scale;
   deck.castShadow = true;
   group.add(deck);
 
@@ -6623,13 +6890,15 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
   if (type === "grandfrigate") {
-    addSquareSail(group, -0.85, -2.95, 1.08, 0xf2ead5, 2);
-    addSquareSail(group, 0, -0.35, 1.2, 0xf8efd8, 3);
-    addSquareSail(group, 0.82, 2.18, 0.92, 0xf2ead5, 2);
+    addSquareSail(group, -0.85, -3.42, 1.2, 0xf2ead5, 2);
+    addSquareSail(group, -0.25, -1.42, 1.28, 0xf8efd8, 3);
+    addSquareSail(group, 0.42, 1.04, 1.16, 0xf2ead5, 2);
+    addSquareSail(group, 0.96, 3.12, 0.92, 0xf5ead8, 1);
   } else if (type === "windrunner") {
-    addSquareSail(group, -0.65, -3.12, 0.88, 0xfff3ce, 2);
-    addSquareSail(group, 0.1, -0.42, 1.02, 0xffdf9b, 2);
-    addSail(group, 0.58, 2.05, 0.82, 0xfff3ce);
+    addSquareSail(group, -0.65, -3.55, 1.02, 0xfff3ce, 2);
+    addSquareSail(group, -0.1, -1.42, 1.12, 0xffdf9b, 2);
+    addSquareSail(group, 0.42, 1.08, 0.98, 0xfff3ce, 1);
+    addSail(group, 0.72, 3.18, 0.9, 0xfff3ce);
   } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -6941,19 +7210,42 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.55, -1.6, 0.95, 0xf6ead0, 2);
     addSquareSail(group, 0.55, 0.25, 1.04, 0xf8e7bb, 2);
     addSail(group, 0, 1.32, 0.86, 0xf6ead0);
-  } else if (type === "manowar" || type === "fourthrate" || type === "firstrate") {
-    const sailBoost = type === "firstrate" ? 1.08 : type === "fourthrate" ? 0.96 : 1;
+  } else if (type === "fourthrate") {
+    const sailBoost = 0.96;
     addSquareSail(group, -0.9, -2.1, 1.0 * sailBoost, 0xf6ead0, type === "fourthrate" ? 2 : 3);
     addSquareSail(group, 0, -0.1, 1.08 * sailBoost, 0xf8e7bb, 3);
-    addSquareSail(group, 0.9, 1.42, 0.95 * sailBoost, 0xf6ead0, type === "firstrate" ? 3 : 2);
+    addSquareSail(group, 0.9, 1.42, 0.95 * sailBoost, 0xf6ead0, 2);
+  } else if (type === "manowar" || type === "firstrate") {
+    const sailBoost = type === "firstrate" ? 1.18 : 1.1;
+    addSquareSail(group, -1.0, -3.18, 1.06 * sailBoost, 0xf6ead0, 3);
+    addSquareSail(group, -0.34, -1.28, 1.16 * sailBoost, 0xf8e7bb, 3);
+    addSquareSail(group, 0.36, 1.08, 1.08 * sailBoost, 0xf6ead0, 3);
+    addSquareSail(group, 0.95, 3.08, 0.9 * sailBoost, 0xf6ead0, type === "firstrate" ? 2 : 1);
   } else if (type === "treasure") {
-    addSquareSail(group, -0.85, -1.8, 1.05, 0xf5df9b, 3);
-    addSquareSail(group, 0.25, 0.1, 1.18, 0xf8e8aa, 3);
-    addSquareSail(group, 0.9, 1.46, 0.95, 0xf1d98d, 2);
-    const pagoda = new THREE.Mesh(new THREE.ConeGeometry(1.35 * scale, 0.75 * scale, 4), mat(0xd6a83c));
-    pagoda.position.set(0, 2.9 * scale, 2.55 * scale);
-    pagoda.rotation.y = Math.PI / 4;
-    group.add(pagoda);
+    addSquareSail(group, -1.05, -4.75, 1.2, 0xf5df9b, 3);
+    addSquareSail(group, -0.62, -2.88, 1.32, 0xf8e8aa, 3);
+    addSquareSail(group, -0.18, -0.98, 1.42, 0xf1d98d, 3);
+    addSquareSail(group, 0.28, 1.08, 1.34, 0xf8e8aa, 3);
+    addSquareSail(group, 0.7, 3.08, 1.2, 0xf5df9b, 2);
+    addSquareSail(group, 1.02, 4.58, 1.02, 0xf1d98d, 2);
+    const pagodaZ = hullSize[0] * 0.37 * scale;
+    const pagodaBase = new THREE.Mesh(new THREE.BoxGeometry(2.0 * scale, 0.72 * scale, 1.28 * scale), mat(0x7e3d2a));
+    pagodaBase.position.set(0, 2.48 * scale, pagodaZ);
+    pagodaBase.castShadow = true;
+    group.add(pagodaBase);
+    const pagodaRoof = new THREE.Mesh(new THREE.ConeGeometry(1.5 * scale, 0.45 * scale, 4), mat(0xd6a83c));
+    pagodaRoof.position.set(0, 3.05 * scale, pagodaZ);
+    pagodaRoof.rotation.y = Math.PI / 4;
+    pagodaRoof.castShadow = true;
+    group.add(pagodaRoof);
+    const pagodaUpper = new THREE.Mesh(new THREE.BoxGeometry(1.26 * scale, 0.54 * scale, 0.86 * scale), mat(0x9f3428));
+    pagodaUpper.position.set(0, 3.34 * scale, pagodaZ);
+    pagodaUpper.castShadow = true;
+    group.add(pagodaUpper);
+    const pagodaTop = new THREE.Mesh(new THREE.ConeGeometry(1.05 * scale, 0.38 * scale, 4), mat(0xd6a83c));
+    pagodaTop.position.set(0, 3.78 * scale, pagodaZ);
+    pagodaTop.rotation.y = Math.PI / 4;
+    group.add(pagodaTop);
   } else if (type === "ironclad") {
     const armorDeck = hullMesh(5.8 * scale, 3.0 * scale, 0.28 * scale, mat(0x4f555b), "ironclad");
     armorDeck.position.y = 1.28 * scale;
@@ -10804,7 +11096,8 @@ function updateShip(dt) {
   const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
   const rudderSpeedRatio = clamp(state.velocity.length() / Math.max(1, effectiveSpeed * 0.65), 0, 1);
   const rudderAuthority = rudderSpeedRatio * rudderSpeedRatio * (3 - 2 * rudderSpeedRatio);
-  state.rotation += turn * dt * (1.7 + effectiveSpeed / 28) * rudderAuthority;
+  const speedTurnScale = clamp(effectiveSpeed / 18, 0.45, 1.25);
+  state.rotation += turn * dt * (1.25 + effectiveSpeed / 32) * speedTurnScale * rudderAuthority;
   const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
   state.velocity.add(forward.multiplyScalar(throttle * effectiveSpeed * dt));
   const wind = windAt(playerShip.position);
@@ -10925,7 +11218,7 @@ function updateSeaWalker(dt) {
     if (nextSurface) {
       character.position.x = next.x;
       character.position.z = next.z;
-    } else if (!localPointOnShipDeck(local, state.shipType)) {
+    } else if (!localPointOnShipDeck(local, state.shipType) && !shipStructureBarrierAt(local, state.shipType, currentLocal.y)) {
       character.position.x = next.x;
       character.position.z = next.z;
       state.grounded = false;
@@ -11200,13 +11493,14 @@ function updateBots(dt) {
       let desired = baseDesired;
       const inCombat = aggressive || Boolean(fightingBot);
       if (inCombat && targetDistance < botCannonRange(bot) * 1.25) {
-        const side = broadsideSideForDirection(bot.rotation, steerTarget).side;
-        desired = baseDesired - side * Math.PI / 2;
+        const aimSide = cannonSideForDirection(bot.rotation, steerTarget, bot.shipType);
+        desired = shipUsesCenterlineGun(bot.shipType) ? baseDesired : baseDesired - aimSide.side * Math.PI / 2;
       }
       const delta = angleDelta(desired, bot.rotation);
       const chasingPickup = Boolean(pickupTarget);
       const evadingKraken = Boolean(krakenEvade);
-      const turnRate = evadingKraken ? 1.25 + spec.speed / 40 : inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64;
+      const speedTurnScale = clamp(spec.speed / 18, 0.48, 1.22);
+      const turnRate = (evadingKraken ? 1.25 + spec.speed / 40 : inCombat ? 0.95 + spec.speed / 46 : chasingPickup ? 0.86 + spec.speed / 52 : 0.6 + spec.speed / 64) * speedTurnScale;
       const turnStep = clamp(delta, -dt * turnRate, dt * turnRate);
       bot.rotation += turnStep;
       const forward = new THREE.Vector3(Math.sin(bot.rotation), 0, Math.cos(bot.rotation));
@@ -11247,7 +11541,7 @@ function updateBots(dt) {
       const targetVelocity = fightingBot ? fightingBot.velocity : state.velocity;
       const origin = bot.group.position.clone();
       const targetPoint = botAimedTargetPoint(origin, shotTarget.position, targetVelocity, botRange);
-      const broadside = broadsideSideForDirection(bot.rotation, targetPoint.clone().sub(origin));
+      const broadside = cannonSideForDirection(bot.rotation, targetPoint.clone().sub(origin), bot.shipType);
       if (broadside.alignment > 0.72) {
         fireBroadsideVolley({
           owner: bot.localId,

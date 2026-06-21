@@ -150,6 +150,7 @@ const shipStats = [
   { id: "galleon", hp: 2700, speed: 12, tier: 5 },
   { id: "carrack", hp: 2340, speed: 10, tier: 4 },
   { id: "eastindiaman", hp: 2460, speed: 12, tier: 5 },
+  { id: "treasure", hp: 3500, speed: 9, tier: 6 },
   { id: "razee", hp: 2550, speed: 18, tier: 5 },
   { id: "whaler", hp: 1750, speed: 12, tier: 4 },
   { id: "ballooner", hp: 1350, speed: 16, tier: 4 },
@@ -260,7 +261,7 @@ const playerShipTiers = {
   sixthrate: 4,
   postship: 4,
   merchantman: 4,
-  treasure: 5,
+  treasure: 6,
   fourthrate: 5,
   whaler: 4,
   ballooner: 4,
@@ -315,7 +316,7 @@ const shipPhysics = {
   carrack: { radius: 4.4, weight: 185 },
   galleon: { radius: 4.6, weight: 206 },
   eastindiaman: { radius: 4.7, weight: 219 },
-  treasure: { radius: 4.9, weight: 238 },
+  treasure: { radius: 6.1, weight: 320 },
   razee: { radius: 4.6, weight: 195 },
   whaler: { radius: 4.6, weight: 205 },
   ballooner: { radius: 4.1, weight: 160 },
@@ -947,7 +948,7 @@ function shipSideCannons(type = "skiff") {
     eastindiaman: 5,
     galleon: 5,
     razee: 5,
-    treasure: 6,
+    treasure: 7,
     fourthrate: 6,
     grandfrigate: 7,
     windrunner: 6,
@@ -956,6 +957,10 @@ function shipSideCannons(type = "skiff") {
   };
   if (explicit[type]) return explicit[type];
   return clamp(1 + Math.floor((shipSpec(type).tier + 1) / 2), 1, 8);
+}
+
+function shipUsesCenterlineGun(type = "skiff") {
+  return false;
 }
 
 function broadsideVectors(rotation = 0) {
@@ -977,10 +982,31 @@ function broadsideSideForDirection(rotation, dx, dz) {
     : { side: -1, alignment: leftDot, dirX: left.x, dirZ: left.z };
 }
 
+function cannonSideForDirection(rotation, dx, dz, type = "skiff") {
+  if (!shipUsesCenterlineGun(type)) return broadsideSideForDirection(rotation, dx, dz);
+  const length = Math.hypot(dx, dz);
+  const { forward } = broadsideVectors(rotation);
+  if (length <= 0.001) return { side: 0, alignment: 0, dirX: forward.x, dirZ: forward.z };
+  return {
+    side: 0,
+    alignment: forward.x * (dx / length) + forward.z * (dz / length),
+    dirX: forward.x,
+    dirZ: forward.z,
+  };
+}
+
 function botBroadsideOrigins(bot, side) {
   const count = shipSideCannons(bot.shipType);
   const radius = shipRadius(bot.shipType);
   const { forward, right } = broadsideVectors(bot.rotation);
+  if (shipUsesCenterlineGun(bot.shipType)) {
+    return [{
+      x: bot.x + forward.x * radius * 0.42,
+      z: bot.z + forward.z * radius * 0.42,
+      dirX: forward.x,
+      dirZ: forward.z,
+    }];
+  }
   const sideX = right.x * side;
   const sideZ = right.z * side;
   const sideOffset = radius * 0.72;
@@ -2699,12 +2725,13 @@ function updateWorld() {
         && Number(bot.turtleFireCooldownUntil || 0) <= now;
       const wantsTurtleFireAim = turtleFireReady && distance < turtleFireRange + shipRadius(bot.shipType) + 24;
       const broadsideTarget = inCombat && !wantsTurtleFireAim && distance < botCannonRangeFor(bot) * 1.25
-        ? broadsideSideForDirection(bot.rotation, steerX, steerZ)
+        ? cannonSideForDirection(bot.rotation, steerX, steerZ, bot.shipType)
         : null;
-      const desired = broadsideTarget ? baseDesired - broadsideTarget.side * Math.PI / 2 : baseDesired;
+      const desired = broadsideTarget && !shipUsesCenterlineGun(bot.shipType) ? baseDesired - broadsideTarget.side * Math.PI / 2 : baseDesired;
       const delta = angleDelta(desired, bot.rotation);
       const chasingPickup = Boolean(pickupTarget);
-      const turnRate = fleeingKraken ? 1.25 + bot.speed / 40 : inCombat ? 0.95 + bot.speed / 46 : chasingPickup ? 0.86 + bot.speed / 52 : 0.6 + bot.speed / 64;
+      const speedTurnScale = clamp(bot.speed / 18, 0.48, 1.22);
+      const turnRate = (fleeingKraken ? 1.25 + bot.speed / 40 : inCombat ? 0.95 + bot.speed / 46 : chasingPickup ? 0.86 + bot.speed / 52 : 0.6 + bot.speed / 64) * speedTurnScale;
       bot.rotation += clamp(delta, -turnRate * dt, turnRate * dt);
       const forward = { x: Math.sin(bot.rotation), z: Math.cos(bot.rotation) };
       const facing = clamp(Math.cos(delta), 0.18, 1);
@@ -2799,7 +2826,7 @@ function updateWorld() {
         const aimDz = targetZ - bot.z;
         const aimDistance = Math.hypot(aimDx, aimDz);
         if (aimDistance <= 0.01) continue;
-        const broadside = broadsideSideForDirection(bot.rotation, aimDx, aimDz);
+        const broadside = cannonSideForDirection(bot.rotation, aimDx, aimDz, bot.shipType);
         if (broadside.alignment <= 0.72) continue;
         const baseDamage = botCannonDamage(bot);
         const damage = scaleDamageByRange(baseDamage, shotDistance, shotRange);
