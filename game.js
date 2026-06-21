@@ -1414,6 +1414,59 @@ function shipStructureBoxes(type = state.shipType) {
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner", "turtle"].includes(type);
   if (hasLargeArchitecture) {
     const sternRoofY = type === "postship" ? 2.48 * scale : 2.08 * scale;
+    if (largeInteriorTypes.has(type)) {
+      const sternCenterZ = -length * 0.34;
+      boxes.push({
+        id: "stern-table",
+        z: sternCenterZ - length * 0.012,
+        w: 0.82 * scale,
+        d: 0.56 * scale,
+        floorY: deckY,
+        roofY: 1.62 * scale,
+        noRoofWalk: true,
+      });
+      boxes.push({
+        id: "stern-bench",
+        z: sternCenterZ - length * 0.05,
+        w: width * 0.34,
+        d: 0.22 * scale,
+        floorY: deckY,
+        roofY: 1.5 * scale,
+        noRoofWalk: true,
+      });
+      boxes.push({
+        id: "stern-crate",
+        x: width * 0.18,
+        z: sternCenterZ + length * 0.026,
+        w: 0.4 * scale,
+        d: 0.4 * scale,
+        floorY: deckY,
+        roofY: 1.58 * scale,
+        noRoofWalk: true,
+      });
+      if (type === "postship") {
+        boxes.push({
+          id: "postship-writing-desk",
+          x: width * 0.11,
+          z: sternCenterZ + length * 0.022,
+          w: 0.9 * scale,
+          d: 0.48 * scale,
+          floorY: deckY,
+          roofY: 1.66 * scale,
+          noRoofWalk: true,
+        });
+        boxes.push({
+          id: "postship-sea-chest",
+          x: -width * 0.19,
+          z: sternCenterZ + length * 0.03,
+          w: 0.5 * scale,
+          d: 0.38 * scale,
+          floorY: deckY,
+          roofY: 1.62 * scale,
+          noRoofWalk: true,
+        });
+      }
+    }
     boxes.push({
       id: "stern-castle",
       z: -length * 0.34,
@@ -1439,6 +1492,52 @@ function shipStructureBoxes(type = state.shipType) {
     boxes.push({ id: "ballooner-cabin", z: -1.55 * scale, w: 1.75 * scale, d: 0.92 * scale, floorY: deckY, roofY: 1.94 * scale });
     boxes.push({ id: "balloon-platform", z: -length * 0.36, w: 3.35 * scale, d: 2.55 * scale, floorY: 1.82 * scale, roofY: 1.82 * scale });
   } else if (type === "turtle") {
+    [-1, 1].forEach((side) => {
+      boxes.push({
+        id: `turtle-bench-${side}`,
+        x: side * 1.42 * scale,
+        z: -0.1 * scale,
+        w: 0.48 * scale,
+        d: 5.28 * scale,
+        floorY: deckY,
+        roofY: 1.68 * scale,
+        noRoofWalk: true,
+      });
+      boxes.push({
+        id: `turtle-rack-${side}`,
+        x: side * 1.88 * scale,
+        z: -0.1 * scale,
+        w: 0.34 * scale,
+        d: 3.68 * scale,
+        floorY: deckY,
+        roofY: 1.78 * scale,
+        noRoofWalk: true,
+      });
+    });
+    for (let row = 0; row < 4; row++) {
+      const z = (-2.45 + row * 1.62) * scale;
+      boxes.push({
+        id: `turtle-table-${row}`,
+        z,
+        w: 0.84 * scale,
+        d: 0.56 * scale,
+        floorY: deckY,
+        roofY: 1.72 * scale,
+        noRoofWalk: true,
+      });
+      [-1, 1].forEach((side) => {
+        boxes.push({
+          id: `turtle-lamp-${row}-${side}`,
+          x: side * 0.42 * scale,
+          z,
+          w: 0.22 * scale,
+          d: 0.22 * scale,
+          floorY: deckY,
+          roofY: 1.9 * scale,
+          noRoofWalk: true,
+        });
+      });
+    }
     boxes.push({
       id: "turtle-shell",
       z: 0,
@@ -5631,6 +5730,77 @@ function addCannonPorts(group, count, width, length, scale, profile = "skiff") {
   }
 }
 
+function addTurtleGunModels(group, length, width, scale, profile = "turtle") {
+  const gunCount = shipSideCannons("turtle");
+  for (let i = 0; i < gunCount; i++) {
+    const z = (-length * 0.31 + (i / Math.max(1, gunCount - 1)) * length * 0.62) * scale;
+    for (const side of [-1, 1]) {
+      const sideX = side * hullSideXAt(length, width, scale, z, 1.04, profile);
+      const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.34 * scale, 0.18 * scale, 0.38 * scale), mat(0x2d241c));
+      carriage.position.set(sideX - side * 0.18 * scale, 1.46 * scale, z);
+      carriage.castShadow = true;
+      group.add(carriage);
+      const shield = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.34 * scale, 0.46 * scale), mat(0x7f3528));
+      shield.position.set(sideX + side * 0.02 * scale, 1.52 * scale, z);
+      shield.castShadow = true;
+      group.add(shield);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.1 * scale, 0.74 * scale, 10), mats.dark);
+      barrel.rotation.z = Math.PI / 2;
+      barrel.position.set(sideX + side * 0.36 * scale, 1.52 * scale, z);
+      barrel.castShadow = true;
+      group.add(barrel);
+      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.1 * scale, 0.1 * scale, 10), mats.dark);
+      muzzle.rotation.z = Math.PI / 2;
+      muzzle.position.set(sideX + side * 0.76 * scale, 1.52 * scale, z);
+      muzzle.castShadow = true;
+      group.add(muzzle);
+    }
+  }
+}
+
+function addTurtleShipMasts(group, scale) {
+  const mastMat = mat(0x3d281a);
+  const battenMat = mat(0x76502f);
+  const sailColor = 0xd8c293;
+  [
+    { z: -1.9, height: 2.75, width: 1.72, sailHeight: 1.08, flag: 0xb25a35 },
+    { z: 1.48, height: 2.42, width: 1.48, sailHeight: 0.94, flag: 0xd99928 },
+  ].forEach((rig, index) => {
+    const mastZ = rig.z * scale;
+    const mastBottom = 2.36 * scale;
+    const mastHeight = rig.height * scale;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.12 * scale, mastHeight, 10), mastMat);
+    mast.position.set(0, mastBottom + mastHeight * 0.5, mastZ);
+    mast.castShadow = true;
+    group.add(mast);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.3 * scale, 0.16 * scale, 12), mat(0x9b4a2f));
+    collar.position.set(0, 2.8 * scale, mastZ);
+    collar.castShadow = true;
+    group.add(collar);
+    const yardY = mastBottom + mastHeight * 0.68;
+    const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.055 * scale, rig.width * scale, 8), mastMat);
+    yard.rotation.z = Math.PI / 2;
+    yard.position.set(0, yardY + 0.42 * scale, mastZ - 0.03 * scale);
+    yard.castShadow = true;
+    group.add(yard);
+    const sail = clothPanel(rig.width * 0.84 * scale, rig.sailHeight * scale, sailColor, 0.1 * scale);
+    sail.position.set(0, yardY - 0.08 * scale, mastZ - 0.08 * scale);
+    group.add(sail);
+    for (let slat = -1; slat <= 1; slat++) {
+      const batten = new THREE.Mesh(new THREE.CylinderGeometry(0.018 * scale, 0.018 * scale, rig.width * 0.82 * scale, 6), battenMat);
+      batten.rotation.z = Math.PI / 2;
+      batten.position.set(0, yardY + slat * rig.sailHeight * 0.25 * scale, mastZ - 0.12 * scale);
+      group.add(batten);
+    }
+    const flag = clothPanel(0.42 * scale, 0.28 * scale, rig.flag, 0.04 * scale);
+    flag.position.set(0.33 * scale, mastBottom + mastHeight + 0.06 * scale, mastZ);
+    flag.rotation.y = index ? -0.2 : 0.2;
+    group.add(flag);
+    addRope(group, new THREE.Vector3(0, mastBottom + mastHeight, mastZ), new THREE.Vector3(-1.15 * scale, 2.95 * scale, mastZ - 0.58 * scale), scale, 0.012, mats.rope);
+    addRope(group, new THREE.Vector3(0, mastBottom + mastHeight, mastZ), new THREE.Vector3(1.15 * scale, 2.95 * scale, mastZ + 0.58 * scale), scale, 0.012, mats.rope);
+  });
+}
+
 function addOars(group, count, width, length, scale, profile = "skiff") {
   for (let i = 0; i < count; i++) {
     const z = (-length * 0.28 + i * length * 0.56 / Math.max(1, count - 1)) * scale;
@@ -6453,13 +6623,13 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
   if (type === "grandfrigate") {
-    addSquareSail(group, -0.85, -2.05, 0.96, 0xf2ead5, 2);
-    addSquareSail(group, 0, -0.35, 1.08, 0xf8efd8, 3);
-    addSquareSail(group, 0.82, 1.08, 0.78, 0xf2ead5, 2);
+    addSquareSail(group, -0.85, -2.95, 1.08, 0xf2ead5, 2);
+    addSquareSail(group, 0, -0.35, 1.2, 0xf8efd8, 3);
+    addSquareSail(group, 0.82, 2.18, 0.92, 0xf2ead5, 2);
   } else if (type === "windrunner") {
-    addSquareSail(group, -0.65, -2.25, 0.78, 0xfff3ce, 2);
-    addSquareSail(group, 0.1, -0.55, 0.92, 0xffdf9b, 2);
-    addSail(group, 0.58, 0.88, 0.7, 0xfff3ce);
+    addSquareSail(group, -0.65, -3.12, 0.88, 0xfff3ce, 2);
+    addSquareSail(group, 0.1, -0.42, 1.02, 0xffdf9b, 2);
+    addSail(group, 0.58, 2.05, 0.82, 0xfff3ce);
   } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -6609,25 +6779,7 @@ function makeShip(type = "skiff", remote = false) {
         group.add(spike);
       }
     }
-    [-1.65, 1.42].forEach((z, index) => {
-      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.12 * scale, 2.55 * scale, 10), beamMat);
-      mast.position.set(0, 2.72 * scale, z * scale);
-      mast.castShadow = true;
-      group.add(mast);
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * scale, 0.3 * scale, 0.18 * scale, 12), trimMat);
-      collar.position.set(0, 2.08 * scale, z * scale);
-      collar.castShadow = true;
-      group.add(collar);
-      const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.055 * scale, (index ? 1.65 : 1.95) * scale, 8), beamMat);
-      yard.rotation.z = Math.PI / 2;
-      yard.position.set(0, 3.32 * scale, z * scale);
-      yard.castShadow = true;
-      group.add(yard);
-      const furled = new THREE.Mesh(new THREE.BoxGeometry((index ? 1.35 : 1.62) * scale, 0.16 * scale, 0.1 * scale), mat(0xd9c194));
-      furled.position.set(0, 3.26 * scale, z * scale);
-      furled.castShadow = true;
-      group.add(furled);
-    });
+    addTurtleShipMasts(group, scale);
     const sideTrimZ = [-2.65, -1.55, -0.45, 0.65, 1.75, 2.55];
     [-1, 1].forEach((side) => {
       sideTrimZ.forEach((z) => {
@@ -6642,6 +6794,7 @@ function makeShip(type = "skiff", remote = false) {
       rail.castShadow = true;
       group.add(rail);
     });
+    addTurtleGunModels(group, hullSize[0], hullSize[1], scale, profile);
     const bowZ = -hullSize[0] * 0.58 * scale;
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.23 * scale, 0.32 * scale, 1.02 * scale, 10), trimMat);
     neck.rotation.x = -Math.PI / 2;
