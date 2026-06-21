@@ -114,6 +114,12 @@ const AIRBURST_RADIUS = BALLOON_BOMB_BLAST_RADIUS * (2 / 3);
 const BALLOON_COST = 600;
 const CANNONBALL_GRAVITY = 5.2;
 const GRAPESHOT_SPREAD = 0.46;
+const TURTLE_FIRE_DPS = 50;
+const TURTLE_FIRE_RANGE = 18;
+const TURTLE_FIRE_WIDTH = 4.2;
+const TURTLE_FIRE_DURATION = 8;
+const TURTLE_FIRE_COOLDOWN = 20;
+const TURTLE_FIRE_SMOKE = { dps: 0, duration: 0.7 };
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: GRAPESHOT_SPREAD, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
@@ -326,7 +332,7 @@ const islandData = [
   { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "chassemaree", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
   { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "galleon", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
   { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "polacre", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
-  { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
+  { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure", "turtle"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
   { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop", "ballooner", "windrunner"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
   { name: "Brest", culture: "French", x: 104, z: -224, radius: 21, color: 0x91c96d, accent: 0x4c64a6, theme: "fort", shipMarket: ["brig", "brigantine", "snow", "chassemaree", "barquentine", "sixthrate", "corvette"], goods: { Silk: 69, Spice: 42, Iron: 62, Tea: 66, Pearls: 130 } },
   { name: "Lisbon", culture: "Portuguese", x: -232, z: -204, radius: 22, color: 0xbac96d, accent: 0xd2a94b, theme: "iberian", shipMarket: ["caravel", "pink", "polacre", "carrack"], goods: { Silk: 52, Spice: 34, Iron: 60, Tea: 58, Pearls: 118 } },
@@ -417,6 +423,7 @@ const shipCatalog = [
   { id: "whaler", name: "Whaler", price: 10600, hp: 1750, armor: 0.1, speed: 12, regen: 2.0, color: 0x6f8792, model: "frigate" },
   { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
   { id: "ballooner", name: "Ballooner", price: 15000, hp: 1350, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
+  { id: "turtle", name: "Turtle Ship", price: 24000, hp: 3200, armor: 0.25, speed: 8, regen: 4.0, color: 0x4f7a55, model: "turtle" },
   { id: "fourthrate", name: "Fourth Rate", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
   { id: "grandfrigate", name: "Grand Frigate", price: 28500, hp: 1060, armor: 0.12, speed: 18, regen: 5.2, color: 0x4f78b5, model: "frigate" },
   { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
@@ -474,6 +481,7 @@ const shipBalance = {
   whaler: { name: "Whaler", price: 10600, fixedPrice: true, hp: 1750, armor: 0.1, speed: 12, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
   ballooner: { name: "Ballooner", price: 15000, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
+  turtle: { name: "Turtle Ship", price: 24000, fixedPrice: true, hp: 3200, armor: 0.25, speed: 8, regen: 4, capacity: 18, hitbox: 4.9, weight: 255 },
   fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
   grandfrigate: { name: "Grand Frigate", price: 28500, fixedPrice: true, hp: 3150, armor: 0.12, speed: 18, regen: 6, capacity: 24, hitbox: 5.0, weight: 255 },
   manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
@@ -546,14 +554,16 @@ function deriveFairShipPrice(ship) {
 }
 
 function keepExactShipPrice(shipId) {
-  return ["whaler", "ballooner", "windrunner"].includes(shipId);
+  return ["whaler", "ballooner", "windrunner", "turtle"].includes(shipId);
 }
 
 for (const ship of shipCatalog) {
   const balance = shipBalance[ship.id];
   if (!balance) continue;
   Object.assign(ship, balance);
-  ship.armor = clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
+  ship.armor = ship.id === "turtle"
+    ? 0.25
+    : clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
   ship.regen = Math.round(clamp(ship.regen, 1, 8));
   ship.price = balance.fixedPrice && keepExactShipPrice(ship.id)
     ? Math.max(balance.price, broadsidePriceFloor(ship))
@@ -636,6 +646,9 @@ const state = {
   maxBalloons: 5,
   whalerNets: false,
   whalerNetProgress: 0,
+  turtleFire: false,
+  turtleFireTimer: 0,
+  turtleFireCooldown: 0,
   characterHp: CHARACTER_MAX_HP,
   swimHp: CHARACTER_MAX_HP,
   showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
@@ -1144,6 +1157,7 @@ function shipSideCannons(type = state.shipType) {
     corvette: 3,
     whaler: 3,
     ballooner: 3,
+    turtle: 5,
     frigate: 4,
     postship: 4,
     sixthrate: 4,
@@ -1217,6 +1231,11 @@ function shipHitRadius(type = state.shipType) {
 
 function shipWeight(type = state.shipType) {
   return Math.max(1, getShipStats(type).weight || 80);
+}
+
+function bombDamageForShip(type, amount) {
+  const damage = Math.max(0, Number(amount) || 0);
+  return type === "turtle" ? damage * 0.5 : damage;
 }
 
 function shipVisualScale(type = state.shipType) {
@@ -1392,7 +1411,7 @@ function shipStructureBoxes(type = state.shipType) {
   };
   const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
   const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "treasure", "windrunner"]);
-  const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner"].includes(type);
+  const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner", "turtle"].includes(type);
   if (hasLargeArchitecture) {
     const sternRoofY = type === "postship" ? 2.48 * scale : 2.08 * scale;
     boxes.push({
@@ -1419,6 +1438,17 @@ function shipStructureBoxes(type = state.shipType) {
   } else if (type === "ballooner") {
     boxes.push({ id: "ballooner-cabin", z: -1.55 * scale, w: 1.75 * scale, d: 0.92 * scale, floorY: deckY, roofY: 1.94 * scale });
     boxes.push({ id: "balloon-platform", z: -length * 0.36, w: 3.35 * scale, d: 2.55 * scale, floorY: 1.82 * scale, roofY: 1.82 * scale });
+  } else if (type === "turtle") {
+    boxes.push({
+      id: "turtle-shell",
+      z: 0,
+      w: 4.65 * scale,
+      d: 6.55 * scale,
+      floorY: deckY + 0.02 * scale,
+      roofY: 2.82 * scale,
+      interior: true,
+      noRoofWalk: true,
+    });
   }
   if (type === "pinnace") addCabinBox("pinnace-cabin", 1.55, 1.35, 0.85, scale * 0.75);
   else if (type === "dart") addCabinBox("cutter-cabin", 1.75, 1.25, 0.78, scale * 0.72);
@@ -1446,6 +1476,16 @@ function localPointInShipBox(localPoint, box, pad = 0) {
 
 function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   const scale = shipVisualScale(type);
+  if (box.id === "turtle-shell") {
+    const wall = 0.18 * scale;
+    const halfW = box.w * 0.5;
+    const halfD = box.d * 0.5;
+    const inner = Math.abs(localPoint.x - (box.x || 0)) < halfW - wall
+      && Math.abs(localPoint.z - box.z) < halfD - wall;
+    const sternHatch = Math.abs(localPoint.x - (box.x || 0)) < 0.72 * scale
+      && localPoint.z - box.z < -halfD + 1.12 * scale;
+    return inner || sternHatch;
+  }
   const wall = 0.18 * scale;
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
@@ -1464,7 +1504,7 @@ function shipWalkSurfaceAt(localPoint, type = state.shipType, currentLocalY = sh
   let surface = onHullDeck ? { y: deckY, kind: "deck" } : null;
   for (const box of shipStructureBoxes(type)) {
     if (!localPointInShipBox(localPoint, box)) continue;
-    if (box.id === "balloon-platform" || currentLocalY >= box.roofY - 0.34 || localPoint.y >= box.roofY - 0.24) {
+    if (!box.noRoofWalk && (box.id === "balloon-platform" || currentLocalY >= box.roofY - 0.34 || localPoint.y >= box.roofY - 0.24)) {
       surface = { y: box.roofY, kind: "roof" };
       continue;
     }
@@ -1854,8 +1894,14 @@ function replacePlayerShip(type, spawnPosition = null) {
     state.whalerNets = false;
     state.whalerNetProgress = 0;
   }
+  if (ship.id !== "turtle") {
+    state.turtleFire = false;
+    state.turtleFireTimer = 0;
+    state.turtleFireCooldown = 0;
+  }
   playerShip = makeShip(ship.id);
   updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
+  updateTurtleFireVisual(playerShip, state.turtleFire, 1);
   playerShip.position.copy(position);
   playerShip.position.y = SHIP_WATERLINE_Y;
   playerShip.rotation.set(0, rotationY, 0);
@@ -5942,6 +5988,151 @@ function updateWhalerNetVisuals(ship, extended, dt = 0.1) {
   });
 }
 
+function makeTurtleFireRig(scale = 1) {
+  const rig = new THREE.Group();
+  rig.userData.turtleFireRig = true;
+  rig.visible = false;
+  const flameMats = [
+    new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+    new THREE.MeshBasicMaterial({ color: 0xff8a2f, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+    new THREE.MeshBasicMaterial({ color: 0xd3311f, transparent: true, opacity: 0.44, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+  ];
+  const mouthZ = 4.32 * scale;
+  const mouthY = 1.45 * scale;
+  for (let i = 0; i < 3; i++) {
+    const flameLength = (5.4 + i * 2.2) * scale;
+    const flame = new THREE.Mesh(new THREE.ConeGeometry((0.74 + i * 0.46) * scale, flameLength, 18, 1, true), flameMats[i]);
+    flame.rotation.x = -Math.PI / 2;
+    flame.position.set(0, mouthY + i * 0.035 * scale, mouthZ + flameLength * 0.5 - 0.08 * scale);
+    flame.userData.baseScale = 1 - i * 0.08;
+    rig.add(flame);
+  }
+  const light = new THREE.PointLight(0xff7b2d, 1.6, 22 * scale, 1.8);
+  light.position.set(0, mouthY, mouthZ + 2.2 * scale);
+  light.userData.turtleFireLight = true;
+  rig.add(light);
+  return rig;
+}
+
+function updateTurtleFireVisual(ship, active, dt = 0.1) {
+  if (!ship) return;
+  const type = ship.userData?.shipType || "skiff";
+  if (type !== "turtle") {
+    if (ship.userData?.turtleFireRig) ship.userData.turtleFireRig.visible = false;
+    return;
+  }
+  let rig = ship.userData.turtleFireRig;
+  if (!rig) {
+    rig = makeTurtleFireRig(shipVisualScale(type));
+    ship.userData.turtleFireRig = rig;
+    ship.add(rig);
+  }
+  rig.visible = Boolean(active);
+  if (!rig.visible) return;
+  rig.userData.phase = (rig.userData.phase || 0) + dt * 9;
+  rig.children.forEach((child, index) => {
+    if (child.userData?.turtleFireLight) {
+      child.intensity = 1.2 + Math.sin(rig.userData.phase * 1.3) * 0.35;
+      return;
+    }
+    const pulse = 1 + Math.sin(rig.userData.phase + index * 1.8) * 0.14;
+    child.scale.setScalar((child.userData.baseScale || 1) * pulse);
+    if (child.material) child.material.opacity = clamp((0.72 - index * 0.13) + Math.sin(rig.userData.phase * 1.7 + index) * 0.08, 0.28, 0.82);
+  });
+}
+
+function updateTurtleFireTimers(dt) {
+  if (state.shipType !== "turtle") {
+    state.turtleFire = false;
+    state.turtleFireTimer = 0;
+    state.turtleFireCooldown = 0;
+    updateTurtleFireVisual(playerShip, false, dt);
+    return;
+  }
+  state.turtleFireCooldown = Math.max(0, (state.turtleFireCooldown || 0) - dt);
+  if (!state.turtleFire) return;
+  state.turtleFireTimer = Math.max(0, (state.turtleFireTimer || 0) - dt);
+  if (state.turtleFireTimer <= 0 || state.mode !== "ship" || state.viewMode !== "ship") {
+    state.turtleFire = false;
+    state.turtleFireTimer = 0;
+    updateTurtleFireVisual(playerShip, false, dt);
+  }
+}
+
+function startTurtleFireAbility() {
+  if (state.shipType !== "turtle") return false;
+  if (state.turtleFire) {
+    toast(`Turtle fire already venting (${Math.ceil(state.turtleFireTimer || 0)}s).`);
+    return true;
+  }
+  if ((state.turtleFireCooldown || 0) > 0) {
+    toast(`Turtle fire cooling down (${Math.ceil(state.turtleFireCooldown)}s).`);
+    return true;
+  }
+  state.turtleFire = true;
+  state.turtleFireTimer = TURTLE_FIRE_DURATION;
+  state.turtleFireCooldown = TURTLE_FIRE_COOLDOWN;
+  updateTurtleFireVisual(playerShip, true, 1);
+  multiplayer.lastSent = 0;
+  toast("Turtle fire vent opened.");
+  return true;
+}
+
+function turtleFireActiveForState() {
+  return state.shipType === "turtle"
+    && state.turtleFire
+    && state.turtleFireTimer > 0
+    && state.mode === "ship"
+    && state.viewMode === "ship"
+    && !state.fallingOffWorld
+    && !state.leviathanGrabbed;
+}
+
+function turtleFireBasis(ship, type = "turtle") {
+  const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).setY(0);
+  if (forward.lengthSq() < 0.0001) forward.set(Math.sin(ship.rotation?.y || 0), 0, Math.cos(ship.rotation?.y || 0));
+  forward.normalize();
+  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  const front = shipHullDimensions(type).length * (type === "turtle" ? 0.68 : 0.48);
+  const origin = ship.position.clone().add(forward.clone().multiplyScalar(front));
+  origin.y = 1.1 * shipVisualScale(type);
+  return { origin, forward, right };
+}
+
+function pointInTurtleFireCone(ship, type, point, radius = 0) {
+  if (!ship || !point) return false;
+  const { origin, forward, right } = turtleFireBasis(ship, type);
+  const delta = point.clone ? point.clone().sub(origin) : new THREE.Vector3((point.x || 0) - origin.x, 0, (point.z || 0) - origin.z);
+  delta.y = 0;
+  const along = delta.dot(forward);
+  if (along < -radius * 0.2 || along > TURTLE_FIRE_RANGE + radius) return false;
+  const widen = clamp(along / TURTLE_FIRE_RANGE, 0, 1);
+  const halfWidth = TURTLE_FIRE_WIDTH * (0.42 + widen * 0.72) + radius * 0.55;
+  return Math.abs(delta.dot(right)) <= halfWidth;
+}
+
+function updateTurtleFire(dt) {
+  const active = turtleFireActiveForState();
+  if (!active && state.turtleFire) state.turtleFire = false;
+  updateTurtleFireVisual(playerShip, active, dt);
+  if (!active || multiplayer.serverWorld) return;
+  bots.forEach((bot) => {
+    if (!pointInTurtleFireCone(playerShip, "turtle", bot.group.position, shipHitRadius(bot.shipType) * 0.45)) return;
+    damageTarget(bot, TURTLE_FIRE_DPS * dt, { ignoreArmor: true, fire: TURTLE_FIRE_SMOKE, hitPosition: bot.group.position.clone() });
+  });
+}
+
+function updateRemoteTurtleFires(dt) {
+  remotePlayers.forEach((remote) => {
+    const active = remote.shipType === "turtle" && remote.turtleFire && remote.mode === "ship";
+    updateTurtleFireVisual(remote.group, active, dt);
+    if (!active || state.mode !== "ship" || state.viewMode !== "ship") return;
+    if (pointInTurtleFireCone(remote.group, "turtle", playerShip.position, shipHitRadius(state.shipType) * 0.55)) {
+      damageTarget(state, TURTLE_FIRE_DPS * dt, { ignoreArmor: true, fire: TURTLE_FIRE_SMOKE, hitPosition: playerShip.position.clone() });
+    }
+  });
+}
+
 function addLargeShipArchitecture(group, type, length, width, scale, spec, tier, profile = "skiff") {
   const actualLength = length * scale;
   const actualWidth = width * scale;
@@ -6107,11 +6298,11 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
     "galley", "galleon", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
     "packet", "pink", "pinnace", "razee", "schooner", "sloop", "storm", "treasure",
     "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner", "chassemaree",
-    "polacre", "sixthrate", "postship",
+    "polacre", "sixthrate", "postship", "turtle",
   ]);
   const customDeckTypes = new Set([
     "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "ironclad",
-    "knarr", "manowar", "merchantman", "razee", "treasure",
+    "knarr", "manowar", "merchantman", "razee", "treasure", "turtle",
   ]);
   const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
   const gunDeckTypes = new Set([
@@ -6126,7 +6317,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
   addAttachedPennant(group, hullLength, scale, spec.color, tier);
   addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if ((tier >= 4 && !["whaler", "ballooner"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
+  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
   addCannonPorts(group, shipSideCannons(type), hullWidth, hullLength, scale, profile);
@@ -6346,11 +6537,144 @@ function makeShip(type = "skiff", remote = false) {
     group.add(mortar);
     addCabin(group, 0, 2.05, 1.9, 1.2, scale * 0.9, 0x58463a);
   } else if (type === "turtle") {
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(1.85 * scale, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x456b4b));
-    shell.position.y = 1.22 * scale;
-    shell.scale.z = 1.55;
+    const roofMat = mat(0x365f43);
+    roofMat.side = THREE.DoubleSide;
+    const floorMat = mat(0x6f4a32);
+    const plateMat = mat(0x284532);
+    const trimMat = mat(0xb25a35);
+    const beamMat = mat(0x4f3322);
+    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(4.85 * scale, 0.08 * scale, 6.8 * scale), floorMat);
+    interiorFloor.position.set(0, 1.31 * scale, -0.02 * scale);
+    interiorFloor.castShadow = true;
+    interiorFloor.receiveShadow = true;
+    group.add(interiorFloor);
+    const centerRunner = new THREE.Mesh(new THREE.BoxGeometry(0.22 * scale, 0.09 * scale, 6.25 * scale), beamMat);
+    centerRunner.position.set(0, 1.39 * scale, -0.02 * scale);
+    centerRunner.castShadow = true;
+    group.add(centerRunner);
+    [-1, 1].forEach((side) => {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.42 * scale, 0.16 * scale, 5.25 * scale), mat(0x5c3a24));
+      bench.position.set(side * 1.42 * scale, 1.47 * scale, -0.1 * scale);
+      bench.castShadow = true;
+      group.add(bench);
+      const rack = new THREE.Mesh(new THREE.BoxGeometry(0.28 * scale, 0.18 * scale, 3.65 * scale), mat(0x2a2d25));
+      rack.position.set(side * 1.88 * scale, 1.58 * scale, -0.1 * scale);
+      rack.castShadow = true;
+      group.add(rack);
+    });
+    for (let row = 0; row < 4; row++) {
+      const z = (-2.45 + row * 1.62) * scale;
+      const table = new THREE.Mesh(new THREE.BoxGeometry(0.78 * scale, 0.16 * scale, 0.5 * scale), mat(row % 2 ? 0x6b4328 : 0x7a4c2b));
+      table.position.set(0, 1.55 * scale, z);
+      table.castShadow = true;
+      group.add(table);
+      [-1, 1].forEach((side) => {
+        const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.1 * scale, 0.22 * scale, 8), mats.gold);
+        lamp.position.set(side * 0.42 * scale, 1.75 * scale, z);
+        lamp.castShadow = true;
+        group.add(lamp);
+      });
+    }
+    const hatchFrame = new THREE.Mesh(new THREE.BoxGeometry(1.55 * scale, 0.18 * scale, 0.22 * scale), trimMat);
+    hatchFrame.position.set(0, 2.54 * scale, 3.2 * scale);
+    hatchFrame.castShadow = true;
+    group.add(hatchFrame);
+    [-1, 1].forEach((side) => {
+      const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.14 * scale, 0.9 * scale, 0.18 * scale), trimMat);
+      jamb.position.set(side * 0.72 * scale, 2.07 * scale, 3.2 * scale);
+      jamb.castShadow = true;
+      group.add(jamb);
+    });
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(2.12 * scale, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
+    shell.position.y = 1.27 * scale;
+    shell.scale.set(1.08, 0.72, 1.82);
+    shell.castShadow = true;
     group.add(shell);
-    addSail(group, 0, 0.5, 0.72, 0xd8f0c8);
+    for (let row = 0; row < 7; row++) {
+      const z = (-3.05 + row * 1.02) * scale;
+      const arch = Math.sin((row / 6) * Math.PI);
+      const rib = new THREE.Mesh(new THREE.BoxGeometry((4.2 - Math.abs(row - 3) * 0.08) * scale, 0.12 * scale, 0.18 * scale), plateMat);
+      rib.position.set(0, (1.86 + arch * 0.46) * scale, z);
+      rib.castShadow = true;
+      group.add(rib);
+    }
+    for (let row = 0; row < 5; row++) {
+      const z = (-2.45 + row * 1.18) * scale;
+      const arch = Math.sin((row / 4) * Math.PI);
+      const rowWidth = 3.05 - Math.abs(row - 2) * 0.24;
+      for (let col = -1; col <= 1; col++) {
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12 * scale, 0.46 * scale, 7), mats.dark);
+        spike.position.set(col * rowWidth * 0.42 * scale, (2.35 + arch * 0.34) * scale, z);
+        spike.castShadow = true;
+        group.add(spike);
+      }
+    }
+    [-1.65, 1.42].forEach((z, index) => {
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.12 * scale, 2.55 * scale, 10), beamMat);
+      mast.position.set(0, 2.72 * scale, z * scale);
+      mast.castShadow = true;
+      group.add(mast);
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * scale, 0.3 * scale, 0.18 * scale, 12), trimMat);
+      collar.position.set(0, 2.08 * scale, z * scale);
+      collar.castShadow = true;
+      group.add(collar);
+      const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.055 * scale, (index ? 1.65 : 1.95) * scale, 8), beamMat);
+      yard.rotation.z = Math.PI / 2;
+      yard.position.set(0, 3.32 * scale, z * scale);
+      yard.castShadow = true;
+      group.add(yard);
+      const furled = new THREE.Mesh(new THREE.BoxGeometry((index ? 1.35 : 1.62) * scale, 0.16 * scale, 0.1 * scale), mat(0xd9c194));
+      furled.position.set(0, 3.26 * scale, z * scale);
+      furled.castShadow = true;
+      group.add(furled);
+    });
+    const sideTrimZ = [-2.65, -1.55, -0.45, 0.65, 1.75, 2.55];
+    [-1, 1].forEach((side) => {
+      sideTrimZ.forEach((z) => {
+        const oar = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.06 * scale, 2.65 * scale, 7), mat(0x5b3b25));
+        oar.rotation.z = Math.PI / 2;
+        oar.position.set(side * 2.18 * scale, 1.0 * scale, z * scale);
+        oar.castShadow = true;
+        group.add(oar);
+      });
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14 * scale, 0.34 * scale, 5.55 * scale), trimMat);
+      rail.position.set(side * 2.08 * scale, 1.45 * scale, -0.05 * scale);
+      rail.castShadow = true;
+      group.add(rail);
+    });
+    const bowZ = -hullSize[0] * 0.58 * scale;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.23 * scale, 0.32 * scale, 1.02 * scale, 10), trimMat);
+    neck.rotation.x = -Math.PI / 2;
+    neck.position.set(0, 1.55 * scale, bowZ + 0.28 * scale);
+    neck.castShadow = true;
+    group.add(neck);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.48 * scale, 0.95 * scale, 10), mat(0x7f3528));
+    head.rotation.x = -Math.PI / 2;
+    head.position.set(0, 1.58 * scale, bowZ - 0.42 * scale);
+    head.castShadow = true;
+    group.add(head);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.58 * scale, 0.18 * scale, 0.72 * scale), mat(0x52251e));
+    jaw.position.set(0, 1.35 * scale, bowZ - 0.72 * scale);
+    jaw.castShadow = true;
+    group.add(jaw);
+    [-1, 1].forEach((side) => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075 * scale, 8, 6), mat(0xffd35c));
+      eye.position.set(side * 0.25 * scale, 1.72 * scale, bowZ - 0.52 * scale);
+      group.add(eye);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.08 * scale, 0.42 * scale, 6), mats.gold);
+      horn.rotation.set(-0.68, 0, side * 0.35);
+      horn.position.set(side * 0.2 * scale, 1.96 * scale, bowZ - 0.12 * scale);
+      horn.castShadow = true;
+      group.add(horn);
+    });
+    const sternHouse = new THREE.Mesh(new THREE.BoxGeometry(1.25 * scale, 0.62 * scale, 0.9 * scale), mat(0x67412b));
+    sternHouse.position.set(0, 1.68 * scale, 2.15 * scale);
+    sternHouse.castShadow = true;
+    group.add(sternHouse);
+    const sternRoof = new THREE.Mesh(new THREE.BoxGeometry(1.58 * scale, 0.2 * scale, 1.08 * scale), plateMat);
+    sternRoof.position.set(0, 2.08 * scale, 2.15 * scale);
+    sternRoof.castShadow = true;
+    group.add(sternRoof);
   } else if (type === "sloop") {
     addSail(group, -0.05, -0.9, 1.08, 0xd8f8ff);
     addSail(group, 0.35, 0.92, 0.68, 0xf8f4e5);
@@ -6679,9 +7003,10 @@ function addWaveHazard(position, options = {}) {
     radiusStart: options.radiusStart || 5,
     radiusEnd: options.radiusEnd || 24,
     thickness: options.thickness || 3,
-    dps: options.dps || 10,
+    dps: Number.isFinite(Number(options.dps)) ? Number(options.dps) : 10,
     force: options.force || 18,
     damageShips: options.damageShips !== false,
+    source: options.source || null,
   });
 }
 
@@ -6701,7 +7026,10 @@ function updateWaveHazards(dt) {
       away.y = 0;
       if (away.lengthSq() < 0.001) away.set(1, 0, 0);
       away.normalize();
-      if (hazard.damageShips) damageTarget(target, hazard.dps * dt);
+      if (hazard.damageShips) {
+        const amount = hazard.source === "bomb" ? bombDamageForShip(type, hazard.dps * dt) : hazard.dps * dt;
+        damageTarget(target, amount);
+      }
       if (velocity) velocity.add(away.multiplyScalar(hazard.force * dt));
     };
     if (firstPersonCharacterActive() && state.mode !== "land") {
@@ -8504,8 +8832,9 @@ function updateBurnVisual(target, dt) {
 function igniteTarget(target, fire, hitPosition = null, visualOnly = false) {
   if (!fire) return;
   const current = targetFireState(target);
+  const fireDps = Number(fire.dps);
   const effect = {
-    dps: Number(fire.dps) || 2,
+    dps: Number.isFinite(fireDps) ? fireDps : 2,
     remaining: Number(fire.duration) || 12,
   };
   const next = {
@@ -8526,7 +8855,8 @@ function updateFireDamage(target, dt, speed = 0) {
   fire.remaining -= dt * movementWear;
   updateBurnVisual(target, dt);
   if (!fire.visualOnly) {
-    const damage = (Number(fire.dps) || 2) * dt;
+    const fireDps = Number(fire.dps);
+    const damage = (Number.isFinite(fireDps) ? fireDps : 2) * dt;
     target.hp -= damage;
   }
   if (fire.remaining <= 0) {
@@ -9204,9 +9534,17 @@ addEventListener("keydown", (event) => {
   }
   if (key === "n") {
     event.preventDefault();
-    if (state.shipType !== "whaler" || state.mode !== "ship") return toast("Only the Whaler can use side nets at sea.");
-    state.whalerNets = !state.whalerNets;
-    toast(state.whalerNets ? "Whaler nets extended. Speed reduced." : "Whaler nets retracted.");
+    if (state.mode !== "ship" || state.viewMode !== "ship") return toast("Ship abilities can only be used while sailing.");
+    if (state.shipType === "whaler") {
+      state.whalerNets = !state.whalerNets;
+      toast(state.whalerNets ? "Whaler nets extended. Speed reduced." : "Whaler nets retracted.");
+      return;
+    }
+    if (state.shipType === "turtle") {
+      startTurtleFireAbility();
+      return;
+    }
+    toast("Only the Whaler and Turtle Ship use the N ability.");
     return;
   }
   if (key === "b") {
@@ -10080,7 +10418,7 @@ function detonateBalloonBomb(position, options = {}) {
     boom.add(shard);
   }
   addImpactEffect(boom, 0.9);
-  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly });
+  addWaveHazard(position, { dps: 15, force: 24, radiusStart: 4, radiusEnd: 26, thickness: 4, life: 3.5, damageShips: !options.visualOnly, source: "bomb" });
   const damage = Number(options.damage) || BALLOON_BOMB_DAMAGE;
   pushFloatingLootFromExplosion(position, BALLOON_BOMB_BLAST_RADIUS + 8);
   const hitShip = (target, pos, type) => {
@@ -10091,7 +10429,7 @@ function detonateBalloonBomb(position, options = {}) {
     const velocity = target === state ? state.velocity : target.velocity;
     const knockback = velocity ? bombKnockbackVector(position, pos, radius, BALLOON_BOMB_KNOCKBACK, clamp(95 / shipWeight(type), 0.38, 1.25)) : null;
     if (knockback) velocity.add(knockback);
-    damageTarget(target, damage * falloff, { ignoreArmor: true });
+    damageTarget(target, bombDamageForShip(type, damage * falloff), { ignoreArmor: true });
   };
   if (!options.visualOnly) {
     if (state.mode === "ship") hitShip(state, playerShip.position, state.shipType);
@@ -10261,6 +10599,7 @@ function updateShip(dt) {
   const netsActive = state.shipType === "whaler" && state.whalerNets;
   state.whalerNetProgress += ((netsActive ? 1 : 0) - state.whalerNetProgress) * clamp(dt * 4.8, 0, 1);
   updateWhalerNetVisuals(playerShip, netsActive, dt);
+  updateTurtleFire(dt);
   updateFireDamage(state, dt, state.velocity.length());
   state.hp = clamp(state.hp + spec.regen * dt, 0, maxHp());
   updateDocking(dt);
@@ -10545,6 +10884,7 @@ function updateBots(dt) {
       }
       bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
       updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
+      updateTurtleFireVisual(bot.group, Boolean(bot.turtleFire), dt);
       updateFireDamage(bot, dt, bot.velocity.length());
     });
     return;
@@ -11346,7 +11686,13 @@ function updateHud() {
       ? ` | ${t("blubber")} ${blubberCount()}`
       : "";
   const netLabel = state.shipType === "whaler" ? ` | ${t("nets")} ${state.whalerNets ? t("out") : t("in")}` : "";
-  const statsText = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${fireLabel}`;
+  const turtleStatus = state.turtleFire
+    ? `Fire ${Math.ceil(state.turtleFireTimer || 0)}s`
+    : (state.turtleFireCooldown || 0) > 0
+      ? `Fire cooldown ${Math.ceil(state.turtleFireCooldown)}s`
+      : "Fire ready";
+  const turtleLabel = state.shipType === "turtle" ? ` | ${turtleStatus}` : "";
+  const statsText = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${turtleLabel}${fireLabel}`;
   if (statsText !== hudStatsText) {
     hudStatsText = statsText;
     setTextIfChanged(ui.statsLine, statsText);
@@ -11729,6 +12075,7 @@ function multiplayerPayload() {
     mode: state.mode,
     viewMode: state.viewMode,
     whalerNets: Boolean(state.shipType === "whaler" && state.whalerNets),
+    turtleFire: Boolean(turtleFireActiveForState()),
     x: playerShip.position.x,
     z: playerShip.position.z,
     vx: state.velocity.x,
@@ -11874,12 +12221,14 @@ function upsertRemotePlayer(data) {
   remote.gold = Number(data.gold) || 0;
   remote.hp = data.hp || getShipStats(shipType).hp;
   remote.whalerNets = Boolean(data.whalerNets);
+  remote.turtleFire = Boolean(shipType === "turtle" && data.turtleFire && remote.mode === "ship");
   remote.velocity = remote.velocity || new THREE.Vector3();
   remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
   remote.group.position.set(x, SHIP_WATERLINE_Y, z);
   remote.group.rotation.y = Number(data.rotation) || 0;
   remote.group.visible = true;
   updateWhalerNetVisuals(remote.group, remote.whalerNets, 0.18);
+  updateTurtleFireVisual(remote.group, remote.turtleFire, 0.18);
 
   const remoteView = data.viewMode || "ship";
   const avatarVisible = data.mode === "land" || remoteView === "deck" || remoteView === "swim";
@@ -12105,13 +12454,15 @@ function syncServerWorld(world) {
     bot.level = Number(data.level) || 1;
     bot.courageous = Boolean(data.courageous);
     bot.netsExtended = Boolean(data.netsExtended);
+    bot.turtleFire = Boolean(bot.shipType === "turtle" && data.turtleFire);
     bot.serverMaxHp = Number(data.maxHp) || spec.hp;
     bot.serverPosition = bot.serverPosition || new THREE.Vector3();
     bot.serverPosition.set(Number(data.x) || 0, SHIP_WATERLINE_Y, Number(data.z) || 0);
     bot.serverRotation = serverRotation;
     if (data.fire) {
+      const fireDps = Number(data.fire.dps);
       bot.fire = {
-        dps: Number(data.fire.dps) || 2,
+        dps: Number.isFinite(fireDps) ? fireDps : 2,
         remaining: Number(data.fire.remaining) || 0,
         visualOnly: true,
         scorch: bot.fire?.scorch || null,
@@ -12249,6 +12600,16 @@ function handleMultiplayerMessage(message) {
     const sentAt = Number(message.sentAt);
     if (Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS) return;
     if (state.mode === "ship") damageTarget(state, Number(message.damage) || BALLOON_BOMB_DAMAGE, { ignoreArmor: true });
+  } else if (message.type === "turtleFireHit") {
+    const sentAt = Number(message.sentAt);
+    if (Number.isFinite(sentAt) && Date.now() - sentAt > TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS) return;
+    if (state.mode === "ship") {
+      damageTarget(state, Number(message.damage) || TURTLE_FIRE_DPS * 0.1, {
+        ignoreArmor: true,
+        fire: TURTLE_FIRE_SMOKE,
+        hitPosition: playerShip.position.clone(),
+      });
+    }
   } else if (message.type === "whaleRam") {
     if (state.mode === "ship") {
       const origin = new THREE.Vector3(Number(message.x) || playerShip.position.x, 0, Number(message.z) || playerShip.position.z);
@@ -12464,10 +12825,17 @@ function animateSea() {
 function frame() {
   const dt = Math.min(0.033, clock.getDelta());
   if (state.joined) {
+    updateTurtleFireTimers(dt);
+    if (state.mode !== "ship" && state.turtleFire) {
+      state.turtleFire = false;
+      state.turtleFireTimer = 0;
+      updateTurtleFireVisual(playerShip, false, dt);
+    }
     if (state.mode === "ship") updateShip(dt);
     else updateWalker(dt);
     updateBots(dt);
     remotePlayers.forEach((remote) => updateFireDamage(remote, dt, remote.velocity?.length?.() || 0));
+    updateRemoteTurtleFires(dt);
     resolveShipContacts();
     updateProjectiles(dt);
     updateImpactEffects(dt);

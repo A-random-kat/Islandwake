@@ -44,6 +44,12 @@ const balloonBombKnockback = 22;
 const airburstDamage = 60;
 const airburstRadius = balloonBombBlastRadius * (2 / 3);
 const balloonBombLifetimeMs = 9000;
+const turtleFireDps = 50;
+const turtleFireRange = 18;
+const turtleFireWidth = 4.2;
+const turtleFireDurationMs = 8000;
+const turtleFireCooldownMs = 20000;
+const turtleFireSmoke = { dps: 0, duration: 0.7 };
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
 const dayLengthSeconds = 600;
@@ -147,6 +153,7 @@ const shipStats = [
   { id: "razee", hp: 2550, speed: 18, tier: 5 },
   { id: "whaler", hp: 1750, speed: 12, tier: 4 },
   { id: "ballooner", hp: 1350, speed: 16, tier: 4 },
+  { id: "turtle", hp: 3200, speed: 8, tier: 5 },
   { id: "grandfrigate", hp: 3150, speed: 18, tier: 6 },
   { id: "windrunner", hp: 3000, speed: 28, tier: 6 },
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
@@ -224,7 +231,7 @@ const shipRegen = {
   fluyt: 3, polacre: 2, brig: 3, storm: 2, bombketch: 3, barque: 3, corvette: 3,
   sixthrate: 3, frigate: 3, postship: 3, merchantman: 4, carrack: 4,
   galleon: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
-  fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
+  turtle: 4, fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
 };
 
 const playerShipTiers = {
@@ -257,6 +264,7 @@ const playerShipTiers = {
   fourthrate: 5,
   whaler: 4,
   ballooner: 4,
+  turtle: 5,
   grandfrigate: 6,
   windrunner: 6,
 };
@@ -311,6 +319,7 @@ const shipPhysics = {
   razee: { radius: 4.6, weight: 195 },
   whaler: { radius: 4.6, weight: 205 },
   ballooner: { radius: 4.1, weight: 160 },
+  turtle: { radius: 4.9, weight: 255 },
   grandfrigate: { radius: 5, weight: 255 },
   windrunner: { radius: 4.8, weight: 210 },
   fourthrate: { radius: 4.9, weight: 222 },
@@ -477,6 +486,101 @@ function shipWeight(type) {
   }
   const spec = shipSpec(type);
   return Math.max(35, Math.round(42 + spec.tier * 26 + spec.hp / 180 - spec.speed * 0.08));
+}
+
+function bombDamageForShip(type, amount) {
+  const damage = Math.max(0, Number(amount) || 0);
+  return type === "turtle" ? damage * 0.5 : damage;
+}
+
+function playerTurtleFireActive(player) {
+  return player
+    && player.shipType === "turtle"
+    && player.turtleFire
+    && player.mode === "ship"
+    && (player.viewMode || "ship") === "ship";
+}
+
+function turtleFireConeHitsPoint(sourceX, sourceZ, rotation, targetX, targetZ, targetRadius = 0) {
+  if (![sourceX, sourceZ, targetX, targetZ].every(Number.isFinite)) return false;
+  const forwardX = Math.sin(rotation || 0);
+  const forwardZ = Math.cos(rotation || 0);
+  const rightX = forwardZ;
+  const rightZ = -forwardX;
+  const originX = sourceX + forwardX * shipRadius("turtle") * 1.25;
+  const originZ = sourceZ + forwardZ * shipRadius("turtle") * 1.25;
+  const dx = targetX - originX;
+  const dz = targetZ - originZ;
+  const along = dx * forwardX + dz * forwardZ;
+  const radius = Math.max(0, Number(targetRadius) || 0);
+  if (along < -radius * 0.2 || along > turtleFireRange + radius) return false;
+  const widen = clamp(along / turtleFireRange, 0, 1);
+  const halfWidth = turtleFireWidth * (0.42 + widen * 0.72) + radius * 0.55;
+  return Math.abs(dx * rightX + dz * rightZ) <= halfWidth;
+}
+
+function playerTurtleFireHitsBot(player, bot) {
+  const px = Number(player.x);
+  const pz = Number(player.z);
+  const rotation = Number(player.rotation) || 0;
+  const botRadius = shipRadius(bot.shipType) * 0.45;
+  return turtleFireConeHitsPoint(px, pz, rotation, bot.x, bot.z, botRadius);
+}
+
+function updatePlayerTurtleFires(dt, now) {
+  for (const socket of clients.values()) {
+    const player = socket.player;
+    if (!playerTurtleFireActive(player)) continue;
+    for (const bot of bots) {
+      if (!playerTurtleFireHitsBot(player, bot)) continue;
+      bot.targetPlayer = socket.id;
+      bot.angerUntil = now + 9000;
+      damageBot(bot, turtleFireDps * dt, socket, turtleFireSmoke);
+    }
+  }
+}
+
+function botTurtleFireHitsPlayer(bot, player) {
+  if (!bot || !player || player.mode !== "ship") return false;
+  const px = Number(player.x);
+  const pz = Number(player.z);
+  const radius = shipRadius(player.shipType || "skiff") * 0.55;
+  return turtleFireConeHitsPoint(bot.x, bot.z, bot.rotation, px, pz, radius);
+}
+
+function botTurtleFireHitsBot(bot, target) {
+  if (!bot || !target || bot === target || target.hp <= 0) return false;
+  const radius = shipRadius(target.shipType) * 0.45;
+  return turtleFireConeHitsPoint(bot.x, bot.z, bot.rotation, target.x, target.z, radius);
+}
+
+function updateBotTurtleFire(bot, dt, now) {
+  if (bot.shipType !== "turtle") {
+    delete bot.turtleFireActiveUntil;
+    delete bot.turtleFireCooldownUntil;
+    return false;
+  }
+  const active = Number(bot.turtleFireActiveUntil || 0) > now;
+  if (!active) return false;
+  const tickDamage = turtleFireDps * dt;
+  for (const socket of clients.values()) {
+    const player = socket.player;
+    if (!player || !botTurtleFireHitsPlayer(bot, player)) continue;
+    send(socket, {
+      type: "turtleFireHit",
+      id: bot.id,
+      damage: tickDamage,
+      x: bot.x,
+      z: bot.z,
+      sentAt: now,
+    });
+  }
+  for (const other of bots) {
+    if (!botTurtleFireHitsBot(bot, other)) continue;
+    startBotFeud(other, bot, 9000);
+    damageBot(other, tickDamage, null, turtleFireSmoke);
+  }
+  return true;
 }
 
 function botIslandClearance(type) {
@@ -834,6 +938,7 @@ function shipSideCannons(type = "skiff") {
     corvette: 3,
     whaler: 3,
     ballooner: 3,
+    turtle: 5,
     frigate: 4,
     postship: 4,
     sixthrate: 4,
@@ -1587,15 +1692,16 @@ function startBotFeud(bot, enemy, duration = 9000) {
 
 function normalizedFire(fire) {
   if (!fire || typeof fire !== "object") return null;
+  const dps = Number(fire.dps);
   return {
-    dps: clamp(Number(fire.dps) || 0, 0, 10),
+    dps: clamp(Number.isFinite(dps) ? dps : 0, 0, 10),
     remaining: clamp(Number(fire.duration ?? fire.remaining) || 0, 0, 3),
   };
 }
 
 function igniteBot(bot, fire, rewardSocket = null) {
   const effect = normalizedFire(fire);
-  if (!effect || effect.dps <= 0 || effect.remaining <= 0) return;
+  if (!effect || effect.remaining <= 0) return;
   bot.fire = {
     dps: effect.dps,
     remaining: Math.max(bot.fire?.remaining || 0, effect.remaining),
@@ -1607,7 +1713,8 @@ function updateBotFire(bot, dt) {
   if (!bot.fire) return false;
   const movementWear = 1 + clamp(Math.hypot(bot.vx || 0, bot.vz || 0) / 32, 0, 0.9);
   bot.fire.remaining -= dt * movementWear;
-  bot.hp -= (Number(bot.fire.dps) || 2) * dt;
+  const fireDps = Number(bot.fire.dps);
+  bot.hp -= (Number.isFinite(fireDps) ? fireDps : 2) * dt;
   if (bot.fire.remaining <= 0) {
     bot.fire = null;
     bot.fireSourceId = null;
@@ -1961,7 +2068,7 @@ function explodeBalloonBomb(bomb) {
     const impulse = balloonBombKnockback * falloff * weightScale;
     bot.vx += nx * impulse;
     bot.vz += nz * impulse;
-    damageBotIgnoringArmor(bot, balloonBombDamage * falloff, rewardSocket);
+    damageBotIgnoringArmor(bot, bombDamageForShip(bot.shipType, balloonBombDamage * falloff), rewardSocket);
   }
   for (const whale of whales) {
     const distance = Math.hypot(whale.x - bomb.x, whale.z - bomb.z);
@@ -1988,7 +2095,7 @@ function explodeBalloonBomb(bomb) {
     send(socket, {
       type: "bombHit",
       id: bomb.id,
-      damage: Math.round(balloonBombDamage * falloff),
+      damage: Math.round(bombDamageForShip(socket.player.shipType || "skiff", balloonBombDamage * falloff)),
       x: bomb.x,
       z: bomb.z,
       sentAt: explodedAt,
@@ -2216,6 +2323,7 @@ function botSnapshot(bot) {
     level: bot.level,
     courageous: Boolean(bot.courageous),
     netsExtended: Boolean(bot.netsExtended),
+    turtleFire: Boolean(bot.shipType === "turtle" && Number(bot.turtleFireActiveUntil || 0) > Date.now()),
     x: bot.x,
     z: bot.z,
     rotation: bot.rotation,
@@ -2289,6 +2397,8 @@ function worldSnapshot() {
 function resetBot(bot) {
   delete bot.fire;
   delete bot.fireSourceId;
+  delete bot.turtleFireActiveUntil;
+  delete bot.turtleFireCooldownUntil;
   botBalloons.forEach((balloon) => {
     if (balloon.owner === bot.id) crashBotBalloon(balloon, "owner-sunk");
   });
@@ -2322,6 +2432,7 @@ function updateWorld() {
   const now = Date.now();
   for (const bot of bots) {
     if (updateBotFire(bot, dt)) continue;
+    const botTurtleFireActive = updateBotTurtleFire(bot, dt, now);
     bot.hp = clamp(bot.hp + (shipRegen[bot.shipType] || Math.max(1, Math.min(8, Math.round((bot.tier || 1) * 0.8)))) * dt, 0, bot.maxHp);
     if (bot.shipType === "whaler" && now >= (bot.netToggleAt || 0)) {
       bot.netsExtended = Math.random() < 0.48;
@@ -2582,7 +2693,12 @@ function updateWorld() {
       const steerZ = toTarget.z + avoidance.z;
       const baseDesired = Math.atan2(steerX, steerZ);
       const inCombat = Boolean(targetSocket || targetBot || targetKraken);
-      const broadsideTarget = inCombat && distance < botCannonRangeFor(bot) * 1.25
+      const turtleFireReady = bot.shipType === "turtle"
+        && !botTurtleFireActive
+        && Boolean(targetSocket || targetBot)
+        && Number(bot.turtleFireCooldownUntil || 0) <= now;
+      const wantsTurtleFireAim = turtleFireReady && distance < turtleFireRange + shipRadius(bot.shipType) + 24;
+      const broadsideTarget = inCombat && !wantsTurtleFireAim && distance < botCannonRangeFor(bot) * 1.25
         ? broadsideSideForDirection(bot.rotation, steerX, steerZ)
         : null;
       const desired = broadsideTarget ? baseDesired - broadsideTarget.side * Math.PI / 2 : baseDesired;
@@ -2646,9 +2762,9 @@ function updateWorld() {
     }
 
     const shotTarget = fleeingKraken ? null : targetSocket?.player
-      ? { x: Number(targetSocket.player.x) || bot.x, z: Number(targetSocket.player.z) || bot.z, vx: Number(targetSocket.player.vx) || 0, vz: Number(targetSocket.player.vz) || 0, kind: "player", targetId: targetSocket.id }
+      ? { x: Number(targetSocket.player.x) || bot.x, z: Number(targetSocket.player.z) || bot.z, vx: Number(targetSocket.player.vx) || 0, vz: Number(targetSocket.player.vz) || 0, kind: "player", targetId: targetSocket.id, shipType: targetSocket.player.shipType || "skiff" }
       : targetBot
-        ? { x: targetBot.x, z: targetBot.z, vx: targetBot.vx, vz: targetBot.vz, kind: "bot", bot: targetBot, targetId: targetBot.id }
+        ? { x: targetBot.x, z: targetBot.z, vx: targetBot.vx, vz: targetBot.vz, kind: "bot", bot: targetBot, targetId: targetBot.id, shipType: targetBot.shipType || "skiff" }
         : targetKraken && kraken?.alive
           ? { ...krakenHeadPoint(), vx: kraken.vx || 0, vz: kraken.vz || 0, kind: "kraken", kraken: true }
           : null;
@@ -2664,6 +2780,18 @@ function updateWorld() {
         continue;
       }
       if (controllingBalloon) continue;
+      if (bot.shipType === "turtle" && shotTarget.kind !== "kraken") {
+        if (Number(bot.turtleFireActiveUntil || 0) > now) continue;
+        const targetRadius = shipRadius(shotTarget.shipType || "skiff") * 0.55;
+        if (Number(bot.turtleFireCooldownUntil || 0) <= now
+          && shotDistance <= turtleFireRange + targetRadius
+          && turtleFireConeHitsPoint(bot.x, bot.z, bot.rotation, shotTarget.x, shotTarget.z, targetRadius)) {
+          bot.turtleFireActiveUntil = now + turtleFireDurationMs;
+          bot.turtleFireCooldownUntil = now + turtleFireCooldownMs;
+          bot.fireCooldown = Math.max(bot.fireCooldown || 0, turtleFireDurationMs / 1000);
+          continue;
+        }
+      }
       const shotRange = botCannonRangeFor(bot);
       if (shotDistance <= shotRange && shotDistance > 0.01) {
         const { targetX, targetZ } = aimBotShot(bot, shotTarget, shotRange);
@@ -2713,6 +2841,7 @@ function updateWorld() {
       }
     }
   }
+  updatePlayerTurtleFires(dt, now);
   resolveBotContacts();
   botCollectCrates();
   updateCrateLifecycle(now);
@@ -2863,6 +2992,19 @@ function handleMessage(socket, text) {
     } else {
       next.vx = Number(next.vx) || 0;
       next.vz = Number(next.vz) || 0;
+    }
+    next.whalerNets = Boolean(next.shipType === "whaler" && next.whalerNets);
+    const wantsTurtleFire = Boolean(next.shipType === "turtle" && next.mode === "ship" && (next.viewMode || "ship") === "ship" && next.turtleFire);
+    const turtleStillActive = Number(socket.turtleFireActiveUntil || 0) > now;
+    if (next.shipType !== "turtle") {
+      socket.turtleFireActiveUntil = 0;
+      next.turtleFire = false;
+    } else if (wantsTurtleFire && !turtleStillActive && Number(socket.turtleFireCooldownUntil || 0) <= now) {
+      socket.turtleFireActiveUntil = now + turtleFireDurationMs;
+      socket.turtleFireCooldownUntil = now + turtleFireCooldownMs;
+      next.turtleFire = true;
+    } else {
+      next.turtleFire = wantsTurtleFire && Number(socket.turtleFireActiveUntil || 0) > now;
     }
     socket.player = next;
     broadcast({ type: "state", player: socket.player }, socket);
