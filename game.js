@@ -94,8 +94,8 @@ const CHARACTER_SCALE = 0.187;
 const CHARACTER_EYE_HEIGHT = 0.7;
 const CHARACTER_MAX_HP = 1;
 const WILDLIFE_SPAWN_MULTIPLIER = 5;
-const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER;
-const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER;
+const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER * 2;
+const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER * 2;
 const MAST_SIZE_SCALE = 1.2;
 const MAST_SPACING_SCALE = 1.2;
 const SEA_SIZE = WATERFALL_LIMIT * 2;
@@ -120,12 +120,19 @@ const TURTLE_FIRE_WIDTH = 4.2;
 const TURTLE_FIRE_DURATION = 8;
 const TURTLE_FIRE_COOLDOWN = 20;
 const TURTLE_FIRE_SMOKE = { dps: 0, duration: 0.7 };
+const ROCKET_BURST_COUNT = 30;
+const ROCKET_BURST_COOLDOWN = 20;
+const ROCKET_BURST_INTERVAL = 0.075;
+const ROCKET_BURST_SPREAD = 0.82;
+const ROCKET_BURST_DAMAGE = 15;
+const ROCKET_BURST_FIRE = { dps: 10, duration: 3 };
 const CANNONBALL_TYPES = {
   basic: { id: "basic", name: "Basic Shell", short: "Shell", price: 0, infinite: true, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.35, color: 0x2f3342, trail: 0xd9fbff },
   grapeshot: { id: "grapeshot", name: "Grapeshot", short: "Grape", price: 16, pellets: 6, damageScale: 0.25, rangeScale: 0.72, spread: GRAPESHOT_SPREAD, radius: 0.18, color: 0x4a3932, trail: 0xffe4c4 },
   hotshot: { id: "hotshot", name: "Hotshot", short: "Hot", price: 23, pellets: 1, damageScale: 1, rangeScale: 1, spread: 0, radius: 0.36, color: 0xc94f3f, trail: 0xffb347, fire: { dps: 10, duration: 3 } },
   harpoon: { id: "harpoon", name: "Harpoon", short: "Harpoon", price: 20, pellets: 1, fixedDamage: 20, whaleDamage: 100, rangeScale: 0.86, spread: 0, radius: 0.16, color: 0xd8d0bd, trail: 0xf8f4e5, noRangeDamage: true },
   airburst: { id: "airburst", name: "Airburst Shell", short: "Air", price: 16, pellets: 1, fixedDamage: 0, rangeScale: 1, spread: GRAPESHOT_SPREAD, radius: 0.32, color: 0x82cfff, trail: 0xbfefff, airburst: true, noRangeDamage: true },
+  rocketburst: { id: "rocketburst", name: "Rocket Burst", short: "Rocket", price: 500, pellets: 1, fixedDamage: ROCKET_BURST_DAMAGE, rangeScale: 1.18, spread: ROCKET_BURST_SPREAD, radius: 0.22, color: 0xd94a2e, trail: 0xffb347, fire: ROCKET_BURST_FIRE, noRangeDamage: true, abilityOnly: true },
 };
 const AMMO_SLOT_TYPES = ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
 const SPECIAL_AMMO_TYPES = Object.keys(CANNONBALL_TYPES).filter((id) => !CANNONBALL_TYPES[id].infinite);
@@ -176,15 +183,15 @@ const I18N = {
       upgradePoints: "Upgrade points: <b>{points}</b>", spend: "Spend", max: "Max", cannonDamage: "Cannon Damage", fireRate: "Fire Rate", cannonRange: "Cannon Range",
       speedVeryFast: "very fast", speedQuick: "quick", speedSlow: "slow", speedSteady: "steady", noArmor: "no armor", heavyArmor: "heavy armor", solidArmor: "solid armor", lightArmor: "light armor", hugeHold: "huge cargo hold", largeHold: "large cargo hold", smallHold: "small cargo hold", usefulHold: "useful cargo hold", massiveHp: "massive hull HP", highHp: "high hull HP", lightHp: "light hull HP", goodHp: "good hull HP",
       speedBuild: "Built for speed, not soaking hits.", heavyBuild: "Heavy and hard to push, but slow to reposition.", balancedBuild: "Balanced enough for trading and fights.", shipRole: "{speed} ship with {durability}, {defense}, and a {hold}. {handling}",
-      hotshotDesc: "Same direct hit as Basic Shell, then burns for {dps}/s for {duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.", grapeshotDesc: "{pellets} pellets in a wide spread. Each pellet does {damage}% direct damage and reaches {range}% of cannon range. Best up close.", harpoonDesc: "Fixed 20 damage to ships. Whales take 100 damage, or 150 from a Whaler, and cannon damage upgrades do not boost it.", airburstDesc: "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.", basicDesc: "Reliable single cannonball with infinite ammo.",
+      hotshotDesc: "Same direct hit as Basic Shell, then burns for {dps}/s for {duration}s. Fire ignores cannon damage upgrades and moving ships burn out faster.", grapeshotDesc: "{pellets} pellets in a wide spread. Each pellet does {damage}% direct damage and reaches {range}% of cannon range. Best up close.", harpoonDesc: "Fixed 20 damage to ships. Whales take 100 damage, or 150 from a Whaler, and cannon damage upgrades do not boost it.", airburstDesc: "Explodes high above the aim point with grapeshot-like inaccuracy. Deals up to 60 balloon damage in a small blast and less near the edge.", rocketburstDesc: "Rocketeer ability ammo. Press N to launch 30 inaccurate Congreve rockets toward your current cursor. Each rocket deals 15 damage and burns for 10/s for 3s.", basicDesc: "Reliable single cannonball with infinite ammo.",
       damageUpgradeDesc: "Current {damage} direct damage. Each point adds +2 direct damage; Hotshot fire stays separate.", reloadUpgradeDesc: "Current {reload}s reload. Each point lowers reload by 0.02s, up to Lv.{max}.", rangeUpgradeDesc: "Current {range}m range. Each point adds +4m. Farther hits also deal up to +50% direct damage.",
       dangerous: "Dangerous", wounded: "Wounded", manageable: "Manageable", hostile: "Hostile", crates: "Crates", distanceMeter: "{distance}m",
       spyDetails: "Lv.{level} | {distance} | {threat}<br>HP {hp}/{max} ({pct}%) | Armor {armor}%<br>Speed {speed} | Regen {regen}/s | Crates {crates}",
       toastStopShip: "Stop your ship before walking around.", toastDeckView: "Deck view. Press C for sailing controls.", toastReturnedDeck: "Returned to the deck.", toastSailingControls: "Sailing controls restored.", toastAmmoSlotEmpty: "That ammo slot is empty.", toastPutShotHotbar: "Put that shot in a hotbar slot first.", toastBasicSlot: "Basic Shell stays in slot 1.", toastWindShown: "Wind markers shown.", toastWindHidden: "Wind markers hidden.", toastGetCloser: "Get closer to an island to dock.", toastLineRetracted: "Line retracted.", toastWhalerOnly: "Only the Whaler can use side nets at sea.", toastNetsOut: "Whaler nets extended. Speed reduced.", toastNetsIn: "Whaler nets retracted.", toastDockCancel: "Docking cancelled. Stay close to the island.", toastSailsRaised: "Sails raised.", toastDockBeforeShop: "Dock at an island before shopping.", toastHoldFull: "Your hold is full.", toastBlubberFull: "Your blubber hold is full.", toastRecoveredBlubber: "Recovered whale blubber.", toastSpyShip: "Use the spyglass from your ship.", toastSpyNone: "Spyglass found no ships. Aim toward a sail.", toastNotEnoughGold: "Not enough gold.", toastNoCargoSell: "No cargo to sell.", toastBalloonMax: "You already have the maximum number of balloons.", toastBalloonBought: "Hot air balloon purchased.", toastNeedPoints: "Level up to earn upgrade points.", toastReloadMax: "Reload upgrade is maxed.", toastUpgradeInstalled: "Upgrade installed.", toastBalloonerOnly: "Only a Ballooner can launch hot air balloons.", toastThreeBalloons: "Only 3 balloons can be launched at once.", toastNoBalloons: "No spare hot air balloons.", toastBalloonLaunched: "Balloon launched. Press V to switch view.", toastShipView: "Ship view.", toastBalloonView: "Balloon view.", toastNextBalloon: "Next balloon view.", toastBalloonDescending: "Balloon descending. Keep it above the Ballooner.", toastBombUsed: "This balloon has already dropped its bomb.", toastBombAway: "Bomb away.", toastBalloonRecovered: "Balloon recovered.", toastBalloonSplash: "Balloon splashed down.", toastWaterfall: "You crossed the waterfall at the edge of the world.", toastJumpWater: "You jumped into the water. Press F to return to your ship.", toastSwimming: "You are swimming. Press F to return to your ship.", toastGoldDiggerBlock: "GoldDigger teleport blocked: island.", toastGoldDiggerMinimap: "GoldDigger minimap teleport.", toastConnected: "Connected to multiplayer waters.", toastReconnected: "Reconnected to multiplayer waters.", toastDisconnected: "Multiplayer disconnected. Reconnecting..."
     },
     goods: { Silk: "Silk", Spice: "Spice", Iron: "Iron", Tea: "Tea", Pearls: "Pearls", "Whale Blubber": "Whale Blubber" },
-    ammo: { basic: "Basic Shell", grapeshot: "Grapeshot", hotshot: "Hotshot", harpoon: "Harpoon", airburst: "Airburst Shell" },
-    ammoShort: { basic: "Shell", grapeshot: "Grape", hotshot: "Hot", harpoon: "Harpoon", airburst: "Air" },
+    ammo: { basic: "Basic Shell", grapeshot: "Grapeshot", hotshot: "Hotshot", harpoon: "Harpoon", airburst: "Airburst Shell", rocketburst: "Rocket Burst" },
+    ammoShort: { basic: "Shell", grapeshot: "Grape", hotshot: "Hot", harpoon: "Harpoon", airburst: "Air", rocketburst: "Rocket" },
     entities: { Fish: "Fish", Squid: "Squid", Crate: "Crate", Treasure: "Treasure", "Kraken tentacle": "Kraken tentacle" },
     islands: { "Port Azure": "Port Azure", Vikholm: "Vikholm", Seville: "Seville", Venice: "Venice", Amsterdam: "Amsterdam", Portsmouth: "Portsmouth", Zanzibar: "Zanzibar", Canton: "Canton", Baltimore: "Baltimore", Brest: "Brest", Lisbon: "Lisbon", Calicut: "Calicut", Tonga: "Tonga", "Crown Harbor": "Crown Harbor", Blackreef: "Blackreef", "New Albion": "New Albion", "Gull Keys": "Gull Keys", "Twin Shoals": "Twin Shoals", "Mistfall Cay": "Mistfall Cay", "Broken Tooth": "Broken Tooth", Greenneedle: "Greenneedle" },
     cultures: { Freeport: "Freeport", Viking: "Viking", Spanish: "Spanish", Venetian: "Venetian", Dutch: "Dutch", "Royal Navy": "Royal Navy", "Swahili-Arab": "Swahili-Arab", Chinese: "Chinese", American: "American", French: "French", Portuguese: "Portuguese", "Indian Ocean": "Indian Ocean", Polynesian: "Polynesian", "Crown Colony": "Crown Colony", Privateer: "Privateer", Merchant: "Merchant", Uncharted: "Uncharted" },
@@ -330,7 +337,7 @@ const islandData = [
   { name: "Seville", culture: "Spanish", x: 182, z: -138, radius: 24, color: 0xd4ad65, accent: 0xc94f3f, theme: "iberian", shipMarket: ["caravel", "carrack", "galleon", "merchantman"], goods: { Silk: 64, Spice: 38, Iron: 48, Tea: 68, Pearls: 112 } },
   { name: "Venice", culture: "Venetian", x: 116, z: 142, radius: 21, color: 0x82bd72, accent: 0xd7b44a, theme: "lagoon", shipMarket: ["galley", "tartane", "polacre", "xebec", "brigantine"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Amsterdam", culture: "Dutch", x: -142, z: 118, radius: 22, color: 0x68b779, accent: 0xe08d3f, theme: "trade", shipMarket: ["hoy", "dogger", "bilander", "chassemaree", "fluyt", "barque", "barquentine"], goods: { Silk: 74, Spice: 48, Iron: 96, Tea: 57, Pearls: 84 } },
-  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "galleon", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
+  { name: "Portsmouth", culture: "Royal Navy", x: 36, z: 226, radius: 24, color: 0x6fa36a, accent: 0x4051a8, theme: "naval", shipMarket: ["storm", "sixthrate", "corvette", "frigate", "postship", "whaler", "razee", "galleon", "rocketeer", "ballooner", "fourthrate", "grandfrigate", "manowar", "windrunner", "firstrate"], goods: { Silk: 48, Spice: 102, Iron: 72, Tea: 35, Pearls: 126 } },
   { name: "Zanzibar", culture: "Swahili-Arab", x: 226, z: 28, radius: 20, color: 0x88c478, accent: 0xf0d05a, theme: "dhow", shipMarket: ["dhow", "felucca", "tartane", "polacre", "xebec"], goods: { Silk: 70, Spice: 30, Iron: 54, Tea: 63, Pearls: 132 } },
   { name: "Canton", culture: "Chinese", x: -222, z: 32, radius: 22, color: 0x68c46f, accent: 0xc93636, theme: "pagoda", shipMarket: ["junk", "treasure", "turtle"], goods: { Silk: 42, Spice: 70, Iron: 67, Tea: 95, Pearls: 143 } },
   { name: "Baltimore", culture: "American", x: -26, z: -214, radius: 20, color: 0x75caa5, accent: 0x58c6f2, theme: "schooner", shipMarket: ["schooner", "packet", "clipper", "sloop", "ballooner", "windrunner"], goods: { Silk: 91, Spice: 54, Iron: 34, Tea: 82, Pearls: 109 } },
@@ -415,11 +422,12 @@ const shipCatalog = [
   { id: "storm", name: "Sloop-of-War", price: 7800, hp: 380, armor: 0.07, speed: 31, regen: 2.0, color: 0x3556b8, model: "storm" },
   { id: "sixthrate", name: "Sixth Rate", price: 8120, hp: 535, armor: 0.1, speed: 24, regen: 2.6, color: 0x4768ad, model: "frigate" },
   { id: "galleon", name: "Galleon", price: 8500, hp: 680, armor: 0.14, speed: 12, regen: 2.9, color: 0x7e4c9d, model: "galleon" },
+  { id: "rocketeer", name: "Rocketeer", price: 19000, hp: 2500, armor: 0.1, speed: 12, regen: 5.0, color: 0x9c4f35, model: "galleon" },
   { id: "merchantman", name: "Merchantman", price: 9100, hp: 760, armor: 0.12, speed: 11, regen: 3.0, color: 0xb5773c, model: "fluyt" },
   { id: "eastindiaman", name: "East Indiaman", price: 9900, hp: 820, armor: 0.15, speed: 12, regen: 3.2, color: 0xd09a42, model: "galleon" },
   { id: "postship", name: "Post Ship", price: 10350, hp: 640, armor: 0.11, speed: 22, regen: 2.8, color: 0x5d7fb2, model: "frigate" },
   { id: "carrack", name: "Carrack", price: 10800, hp: 780, armor: 0.15, speed: 10, regen: 3.1, color: 0xb84f44, model: "carrack" },
-  { id: "treasure", name: "Treasure Junk", price: 32000, hp: 3500, armor: 0.14, speed: 9, regen: 5.0, color: 0xd6a83c, model: "treasure" },
+  { id: "treasure", name: "Treasure Junk", price: 36500, hp: 4000, armor: 0.14, speed: 9, regen: 5.0, color: 0xd6a83c, model: "treasure" },
   { id: "whaler", name: "Whaler", price: 10600, hp: 1750, armor: 0.1, speed: 12, regen: 2.0, color: 0x6f8792, model: "frigate" },
   { id: "razee", name: "Razee Frigate", price: 13000, hp: 850, armor: 0.16, speed: 18, regen: 3.0, color: 0x6150a3, model: "frigate" },
   { id: "ballooner", name: "Ballooner", price: 15000, hp: 1350, armor: 0, speed: 16, regen: 2.0, color: 0xbb7c43, model: "frigate" },
@@ -476,8 +484,9 @@ const shipBalance = {
   merchantman: { name: "Merchantman", price: 11600, hp: 2280, armor: 0.1, speed: 11, regen: 4, capacity: 42, hitbox: 4.4 },
   carrack: { name: "Carrack", price: 12600, hp: 2340, armor: 0.11, speed: 10, regen: 4, capacity: 30, hitbox: 4.4 },
   galleon: { name: "Galleon", price: 14200, hp: 2700, armor: 0.14, speed: 12, regen: 5, capacity: 38, hitbox: 4.6 },
+  rocketeer: { name: "Rocketeer", price: 19000, fixedPrice: true, hp: 2500, armor: 0.1, speed: 12, regen: 5, capacity: 38, hitbox: 4.6, weight: 206 },
   eastindiaman: { name: "East Indiaman", price: 15600, hp: 2460, armor: 0.13, speed: 12, regen: 4, capacity: 52, hitbox: 4.7 },
-  treasure: { name: "Treasure Junk", price: 32000, fixedPrice: true, hp: 3500, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 6.1, weight: 320 },
+  treasure: { name: "Treasure Junk", price: 36500, fixedPrice: true, hp: 4000, armor: 0.12, speed: 9, regen: 5, capacity: 56, hitbox: 6.1, weight: 320 },
   whaler: { name: "Whaler", price: 10600, fixedPrice: true, hp: 1750, armor: 0.1, speed: 12, regen: 2, capacity: 4, blubberCapacity: 50, hitbox: 4.6, weight: 205, ramTakenScale: 0.5, whaleRamTakenScale: 0.25 },
   razee: { name: "Razee Frigate", price: 17000, hp: 2550, armor: 0.14, speed: 18, regen: 4, capacity: 20, hitbox: 4.6 },
   ballooner: { name: "Ballooner", price: 15000, fixedPrice: true, hp: 1350, armor: 0, speed: 16, regen: 2, capacity: 10, hitbox: 4.1, weight: 160 },
@@ -554,7 +563,7 @@ function deriveFairShipPrice(ship) {
 }
 
 function keepExactShipPrice(shipId) {
-  return ["whaler", "ballooner", "windrunner", "turtle"].includes(shipId);
+  return ["whaler", "ballooner", "windrunner", "turtle", "rocketeer"].includes(shipId);
 }
 
 for (const ship of shipCatalog) {
@@ -624,7 +633,7 @@ const state = {
   hp: shipBalance[STARTER_SHIP].hp,
   cargo: {},
   upgrades: { damage: 0, fireRate: 0, range: 0 },
-  ammo: { grapeshot: 0, hotshot: 0, harpoon: 0, airburst: 0 },
+  ammo: { grapeshot: 0, hotshot: 0, harpoon: 0, airburst: 0, rocketburst: 0 },
   ammoSlots: [...AMMO_SLOT_TYPES],
   selectedAmmo: "basic",
   selectedAmmoSlot: 0,
@@ -649,6 +658,8 @@ const state = {
   turtleFire: false,
   turtleFireTimer: 0,
   turtleFireCooldown: 0,
+  rocketBurst: null,
+  rocketCooldown: 0,
   characterHp: CHARACTER_MAX_HP,
   swimHp: CHARACTER_MAX_HP,
   showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
@@ -1165,6 +1176,7 @@ function shipSideCannons(type = state.shipType) {
     merchantman: 5,
     eastindiaman: 5,
     galleon: 5,
+    rocketeer: 5,
     razee: 5,
     treasure: 7,
     fourthrate: 6,
@@ -1296,6 +1308,7 @@ function shipVisualScale(type = state.shipType) {
     grandfrigate: 1.38,
     windrunner: 1.34,
     galleon: 1.28,
+    rocketeer: 1.28,
     merchantman: 1.28,
     eastindiaman: 1.34,
     carrack: 1.34,
@@ -1319,6 +1332,7 @@ function shipHullDimensions(type = state.shipType) {
     dart: [7.7, 1.75],
     clipper: [7.4, 2.35],
     galleon: [7.2, 3.25],
+    rocketeer: [7.2, 3.25],
     brig: [6.9, 3.05],
     brigantine: [7.2, 2.75],
     cat: [5.8, 1.45],
@@ -2081,6 +2095,10 @@ function replacePlayerShip(type, spawnPosition = null) {
     state.turtleFire = false;
     state.turtleFireTimer = 0;
     state.turtleFireCooldown = 0;
+  }
+  if (ship.id !== "rocketeer") {
+    state.rocketBurst = null;
+    state.rocketCooldown = 0;
   }
   playerShip = makeShip(ship.id);
   updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
@@ -6426,6 +6444,106 @@ function updateTurtleFire(dt) {
   });
 }
 
+function rocketeerActiveForState() {
+  return state.shipType === "rocketeer"
+    && state.rocketBurst
+    && state.rocketBurst.remaining > 0
+    && state.mode === "ship"
+    && state.viewMode === "ship"
+    && !state.fallingOffWorld
+    && !state.leviathanGrabbed;
+}
+
+function rocketeerAimPoint() {
+  raycaster.setFromCamera(mouse, camera);
+  if (raycaster.ray.intersectPlane(aimPlane, aimPoint)) return aimPoint.clone().setY(0);
+  const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation)).normalize();
+  return playerShip.position.clone().add(forward.multiplyScalar(cannonRange())).setY(0);
+}
+
+function rocketeerRocketOrigin(index = 0) {
+  const rotation = playerShip.rotation?.y || state.rotation;
+  const { forward, right } = broadsideVectors(rotation);
+  const scale = shipVisualScale("rocketeer");
+  const pattern = index % 10;
+  const sideOffset = ((pattern % 5) - 2) * 0.18 * scale;
+  const rowOffset = Math.floor(pattern / 5) * 0.22 * scale;
+  const origin = playerShip.position.clone()
+    .add(forward.multiplyScalar((-0.18 + rowOffset) * shipHullDimensions("rocketeer").length))
+    .add(right.multiplyScalar(sideOffset));
+  origin.y = 2.18 * scale;
+  return origin;
+}
+
+function launchRocketeerRocket(index = 0) {
+  const aim = rocketeerAimPoint();
+  const origin = rocketeerRocketOrigin(index);
+  const toAim = aim.clone().sub(origin);
+  toAim.y = 0;
+  if (toAim.lengthSq() < 0.01) toAim.set(Math.sin(state.rotation), 0, Math.cos(state.rotation));
+  const requestedRange = clamp(toAim.length(), 22, cannonRange() * 1.55);
+  const shotDir = rotateFlatDirection(toAim.normalize(), (Math.random() - 0.5) * ROCKET_BURST_SPREAD).normalize();
+  const shotRange = clamp(requestedRange * (0.74 + Math.random() * 0.62), 18, cannonRange() * 1.6);
+  const target = origin.clone().add(shotDir.clone().multiplyScalar(shotRange)).setY(0);
+  const options = {
+    target,
+    ammoType: "rocketburst",
+    targetKind: "any",
+    ballistic: true,
+    startY: origin.y,
+    baseDamage: ROCKET_BURST_DAMAGE,
+    rangeDamage: false,
+    gravity: CANNONBALL_GRAVITY * 1.55,
+  };
+  makeProjectile(playerId, origin, shotDir, ROCKET_BURST_DAMAGE, shotRange, options);
+  publishShot(origin, shotDir, ROCKET_BURST_DAMAGE, shotRange, target, "rocketburst", options);
+}
+
+function startRocketeerBurstAbility() {
+  if (state.shipType !== "rocketeer") return false;
+  if (state.rocketBurst?.remaining > 0) {
+    toast(`Rocket burst firing (${state.rocketBurst.remaining} left).`);
+    return true;
+  }
+  if ((state.rocketCooldown || 0) > 0) {
+    toast(`Rocket burst reloading (${Math.ceil(state.rocketCooldown)}s).`);
+    return true;
+  }
+  if (ammoCount("rocketburst") <= 0) {
+    toast("Buy Rocket Burst ammo before using the Rocketeer.");
+    return true;
+  }
+  state.ammo.rocketburst = Math.max(0, ammoCount("rocketburst") - 1);
+  state.rocketBurst = { remaining: ROCKET_BURST_COUNT, timer: 0, fired: 0 };
+  state.rocketCooldown = ROCKET_BURST_COOLDOWN;
+  multiplayer.lastSent = 0;
+  toast("Rocket burst launched.");
+  updateHud();
+  return true;
+}
+
+function updateRocketeerBurst(dt) {
+  if (state.shipType !== "rocketeer") {
+    state.rocketBurst = null;
+    state.rocketCooldown = 0;
+    return;
+  }
+  state.rocketCooldown = Math.max(0, (state.rocketCooldown || 0) - dt);
+  if (!state.rocketBurst) return;
+  if (!rocketeerActiveForState()) {
+    state.rocketBurst = null;
+    return;
+  }
+  state.rocketBurst.timer -= dt;
+  while (state.rocketBurst && state.rocketBurst.remaining > 0 && state.rocketBurst.timer <= 0) {
+    launchRocketeerRocket(state.rocketBurst.fired || 0);
+    state.rocketBurst.remaining--;
+    state.rocketBurst.fired = (state.rocketBurst.fired || 0) + 1;
+    state.rocketBurst.timer += ROCKET_BURST_INTERVAL;
+  }
+  if (state.rocketBurst?.remaining <= 0) state.rocketBurst = null;
+}
+
 function updateRemoteTurtleFires(dt) {
   remotePlayers.forEach((remote) => {
     const active = remote.shipType === "turtle" && remote.turtleFire && remote.mode === "ship";
@@ -6442,7 +6560,7 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const actualWidth = width * scale;
   const sternZ = actualLength * 0.34;
   const bowZ = -actualLength * 0.34;
-  const castleColor = ["galleon", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
+  const castleColor = ["galleon", "rocketeer", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
   const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "treasure", "windrunner"]);
   const hasInterior = interiorTypes.has(type);
   const postShipCabin = type === "postship";
@@ -6722,23 +6840,63 @@ function addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profi
   group.add(prowFin);
 }
 
+function addRocketeerDetails(group, hullLength, hullWidth, scale) {
+  const actualLength = hullLength * scale;
+  const actualWidth = hullWidth * scale;
+  const iron = mat(0x2e3234);
+  const rocketRed = mat(0xb83728);
+  const rackWood = mat(0x5d3a27);
+  const deckY = 1.82 * scale;
+  const rackZs = [-actualLength * 0.17, actualLength * 0.02, actualLength * 0.2];
+  rackZs.forEach((z, row) => {
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.48, 0.08 * scale, 0.5 * scale), rackWood);
+    platform.position.set(0, deckY - 0.08 * scale, z);
+    platform.castShadow = true;
+    group.add(platform);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const x = side * (actualWidth * (0.1 + i * 0.045));
+        const start = new THREE.Vector3(x, deckY, z - 0.2 * scale);
+        const end = new THREE.Vector3(x + side * 0.08 * scale, deckY + (0.5 + row * 0.04) * scale, z + 0.54 * scale);
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, 1, 8), iron);
+        setCylinderBetween(tube, start, end);
+        tube.castShadow = true;
+        group.add(tube);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(0.07 * scale, 0.18 * scale, 8), rocketRed);
+        cap.position.copy(end);
+        cap.rotation.x = Math.PI / 2.3;
+        cap.rotation.z = side * 0.12;
+        cap.castShadow = true;
+        group.add(cap);
+      }
+    }
+  });
+  const powderChest = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.28, 0.34 * scale, 0.52 * scale), mats.hullDark);
+  powderChest.position.set(0, 1.68 * scale, -actualLength * 0.34);
+  powderChest.castShadow = true;
+  group.add(powderChest);
+  const brassBand = new THREE.Mesh(new THREE.BoxGeometry(actualWidth * 0.3, 0.055 * scale, 0.56 * scale), mats.gold);
+  brassBand.position.copy(powderChest.position).y += 0.2 * scale;
+  group.add(brassBand);
+}
+
 function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, profile = "skiff") {
   const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   const customCabinTypes = new Set([
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
-    "galley", "galleon", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
+    "galley", "galleon", "rocketeer", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
     "packet", "pink", "pinnace", "razee", "schooner", "sloop", "storm", "treasure",
     "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner", "chassemaree",
     "polacre", "sixthrate", "postship", "turtle",
   ]);
   const customDeckTypes = new Set([
-    "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "ironclad",
+    "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "rocketeer", "ironclad",
     "knarr", "manowar", "merchantman", "razee", "treasure", "turtle",
   ]);
   const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
   const gunDeckTypes = new Set([
     "bombketch", "brig", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "manowar", "merchantman", "eastindiaman", "razee", "storm", "treasure",
+    "galleon", "rocketeer", "manowar", "merchantman", "eastindiaman", "razee", "storm", "treasure",
     "firstrate", "snow", "sixthrate", "postship",
   ]);
   addHullDetailLines(group, hullLength, hullWidth, scale, tier, profile);
@@ -6748,10 +6906,11 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
   addAttachedPennant(group, hullLength, scale, spec.color, tier);
   addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
+  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "rocketeer", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
   if (type === "treasure") addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile);
+  if (type === "rocketeer") addRocketeerDetails(group, hullLength, hullWidth, scale);
   if (shipUsesCenterlineGun(type)) {
     addCenterlineDeckCannon(group, hullLength, scale);
   } else {
@@ -6788,6 +6947,7 @@ function makeShip(type = "skiff", remote = false) {
     dart: [7.7, 1.75],
     clipper: [7.4, 2.35],
     galleon: [7.2, 3.25],
+    rocketeer: [7.2, 3.25],
     brig: [6.9, 3.05],
     brigantine: [7.2, 2.75],
     cat: [5.8, 1.45],
@@ -6830,7 +6990,7 @@ function makeShip(type = "skiff", remote = false) {
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
-  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "galleon", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
+  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "galleon", "rocketeer", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
   const hullMaterial = type === "treasure" ? mat(0x6f3f25) : darkHulled ? mats.hullDark : mats.hull;
   const hullHeight = (type === "treasure" ? 1.34 : 1.15) * scale;
   group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, hullHeight, hullMaterial, profile));
@@ -6897,8 +7057,8 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "windrunner") {
     addSquareSail(group, -0.65, -3.55, 1.02, 0xfff3ce, 2);
     addSquareSail(group, -0.1, -1.42, 1.12, 0xffdf9b, 2);
-    addSquareSail(group, 0.42, 1.08, 0.98, 0xfff3ce, 1);
-    addSail(group, 0.72, 3.18, 0.9, 0xfff3ce);
+    addSquareSail(group, 0.42, 1.08, 0.98, 0xfff3ce, 2);
+    addSquareSail(group, 0.72, 3.18, 0.9, 0xfff3ce, 3);
   } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -7390,7 +7550,7 @@ function projectileDamageAtImpact(shot) {
 function removeProjectile(shot, impact = "none") {
   if (!shot) return;
   if (impact === "hit") {
-    if (shot.ammoType === "hotshot") makeFireImpactEffect(shot.mesh.position.clone(), shot.dir);
+    if (shot.fire) makeFireImpactEffect(shot.mesh.position.clone(), shot.dir);
     else makeSplinterEffect(shot.mesh.position.clone(), shot.dir);
   }
   if (impact === "splash") makeSplashEffect(shot.target);
@@ -8732,7 +8892,7 @@ function summonLeviathan() {
   };
 }
 
-function makeFish() {
+function makeFish(data = null) {
   const group = new THREE.Group();
   const rippleMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
   const ripple = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 18), rippleMat);
@@ -8742,18 +8902,21 @@ function makeFish() {
   fin.position.y = 0.22;
   fin.rotation.x = Math.PI / 2;
   group.add(fin);
-  const fishPoint = randomWaterPoint(MAP_LIMIT * 0.92, 18);
+  const fishPoint = data ? new THREE.Vector3(Number(data.x) || 0, 0.15, Number(data.z) || 0) : randomWaterPoint(MAP_LIMIT * 0.92, 18);
   group.position.set(fishPoint.x, 0.15, fishPoint.z);
   group.userData.phase = Math.random() * 20;
   group.userData.kind = "fish";
+  group.userData.serverId = data?.id || null;
   group.userData.speed = 8;
   group.userData.radius = 0.75;
-  group.userData.direction = Math.random() * Math.PI * 2;
+  group.userData.direction = Number.isFinite(Number(data?.direction)) ? Number(data.direction) : Math.random() * Math.PI * 2;
+  if (data?.id) group.userData.serverPosition = group.position.clone();
   scene.add(group);
   fish.push(group);
+  return group;
 }
 
-function makeSquid() {
+function makeSquid(data = null) {
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), mat(0xb24f5d));
   body.scale.set(0.72, 0.45, 1.15);
@@ -8767,15 +8930,18 @@ function makeSquid() {
     tentacle.rotation.z = angle;
     group.add(tentacle);
   }
-  const point = randomWaterPoint(MAP_LIMIT * 0.92, 18);
+  const point = data ? new THREE.Vector3(Number(data.x) || 0, 0.12, Number(data.z) || 0) : randomWaterPoint(MAP_LIMIT * 0.92, 18);
   group.position.set(point.x, 0.12, point.z);
   group.userData.phase = Math.random() * 20;
   group.userData.kind = "squid";
+  group.userData.serverId = data?.id || null;
   group.userData.speed = 8;
   group.userData.radius = 1.05;
-  group.userData.direction = Math.random() * Math.PI * 2;
+  group.userData.direction = Number.isFinite(Number(data?.direction)) ? Number(data.direction) : Math.random() * Math.PI * 2;
+  if (data?.id) group.userData.serverPosition = group.position.clone();
   scene.add(group);
   fish.push(group);
+  return group;
 }
 
 function makeWhale(data = null) {
@@ -9073,6 +9239,7 @@ function clearFishingRig() {
   if (fishingBobber) scene.remove(fishingBobber);
   fishingLine = null;
   fishingBobber = null;
+  if (multiplayer.serverWorld) sendMultiplayer({ type: "clearFishBait" });
 }
 
 function nearestFishTo(point, maxDistance) {
@@ -9090,6 +9257,13 @@ function nearestFishTo(point, maxDistance) {
 
 function fishHitRadius(item) {
   return item?.userData?.radius || (item?.userData?.kind === "squid" ? 1.05 : 0.75);
+}
+
+function removeFishItem(item) {
+  if (!item) return;
+  scene.remove(item);
+  const index = fish.indexOf(item);
+  if (index >= 0) fish.splice(index, 1);
 }
 
 function startFishing(dir) {
@@ -9122,15 +9296,24 @@ function startFishing(dir) {
     reelTime: 0.9 + Math.random() * 1.25,
     phase: "waiting",
   };
+  if (multiplayer.serverWorld) sendMultiplayer({ type: "fishBait", x: castPoint.x, z: castPoint.z, duration: 25 });
   toast("Line cast. Waiting for a bite...");
 }
 
 function finishFishing() {
   const target = state.fishing?.target;
   const kind = target?.userData?.kind === "squid" ? "Squid" : "Fish";
+  if (target?.userData?.serverId && multiplayer.serverWorld) {
+    if (!target.userData.pending) {
+      target.userData.pending = true;
+      sendMultiplayer({ type: "collectFish", id: target.userData.serverId, source: "Line" });
+    }
+    clearFishingRig();
+    state.fishing = null;
+    return;
+  }
   if (target && fish.includes(target)) {
-    scene.remove(target);
-    fish.splice(fish.indexOf(target), 1);
+    removeFishItem(target);
   }
   clearFishingRig();
   state.fishing = null;
@@ -9142,9 +9325,14 @@ function finishFishing() {
 
 function rewardFishCatch(item, source = "Line") {
   const kind = item?.userData?.kind === "squid" ? "Squid" : "Fish";
+  if (item?.userData?.serverId && multiplayer.serverWorld) {
+    if (item.userData.pending) return;
+    item.userData.pending = true;
+    sendMultiplayer({ type: "collectFish", id: item.userData.serverId, source });
+    return;
+  }
   if (item && fish.includes(item)) {
-    scene.remove(item);
-    fish.splice(fish.indexOf(item), 1);
+    removeFishItem(item);
   }
   state.gold += 16 + state.level * 3 + Math.floor(Math.random() * 14);
   addXP(22 + Math.floor(Math.random() * 10));
@@ -9989,7 +10177,11 @@ addEventListener("keydown", (event) => {
       startTurtleFireAbility();
       return;
     }
-    toast("Only the Whaler and Turtle Ship use the N ability.");
+    if (state.shipType === "rocketeer") {
+      startRocketeerBurstAbility();
+      return;
+    }
+    toast("Only the Whaler, Turtle Ship, and Rocketeer use the N ability.");
     return;
   }
   if (key === "b") {
@@ -10439,6 +10631,9 @@ function ammoDescription(ammo) {
   if (ammo.id === "airburst") {
     return t("airburstDesc");
   }
+  if (ammo.id === "rocketburst") {
+    return t("rocketburstDesc");
+  }
   return t("basicDesc");
 }
 
@@ -10499,7 +10694,10 @@ function renderShop() {
       const ammo = CANNONBALL_TYPES[id];
       const owned = ammoCount(id);
       const description = ammoDescription(ammo);
-      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions"><button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button></div></div>`;
+      const amountButtons = ammo.abilityOnly
+        ? `<button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button>`
+        : `<button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button>`;
+      return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions">${amountButtons}</div></div>`;
     }).join("") + balloonRow;
   } else {
     const ups = [
@@ -10557,12 +10755,13 @@ function handleShopBodyAction(event) {
   if (button.dataset.buyAmmo) {
     const ammo = CANNONBALL_TYPES[button.dataset.buyAmmo];
     if (!ammo || ammo.infinite) return;
-    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, 25);
+    const maxBuyAmount = ammo.abilityOnly ? 5 : 25;
+    const amount = clamp(Math.floor(Number(button.dataset.amount) || 1), 1, maxBuyAmount);
     const cost = ammo.price * amount;
     if (state.gold < cost) return toast("Not enough gold.");
     state.gold -= cost;
     state.ammo[ammo.id] = ammoCount(ammo.id) + amount;
-    const placed = placeAmmoOnHotbar(ammo.id);
+    const placed = ammo.abilityOnly ? true : placeAmmoOnHotbar(ammo.id);
     toast(placed ? `Bought ${amount} ${ammo.name}.` : `Bought ${amount} ${ammo.name}. Replace a hotbar slot.`);
   }
   if (button.dataset.replaceAmmo) {
@@ -11805,6 +12004,23 @@ function updateFish(dt) {
   fish.forEach((item, i) => {
     item.userData.phase += dt;
     const bait = state.fishing?.phase === "waiting" ? fishingBobber?.position : null;
+    if (item.userData.serverId && multiplayer.serverWorld) {
+      if (item.userData.serverPosition) {
+        item.position.lerp(item.userData.serverPosition, clamp(dt * 8, 0, 1));
+      }
+      const direction = Number.isFinite(Number(item.userData.serverDirection)) ? Number(item.userData.serverDirection) : item.userData.direction || 0;
+      item.userData.direction = direction;
+      if (bait && !item.userData.pending && dist2(item.position, bait) < fishHitRadius(item) + 0.72 && state.fishing) {
+        state.fishing.target = item;
+        state.fishing.phase = "reeling";
+        state.fishing.timer = 0;
+        toast(`${item.userData.kind === "squid" ? "Squid" : "Fish"} on the line!`);
+      }
+      item.rotation.y = direction;
+      const pulse = 1 + Math.sin(item.userData.phase * 5) * 0.12;
+      item.scale.set(pulse, 1, pulse);
+      return;
+    }
     let direction = item.userData.direction || 0;
     if (bait && dist2(item.position, bait) < (item.userData.kind === "squid" ? 45 : 30)) {
       direction = Math.atan2(bait.x - item.position.x, bait.z - item.position.z);
@@ -12139,7 +12355,13 @@ function updateHud() {
       ? `Fire cooldown ${Math.ceil(state.turtleFireCooldown)}s`
       : "Fire ready";
   const turtleLabel = state.shipType === "turtle" ? ` | ${turtleStatus}` : "";
-  const statsText = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${turtleLabel}${fireLabel}`;
+  const rocketStatus = state.rocketBurst
+    ? `Rockets ${state.rocketBurst.remaining}`
+    : (state.rocketCooldown || 0) > 0
+      ? `Rockets cooldown ${Math.ceil(state.rocketCooldown)}s`
+      : `Rockets ${ammoCount("rocketburst")}`;
+  const rocketLabel = state.shipType === "rocketeer" ? ` | ${rocketStatus}` : "";
+  const statsText = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${turtleLabel}${rocketLabel}${fireLabel}`;
   if (statsText !== hudStatsText) {
     hudStatsText = statsText;
     setTextIfChanged(ui.statsLine, statsText);
@@ -12774,6 +12996,30 @@ function syncServerBotBalloons(items = []) {
   });
 }
 
+function syncServerFish(items = []) {
+  const seen = new Set();
+  fish.slice().forEach((item) => {
+    if (!item.userData.serverId) removeFishItem(item);
+  });
+  (Array.isArray(items) ? items : []).forEach((data) => {
+    if (!data?.id) return;
+    seen.add(data.id);
+    let item = fish.find((candidate) => candidate.userData.serverId === data.id);
+    if (!item) {
+      item = data.kind === "squid" ? makeSquid(data) : makeFish(data);
+    }
+    item.userData.kind = data.kind === "squid" ? "squid" : "fish";
+    item.userData.serverId = data.id;
+    item.userData.serverPosition = item.userData.serverPosition || item.position.clone();
+    item.userData.serverPosition.set(Number(data.x) || 0, item.userData.kind === "squid" ? 0.12 : 0.15, Number(data.z) || 0);
+    item.userData.serverDirection = Number.isFinite(Number(data.direction)) ? Number(data.direction) : item.userData.direction || 0;
+    item.userData.radius = item.userData.kind === "squid" ? 1.05 : 0.75;
+  });
+  fish.slice().forEach((item) => {
+    if (item.userData.serverId && !seen.has(item.userData.serverId)) removeFishItem(item);
+  });
+}
+
 function removeAnimal(animal) {
   if (!animal) return;
   scene.remove(animal.group);
@@ -12961,10 +13207,22 @@ function syncServerWorld(world) {
   syncKraken(world.kraken);
   syncServerBombs(transientWorldStale ? [] : (world.bombs || []));
   syncServerBotBalloons(world.botBalloons || []);
+  syncServerFish(world.fish || []);
   syncServerWhales(world.whales || []);
   syncServerStorms(world.storms || []);
   syncIslandClaims([]);
   syncBuildingPieces([]);
+}
+
+function applyFishReward(fishReward) {
+  if (!fishReward) return;
+  const item = fish.find((candidate) => candidate.userData.serverId === fishReward.id);
+  if (item) removeFishItem(item);
+  state.gold += Number(fishReward.gold) || 0;
+  addXP(Number(fishReward.xp) || 0);
+  const kind = fishReward.kind === "squid" ? "Squid" : "Fish";
+  const source = fishReward.source || "Line";
+  toast(source === "Line" ? `${kind} reeled in after a hard pull.` : `${kind} caught by ${source}.`);
 }
 
 function applyCrateReward(crate) {
@@ -13024,6 +13282,8 @@ function spawnRemoteShot(data) {
     startY: Number.isFinite(Number(data.startY)) ? Number(data.startY) : undefined,
     baseDamage: Number(data.baseDamage) || Number(data.damage) || 20,
     rangeDamage: Boolean(data.rangeDamage),
+    gravity: Number.isFinite(Number(data.gravity)) ? Number(data.gravity) : undefined,
+    verticalVelocity: Number.isFinite(Number(data.verticalVelocity)) ? Number(data.verticalVelocity) : undefined,
   });
 }
 
@@ -13043,6 +13303,10 @@ function handleMultiplayerMessage(message) {
     applyCrateReward(message.crate);
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
+  } else if (message.type === "fishReward") {
+    applyFishReward(message.fish);
+  } else if (message.type === "fishRemove") {
+    removeFishItem(fish.find((item) => item.userData.serverId === message.id));
   } else if (message.type === "bombHit") {
     const sentAt = Number(message.sentAt);
     if (Number.isFinite(sentAt) && Date.now() - sentAt > BOMB_EXPLOSION_REPLAY_MAX_AGE_MS) return;
@@ -13224,6 +13488,8 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
       ballistic: Boolean(options.ballistic),
       startY: Number(options.startY) || origin.y,
       rangeDamage: Boolean(options.rangeDamage),
+      gravity: Number.isFinite(Number(options.gravity)) ? Number(options.gravity) : undefined,
+      verticalVelocity: Number.isFinite(Number(options.verticalVelocity)) ? Number(options.verticalVelocity) : undefined,
     },
   });
 }
@@ -13273,6 +13539,7 @@ function frame() {
   const dt = Math.min(0.033, clock.getDelta());
   if (state.joined) {
     updateTurtleFireTimers(dt);
+    updateRocketeerBurst(dt);
     if (state.mode !== "ship" && state.turtleFire) {
       state.turtleFire = false;
       state.turtleFireTimer = 0;

@@ -11,6 +11,7 @@ const crates = [];
 const bombs = [];
 const botBalloons = [];
 const whales = [];
+const fish = [];
 const storms = [];
 const islandClaims = new Map();
 const buildings = [];
@@ -27,6 +28,9 @@ const crateLifetimeMs = 120000;
 const whaleBitLifetimeMs = 300000;
 const crateSinkMs = 5000;
 const maxTreasures = 3;
+const wildlifeSpawnMultiplier = 5;
+const fishCount = 36 * wildlifeSpawnMultiplier * 2;
+const squidCount = 18 * wildlifeSpawnMultiplier * 2;
 const whaleCount = 7;
 const whaleMaxHp = 1000;
 const whaleSpeed = 14;
@@ -67,6 +71,7 @@ let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
 let nextBotBalloonId = 1;
 let nextBuildingId = 1;
+let nextFishId = 1;
 let kraken = null;
 let leviathan = null;
 const leviathanCooldowns = new Map();
@@ -148,9 +153,10 @@ const shipStats = [
   { id: "frigate", hp: 1740, speed: 24, tier: 4 },
   { id: "postship", hp: 1880, speed: 22, tier: 4 },
   { id: "galleon", hp: 2700, speed: 12, tier: 5 },
+  { id: "rocketeer", hp: 2500, speed: 12, tier: 5 },
   { id: "carrack", hp: 2340, speed: 10, tier: 4 },
   { id: "eastindiaman", hp: 2460, speed: 12, tier: 5 },
-  { id: "treasure", hp: 3500, speed: 9, tier: 6 },
+  { id: "treasure", hp: 4000, speed: 9, tier: 6 },
   { id: "razee", hp: 2550, speed: 18, tier: 5 },
   { id: "whaler", hp: 1750, speed: 12, tier: 4 },
   { id: "ballooner", hp: 1350, speed: 16, tier: 4 },
@@ -231,7 +237,7 @@ const shipRegen = {
   brigantine: 2, caravel: 3, snow: 3, packet: 2, chassemaree: 2, barquentine: 2, clipper: 2,
   fluyt: 3, polacre: 2, brig: 3, storm: 2, bombketch: 3, barque: 3, corvette: 3,
   sixthrate: 3, frigate: 3, postship: 3, merchantman: 4, carrack: 4,
-  galleon: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
+  galleon: 5, rocketeer: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
   turtle: 4, fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
 };
 
@@ -265,6 +271,7 @@ const playerShipTiers = {
   fourthrate: 5,
   whaler: 4,
   ballooner: 4,
+  rocketeer: 5,
   turtle: 5,
   grandfrigate: 6,
   windrunner: 6,
@@ -315,6 +322,7 @@ const shipPhysics = {
   merchantman: { radius: 4.4, weight: 191 },
   carrack: { radius: 4.4, weight: 185 },
   galleon: { radius: 4.6, weight: 206 },
+  rocketeer: { radius: 4.6, weight: 206 },
   eastindiaman: { radius: 4.7, weight: 219 },
   treasure: { radius: 6.1, weight: 320 },
   razee: { radius: 4.6, weight: 195 },
@@ -381,6 +389,111 @@ function randomPoint(radius = worldBounds, minCenterDistance = 0) {
     if (Math.hypot(point.x, point.z) >= minCenterDistance && !isInsideIsland(point, 14)) return point;
   }
   return { x: -radius * 0.68, z: radius * 0.54 };
+}
+
+function makeServerFish(kind = "fish", id = null) {
+  const isSquid = kind === "squid";
+  const point = randomPoint(worldBounds * 0.92, 18);
+  return {
+    id: id || `fish-${nextFishId++}`,
+    kind: isSquid ? "squid" : "fish",
+    x: point.x,
+    z: point.z,
+    direction: Math.random() * Math.PI * 2,
+    speed: 8,
+    radius: isSquid ? 1.05 : 0.75,
+    phase: Math.random() * 20,
+  };
+}
+
+function fishSnapshot(item) {
+  return {
+    id: item.id,
+    kind: item.kind,
+    x: Number(item.x) || 0,
+    z: Number(item.z) || 0,
+    direction: Number(item.direction) || 0,
+  };
+}
+
+function fishReward(socket, item, source = "Line") {
+  const level = clamp(Math.floor(Number(socket.player?.level) || 1), 1, 100);
+  return {
+    id: item.id,
+    kind: item.kind,
+    source,
+    gold: 16 + level * 3 + Math.floor(Math.random() * 14),
+    xp: 22 + Math.floor(Math.random() * 10),
+  };
+}
+
+function updateServerFish(dt, now) {
+  const baits = [];
+  for (const socket of clients.values()) {
+    const bait = socket.fishingBait;
+    if (!bait) continue;
+    if (bait.until <= now) {
+      socket.fishingBait = null;
+      continue;
+    }
+    baits.push(bait);
+  }
+  for (const item of fish) {
+    item.phase += dt;
+    let bestBait = null;
+    let bestDistance = item.kind === "squid" ? 45 : 30;
+    for (const bait of baits) {
+      const distance = Math.hypot(item.x - bait.x, item.z - bait.z);
+      if (distance < bestDistance) {
+        bestBait = bait;
+        bestDistance = distance;
+      }
+    }
+    if (bestBait) {
+      const desired = Math.atan2(bestBait.x - item.x, bestBait.z - item.z);
+      item.direction += angleDelta(desired, item.direction) * clamp(dt * 2.2, 0, 0.18);
+    } else if (Math.random() < dt * 0.28) {
+      item.direction += (Math.random() - 0.5) * 0.9;
+    }
+    const next = {
+      x: item.x + Math.sin(item.direction) * item.speed * dt,
+      z: item.z + Math.cos(item.direction) * item.speed * dt,
+    };
+    if (
+      Math.abs(next.x) > worldBounds * 0.95
+      || Math.abs(next.z) > worldBounds * 0.95
+      || isInsideIsland(next, item.radius + 5)
+    ) {
+      item.direction += Math.PI * (0.85 + Math.random() * 0.3);
+      item.x = clamp(item.x, -worldBounds * 0.94, worldBounds * 0.94);
+      item.z = clamp(item.z, -worldBounds * 0.94, worldBounds * 0.94);
+    } else {
+      item.x = next.x;
+      item.z = next.z;
+    }
+  }
+}
+
+function collectServerFish(socket, id, source = "Line") {
+  const index = fish.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  const item = fish[index];
+  const player = socket.player;
+  if (player) {
+    const playerPoint = { x: Number(player.x), z: Number(player.z) };
+    const bait = socket.fishingBait;
+    const nearPlayer = Number.isFinite(playerPoint.x) && Number.isFinite(playerPoint.z) && dist(item, playerPoint) < 42;
+    const nearBait = bait && dist(item, bait) < 10;
+    const netCatch = source === "the nets" && player.shipType === "whaler" && player.whalerNets && nearPlayer;
+    if (!nearPlayer && !nearBait && !netCatch) return;
+  }
+  fish.splice(index, 1);
+  const reward = fishReward(socket, item, source);
+  fish.push(makeServerFish(item.kind));
+  socket.fishingBait = null;
+  send(socket, { type: "fishReward", fish: reward });
+  broadcast({ type: "fishRemove", id: item.id }, socket);
+  broadcast(worldSnapshot());
 }
 
 function pointInWhaleNorthZone(point, pad = 0) {
@@ -947,6 +1060,7 @@ function shipSideCannons(type = "skiff") {
     merchantman: 5,
     eastindiaman: 5,
     galleon: 5,
+    rocketeer: 5,
     razee: 5,
     treasure: 7,
     fourthrate: 6,
@@ -2393,6 +2507,7 @@ function worldSnapshot() {
     leviathan: leviathanSnapshot(),
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
+    fish: fish.map(fishSnapshot),
     whales: whales.map(whaleSnapshot),
     storms: storms.map(stormSnapshot),
     kraken: krakenSnapshot(),
@@ -2872,6 +2987,7 @@ function updateWorld() {
   resolveBotContacts();
   botCollectCrates();
   updateCrateLifecycle(now);
+  updateServerFish(dt, now);
   updateWhales(now, dt);
   updateStorms(now, dt);
   updateKraken(now, dt);
@@ -2882,6 +2998,8 @@ function updateWorld() {
 }
 
 for (let i = 0; i < botCount; i++) bots.push(makeBot());
+for (let i = 0; i < fishCount; i++) fish.push(makeServerFish("fish"));
+for (let i = 0; i < squidCount; i++) fish.push(makeServerFish("squid"));
 for (let i = 0; i < whaleCount; i++) whales.push(makeWhale());
 setInterval(updateWorld, 100);
 
@@ -3230,6 +3348,22 @@ function handleMessage(socket, text) {
     send(socket, { type: "crateReward", crate });
     broadcast({ type: "crateRemove", id: crate.id }, socket);
     broadcast(worldSnapshot());
+  }
+  if (message.type === "fishBait") {
+    const x = Number(message.x);
+    const z = Number(message.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    socket.fishingBait = {
+      x: clamp(x, -worldBounds, worldBounds),
+      z: clamp(z, -worldBounds, worldBounds),
+      until: Date.now() + clamp(Number(message.duration) || 25, 2, 35) * 1000,
+    };
+  }
+  if (message.type === "clearFishBait") {
+    socket.fishingBait = null;
+  }
+  if (message.type === "collectFish") {
+    collectServerFish(socket, String(message.id || ""), String(message.source || "Line").slice(0, 24));
   }
 }
 
