@@ -1021,7 +1021,10 @@ const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const botUpgradeCache = new Map();
-const SHOT_REPLAY_MAX_AGE_MS = 3200;
+const MULTIPLAYER_STATE_INTERVAL = 0.09;
+const REMOTE_POSITION_LERP = 10;
+const REMOTE_ROTATION_LERP = 12;
+const SHOT_REPLAY_MAX_AGE_MS = 7000;
 const TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS = 4200;
 const BOMB_EXPLOSION_REPLAY_MAX_AGE_MS = 2600;
 const KRAKEN_ATTACK_REPLAY_MAX_AGE_MS = KRAKEN_ATTACK_LIFE * 1000 + 450;
@@ -7681,6 +7684,11 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     : ballistic
       ? (0.5 * gravity * flightTime * flightTime - Math.max(0.35, start.y)) / flightTime
       : 0;
+  const createdWallAt = Number.isFinite(Number(options.createdWallAt)) ? Number(options.createdWallAt) : Date.now();
+  const replayAge = Math.max(0, (Date.now() - createdWallAt) / 1000);
+  const initialAge = clamp(Number.isFinite(Number(options.initialAge)) ? Number(options.initialAge) : replayAge, 0, Math.max(0, flightTime - 0.02));
+  const initialTraveled = clamp(Number.isFinite(Number(options.initialTraveled)) ? Number(options.initialTraveled) : initialAge * shotSpeed, 0, distance);
+  const arcHeight = ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5);
   const mesh = ammo.id === "rocketburst"
     ? new THREE.Mesh(
       new THREE.CylinderGeometry(0.075, 0.1, 0.58, 10),
@@ -7701,13 +7709,28 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     mesh.add(nozzle);
   }
   mesh.position.copy(start);
+  if (initialTraveled > 0.001) {
+    const initialProgress = clamp(initialTraveled / distance, 0, 1);
+    if (ballistic) {
+      mesh.position.copy(start).addScaledVector(shotDir, initialTraveled);
+      const traveledTime = initialTraveled / Math.max(0.001, shotSpeed);
+      mesh.position.y = start.y + verticalVelocity * traveledTime - 0.5 * gravity * traveledTime * traveledTime;
+    } else {
+      mesh.position.lerpVectors(start, target, initialProgress);
+    }
+    if (!ammo.airburst && !ballistic) {
+      mesh.position.y = 1.05 + Math.sin(initialProgress * Math.PI) * arcHeight + Math.sin(clock.elapsedTime * 16) * 0.08;
+    } else if (ammo.airburst) {
+      mesh.position.y += Math.sin(initialProgress * Math.PI) * 1.8;
+    }
+  }
   mesh.castShadow = true;
   scene.add(mesh);
   const trailPositions = new Float32Array(7 * 3);
   for (let i = 0; i < 7; i++) {
-    trailPositions[i * 3] = start.x;
-    trailPositions[i * 3 + 1] = start.y;
-    trailPositions[i * 3 + 2] = start.z;
+    trailPositions[i * 3] = mesh.position.x;
+    trailPositions[i * 3 + 1] = mesh.position.y;
+    trailPositions[i * 3 + 2] = mesh.position.z;
   }
   const trailGeometry = new THREE.BufferGeometry();
   trailGeometry.setAttribute("position", new THREE.BufferAttribute(trailPositions, 3));
@@ -7727,7 +7750,7 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     target,
     dir: shotDir,
     speed: shotSpeed,
-    traveled: 0,
+    traveled: initialTraveled,
     distance,
     damage,
     baseDamage: Number(options.baseDamage) || damage,
@@ -7739,8 +7762,8 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     gravity,
     verticalVelocity,
     fire: ammo.fire ? { ...ammo.fire } : null,
-    arcHeight: ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5),
-    createdWallAt: Date.now(),
+    arcHeight,
+    createdWallAt,
     maxWallAge: Math.max(2200, (distance / shotSpeed + 1.2) * 1000),
   });
 }
@@ -13203,12 +13226,27 @@ function upsertRemotePlayer(data) {
     const avatar = makeRemoteCharacter();
     const label = makeLabel(data.name || "Captain");
     scene.add(group, avatar, label);
-    remote = { group, avatar, label, updated: 0, name: data.name || "Captain", shipType, velocity: new THREE.Vector3(), fleetShips: [] };
+    remote = {
+      group,
+      avatar,
+      label,
+      updated: 0,
+      name: data.name || "Captain",
+      shipType,
+      velocity: new THREE.Vector3(),
+      fleetShips: [],
+      serverPosition: new THREE.Vector3(),
+      avatarTargetPosition: new THREE.Vector3(),
+    };
     remotePlayers.set(data.id, remote);
   } else if (remote.shipType !== shipType) {
+    const previousPosition = remote.group.position.clone();
+    const previousRotation = remote.group.rotation.y;
     clearBurnVisual(remote);
     scene.remove(remote.group);
     remote.group = makeShip(shipType, true);
+    remote.group.position.copy(previousPosition);
+    remote.group.rotation.y = previousRotation;
     scene.add(remote.group);
     remote.shipType = shipType;
   }
@@ -13223,11 +13261,15 @@ function upsertRemotePlayer(data) {
   remote.turtleFire = Boolean(shipType === "turtle" && data.turtleFire && remote.mode === "ship");
   remote.velocity = remote.velocity || new THREE.Vector3();
   remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
-  remote.group.position.set(x, SHIP_WATERLINE_Y, z);
-  remote.group.rotation.y = Number(data.rotation) || 0;
+  remote.serverPosition = remote.serverPosition || new THREE.Vector3();
+  remote.serverPosition.set(x, SHIP_WATERLINE_Y, z);
+  remote.serverRotation = Number(data.rotation) || 0;
+  if (!remote.initialized) {
+    remote.group.position.copy(remote.serverPosition);
+    remote.group.rotation.y = remote.serverRotation;
+    remote.initialized = true;
+  }
   remote.group.visible = true;
-  updateWhalerNetVisuals(remote.group, remote.whalerNets, 0.18);
-  updateTurtleFireVisual(remote.group, remote.turtleFire, 0.18);
 
   const remoteView = data.viewMode || "ship";
   const avatarVisible = data.mode === "land" || remoteView === "deck" || remoteView === "swim";
@@ -13238,19 +13280,49 @@ function upsertRemotePlayer(data) {
   const charRotation = Number.isFinite(Number(data.charRotation)) ? Number(data.charRotation) : Number(data.landRotation);
   if (avatarVisible && Number.isFinite(charX) && Number.isFinite(charZ)) {
     const fallbackY = remoteView === "swim" ? 0.08 : data.mode === "land" ? 2.95 : SHIP_WATERLINE_Y + shipDeckLocalY(shipType);
-    remote.avatar.position.set(charX, Number.isFinite(charY) ? charY : fallbackY, charZ);
-    remote.avatar.rotation.y = charRotation || 0;
+    remote.avatarTargetPosition = remote.avatarTargetPosition || new THREE.Vector3();
+    remote.avatarTargetPosition.set(charX, Number.isFinite(charY) ? charY : fallbackY, charZ);
+    remote.avatarTargetRotation = charRotation || 0;
+    if (!remote.avatarInitialized) {
+      remote.avatar.position.copy(remote.avatarTargetPosition);
+      remote.avatar.rotation.y = remote.avatarTargetRotation;
+      remote.avatarInitialized = true;
+    }
     remote.avatar.scale.setScalar((CHARACTER_SCALE / 0.34) * (remoteView === "swim" ? 0.78 : 1));
     remote.lookPosition = remote.avatar.position;
-    remote.label.position.set(remote.avatar.position.x, 5.8, remote.avatar.position.z);
   } else {
+    remote.avatarTargetPosition = null;
+    remote.avatarInitialized = false;
     remote.avatar.scale.setScalar(CHARACTER_SCALE / 0.34);
     remote.lookPosition = remote.group.position;
-    remote.label.position.set(x, 7, z);
   }
   syncRemoteBalloons(remote, data.balloons);
   syncRemoteFleet(remote, data.fleetShips);
-  remote.label.lookAt(camera.position);
+}
+
+function updateRemotePlayers(dt) {
+  const positionAlpha = clamp(dt * REMOTE_POSITION_LERP, 0, 0.42);
+  const rotationAlpha = clamp(dt * REMOTE_ROTATION_LERP, 0, 0.48);
+  remotePlayers.forEach((remote) => {
+    if (remote.serverPosition) {
+      remote.group.position.lerp(remote.serverPosition, positionAlpha);
+      remote.group.position.y = SHIP_WATERLINE_Y;
+    }
+    if (Number.isFinite(remote.serverRotation)) {
+      remote.group.rotation.y = lerpAngle(remote.group.rotation.y, remote.serverRotation, rotationAlpha);
+    }
+    updateWhalerNetVisuals(remote.group, Boolean(remote.whalerNets), dt);
+    if (remote.avatar.visible && remote.avatarTargetPosition) {
+      remote.avatar.position.lerp(remote.avatarTargetPosition, positionAlpha);
+      remote.avatar.rotation.y = lerpAngle(remote.avatar.rotation.y, remote.avatarTargetRotation || 0, rotationAlpha);
+      remote.lookPosition = remote.avatar.position;
+      remote.label.position.set(remote.avatar.position.x, 5.8, remote.avatar.position.z);
+    } else {
+      remote.lookPosition = remote.group.position;
+      remote.label.position.set(remote.group.position.x, 7, remote.group.position.z);
+    }
+    remote.label.lookAt(camera.position);
+  });
 }
 
 function removeBot(bot) {
@@ -13625,6 +13697,7 @@ function spawnRemoteShot(data) {
     rangeDamage: Boolean(data.rangeDamage),
     gravity: Number.isFinite(Number(data.gravity)) ? Number(data.gravity) : undefined,
     verticalVelocity: Number.isFinite(Number(data.verticalVelocity)) ? Number(data.verticalVelocity) : undefined,
+    createdWallAt: Number.isFinite(sentAt) ? sentAt : undefined,
   });
 }
 
@@ -13837,7 +13910,7 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
 
 function publishMultiplayer() {
   if (!state.joined) return;
-  if (clock.elapsedTime - multiplayer.lastSent >= 0.16) {
+  if (clock.elapsedTime - multiplayer.lastSent >= MULTIPLAYER_STATE_INTERVAL) {
     multiplayer.lastSent = clock.elapsedTime;
     const player = multiplayerPayload();
     sendMultiplayer({
@@ -13890,6 +13963,7 @@ function frame() {
     else updateWalker(dt);
     updateBots(dt);
     remotePlayers.forEach((remote) => updateFireDamage(remote, dt, remote.velocity?.length?.() || 0));
+    updateRemotePlayers(dt);
     updateRemoteTurtleFires(dt);
     resolveShipContacts();
     updateProjectiles(dt);

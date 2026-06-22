@@ -23,6 +23,7 @@ const islandSpacingAnchor = { x: -34, z: -24 };
 const botCount = 14;
 const cannonballSpeed = 29.3;
 const botCannonRange = 34;
+const worldBackpressureSkipBytes = 1200000;
 const centerBotClearRadius = 88;
 const crateLifetimeMs = 120000;
 const whaleBitLifetimeMs = 300000;
@@ -3138,6 +3139,7 @@ server.on("upgrade", (req, socket) => {
     socket.destroy();
     return;
   }
+  socket.setNoDelay?.(true);
   const accept = crypto
     .createHash("sha1")
     .update(`${req.headers["sec-websocket-key"]}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
@@ -3476,8 +3478,9 @@ function handleMessage(socket, text) {
 
 function broadcast(message, except) {
   const frame = encodeFrame(message);
+  const priority = message?.type !== "world";
   for (const client of clients.values()) {
-    if (client !== except) writeFrame(client, frame);
+    if (client !== except) writeFrame(client, frame, priority);
   }
 }
 
@@ -3500,13 +3503,14 @@ function encodeFrame(message) {
   return Buffer.concat([header, payload]);
 }
 
-function writeFrame(socket, frame) {
+function writeFrame(socket, frame, priority = false) {
   if (socket.destroyed) return;
+  if (!priority && Number(socket.writableLength || 0) > worldBackpressureSkipBytes) return;
   socket.write(frame);
 }
 
 function send(socket, message) {
-  writeFrame(socket, encodeFrame(message));
+  writeFrame(socket, encodeFrame(message), message?.type !== "world");
 }
 
 server.listen(port, () => {
