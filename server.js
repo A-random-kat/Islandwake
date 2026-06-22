@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 4174);
 const clients = new Map();
+const fastClients = new Map();
 const bots = [];
 const crates = [];
 const bombs = [];
@@ -24,6 +25,7 @@ const botCount = 14;
 const cannonballSpeed = 29.3;
 const botCannonRange = 34;
 const worldBackpressureSkipBytes = 1200000;
+const realtimeMotionBackpressureSkipBytes = 160000;
 const centerBotClearRadius = 88;
 const crateLifetimeMs = 120000;
 const whaleBitLifetimeMs = 300000;
@@ -1185,7 +1187,7 @@ function launchBotRocketBurst(bot, shotTarget, now) {
     dz /= distance;
     const dir = rotateFlatVector(dx, dz, (Math.random() - 0.5) * rocketBurstSpread);
     const shotRange = clamp(distance * (0.78 + Math.random() * 0.66), 22, rocketRange * 1.18);
-    broadcast({
+    broadcastRealtime({
       type: "shot",
       shot: {
         id: crypto.randomUUID(),
@@ -3056,7 +3058,7 @@ function updateWorld() {
         for (const origin of origins) {
           const targetX = origin.x + origin.dirX * shotRange;
           const targetZ = origin.z + origin.dirZ * shotRange;
-          broadcast({
+          broadcastRealtime({
             type: "shot",
             shot: {
               id: crypto.randomUUID(),
@@ -3140,6 +3142,13 @@ server.on("upgrade", (req, socket) => {
     return;
   }
   socket.setNoDelay?.(true);
+  let realtimeClientId = "";
+  try {
+    const url = new URL(req.url || "/", "http://localhost");
+    if (url.searchParams.get("lane") === "fast") realtimeClientId = String(url.searchParams.get("client") || "");
+  } catch {
+    realtimeClientId = "";
+  }
   const accept = crypto
     .createHash("sha1")
     .update(`${req.headers["sec-websocket-key"]}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
@@ -3152,6 +3161,20 @@ server.on("upgrade", (req, socket) => {
     "",
     "",
   ].join("\r\n"));
+  if (realtimeClientId) {
+    socket.id = crypto.randomUUID();
+    socket.fastFor = realtimeClientId;
+    socket.realtime = true;
+    socket.pending = Buffer.alloc(0);
+    const previousFast = fastClients.get(realtimeClientId);
+    if (previousFast && previousFast !== socket) previousFast.destroy();
+    fastClients.set(realtimeClientId, socket);
+    send(socket, { type: "fastWelcome", id: realtimeClientId });
+    socket.on("data", (buffer) => readFrames(socket, buffer));
+    socket.on("close", () => leaveRealtime(socket));
+    socket.on("error", () => leaveRealtime(socket));
+    return;
+  }
   socket.id = crypto.randomUUID();
   socket.player = null;
   socket.pending = Buffer.alloc(0);
@@ -3166,10 +3189,19 @@ server.on("upgrade", (req, socket) => {
 function leave(socket) {
   if (!clients.has(socket.id)) return;
   clients.delete(socket.id);
+  const fast = fastClients.get(socket.id);
+  if (fast) {
+    fastClients.delete(socket.id);
+    fast.destroy();
+  }
   for (const bot of bots) {
     if (bot.targetPlayer === socket.id) bot.targetPlayer = null;
   }
   broadcast({ type: "leave", id: socket.id }, socket);
+}
+
+function leaveRealtime(socket) {
+  if (socket.fastFor && fastClients.get(socket.fastFor) === socket) fastClients.delete(socket.fastFor);
 }
 
 function readFrames(socket, chunk) {
@@ -3212,15 +3244,62 @@ function readFrames(socket, chunk) {
     }
     const payload = buffer.subarray(offset, offset + length);
     offset += length;
-    if (opcode === 8) return leave(socket);
+    if (opcode === 8) return socket.realtime ? leaveRealtime(socket) : leave(socket);
     if (opcode !== 1) continue;
     const bytes = Buffer.alloc(payload.length);
     for (let i = 0; i < payload.length; i++) {
       bytes[i] = masked ? payload[i] ^ mask[i % 4] : payload[i];
     }
-    handleMessage(socket, bytes.toString("utf8"));
+    if (socket.realtime) handleRealtimeMessage(socket, bytes.toString("utf8"));
+    else handleMessage(socket, bytes.toString("utf8"));
   }
   socket.pending = offset < buffer.length ? buffer.subarray(offset) : Buffer.alloc(0);
+}
+
+function broadcastShotFrom(ownerId, shot) {
+  if (!ownerId) return;
+  broadcastRealtime({
+    type: "shot",
+    shot: {
+      ...(shot || {}),
+      id: shot?.id || crypto.randomUUID(),
+      owner: ownerId,
+      sentAt: Date.now(),
+    },
+  }, ownerId);
+}
+
+function handleRealtimeMessage(socket, text) {
+  let message;
+  try {
+    message = JSON.parse(text);
+  } catch {
+    return;
+  }
+  if (message.type === "fastHello") {
+    const nextId = String(message.id || socket.fastFor || "");
+    if (nextId && nextId !== socket.fastFor) {
+      if (socket.fastFor && fastClients.get(socket.fastFor) === socket) fastClients.delete(socket.fastFor);
+      socket.fastFor = nextId;
+      fastClients.set(nextId, socket);
+    }
+    send(socket, { type: "fastWelcome", id: socket.fastFor });
+    return;
+  }
+  if (message.type === "motion" && socket.fastFor) {
+    broadcastRealtime({
+      type: "motion",
+      player: {
+        ...(message.player || {}),
+        id: socket.fastFor,
+        updated: Date.now(),
+      },
+    }, socket.fastFor);
+    return;
+  }
+  if (message.type === "shot") {
+    broadcastShotFrom(socket.fastFor, message.shot);
+  }
 }
 
 function handleMessage(socket, text) {
@@ -3268,17 +3347,17 @@ function handleMessage(socket, text) {
       send(socket, worldSnapshot());
     }
   }
-  if (message.type === "shot") {
-    broadcast({
-      type: "shot",
-      shot: {
-        ...(message.shot || {}),
-        id: message.shot?.id || crypto.randomUUID(),
-        owner: socket.id,
-        sentAt: Date.now(),
+  if (message.type === "motion") {
+    broadcastRealtime({
+      type: "motion",
+      player: {
+        ...(message.player || {}),
+        id: socket.id,
+        updated: Date.now(),
       },
-    }, socket);
+    }, socket.id);
   }
+  if (message.type === "shot") broadcastShotFrom(socket.id, message.shot);
   if (
     message.type === "buyBuild"
     || message.type === "clearBuildInventory"
@@ -3484,6 +3563,17 @@ function broadcast(message, except) {
   }
 }
 
+function broadcastRealtime(message, exceptId = "") {
+  const frame = encodeFrame(message);
+  const priority = message?.type !== "motion";
+  for (const client of clients.values()) {
+    if (client.id === exceptId) continue;
+    const fast = fastClients.get(client.id);
+    if (fast && !fast.destroyed) writeRealtimeFrame(fast, frame, priority);
+    else writeFrame(client, frame, priority);
+  }
+}
+
 function encodeFrame(message) {
   const payload = Buffer.from(JSON.stringify(message));
   let header;
@@ -3506,6 +3596,12 @@ function encodeFrame(message) {
 function writeFrame(socket, frame, priority = false) {
   if (socket.destroyed) return;
   if (!priority && Number(socket.writableLength || 0) > worldBackpressureSkipBytes) return;
+  socket.write(frame);
+}
+
+function writeRealtimeFrame(socket, frame, priority = false) {
+  if (socket.destroyed) return;
+  if (!priority && Number(socket.writableLength || 0) > realtimeMotionBackpressureSkipBytes) return;
   socket.write(frame);
 }
 

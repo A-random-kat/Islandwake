@@ -976,10 +976,14 @@ let playerShip;
 let character;
 let multiplayer = {
   socket: null,
+  fastSocket: null,
   channel: null,
   networkId: null,
   mode: "offline",
   lastSent: 0,
+  motionLastSent: 0,
+  fastReady: false,
+  fastReconnectTimer: null,
   hasConnected: false,
   reconnectAttempts: 0,
   reconnectTimer: null,
@@ -1022,6 +1026,8 @@ const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const botUpgradeCache = new Map();
 const MULTIPLAYER_STATE_INTERVAL = 0.09;
+const MULTIPLAYER_MOTION_INTERVAL = 0.045;
+const REALTIME_SOCKET_MAX_BUFFER = 65536;
 const REMOTE_POSITION_LERP = 10;
 const REMOTE_ROTATION_LERP = 12;
 const SHOT_REPLAY_MAX_AGE_MS = 7000;
@@ -13046,7 +13052,7 @@ function updateMinimap() {
   ctx.strokeRect(1, 1, size - 2, size - 2);
 }
 
-function multiplayerPayload() {
+function multiplayerMotionPayload() {
   return {
     name: captainName(),
     level: state.level,
@@ -13070,6 +13076,12 @@ function multiplayerPayload() {
     charY: character.position.y,
     charZ: character.position.z,
     charRotation: character.rotation.y,
+  };
+}
+
+function multiplayerPayload() {
+  return {
+    ...multiplayerMotionPayload(),
     fleetShips: ownedShips.slice(0, 12).map((ship) => ({
       id: ship.id,
       type: ship.type,
@@ -13095,7 +13107,27 @@ function multiplayerPayload() {
   };
 }
 
+function realtimeSocketOpen() {
+  return typeof WebSocket !== "undefined"
+    && multiplayer.fastSocket?.readyState === WebSocket.OPEN
+    && multiplayer.fastReady;
+}
+
+function sendRealtimeMultiplayer(message, force = false) {
+  if (typeof WebSocket !== "undefined" && multiplayer.fastSocket?.readyState === WebSocket.OPEN) {
+    if (!force && Number(multiplayer.fastSocket.bufferedAmount || 0) > REALTIME_SOCKET_MAX_BUFFER) return false;
+    multiplayer.fastSocket.send(JSON.stringify(message));
+    return true;
+  }
+  if (multiplayer.channel) {
+    multiplayer.channel.postMessage(message);
+    return true;
+  }
+  return false;
+}
+
 function sendMultiplayer(message) {
+  if (message?.type === "shot" && sendRealtimeMultiplayer(message, true)) return true;
   if (typeof WebSocket !== "undefined" && multiplayer.socket?.readyState === WebSocket.OPEN) {
     multiplayer.socket.send(JSON.stringify(message));
     return true;
@@ -13296,8 +13328,8 @@ function upsertRemotePlayer(data) {
     remote.avatar.scale.setScalar(CHARACTER_SCALE / 0.34);
     remote.lookPosition = remote.group.position;
   }
-  syncRemoteBalloons(remote, data.balloons);
-  syncRemoteFleet(remote, data.fleetShips);
+  if (Array.isArray(data.balloons)) syncRemoteBalloons(remote, data.balloons);
+  if (Array.isArray(data.fleetShips)) syncRemoteFleet(remote, data.fleetShips);
 }
 
 function updateRemotePlayers(dt) {
@@ -13705,7 +13737,12 @@ function handleMultiplayerMessage(message) {
   if (!message) return;
   if (message.type === "welcome") {
     multiplayer.networkId = message.id;
+    setupRealtimeMultiplayer();
+  } else if (message.type === "fastWelcome") {
+    multiplayer.fastReady = true;
   } else if (message.type === "state") {
+    upsertRemotePlayer(message.player);
+  } else if (message.type === "motion") {
     upsertRemotePlayer(message.player);
   } else if (message.type === "leave") {
     removeRemotePlayer(message.id);
@@ -13827,6 +13864,63 @@ function scheduleMultiplayerReconnect() {
   }, delay * 1000);
 }
 
+function scheduleRealtimeReconnect() {
+  if (multiplayer.fastReconnectTimer || !multiplayer.socket || multiplayer.socket.readyState !== WebSocket.OPEN) return;
+  multiplayer.fastReconnectTimer = setTimeout(() => {
+    multiplayer.fastReconnectTimer = null;
+    setupRealtimeMultiplayer();
+  }, 900);
+}
+
+function closeRealtimeSocket() {
+  const socket = multiplayer.fastSocket;
+  multiplayer.fastSocket = null;
+  multiplayer.fastReady = false;
+  if (multiplayer.fastReconnectTimer) {
+    clearTimeout(multiplayer.fastReconnectTimer);
+    multiplayer.fastReconnectTimer = null;
+  }
+  if (socket && typeof WebSocket !== "undefined" && [WebSocket.CONNECTING, WebSocket.OPEN].includes(socket.readyState)) {
+    try {
+      socket.close();
+    } catch {
+      // Ignore close races while changing multiplayer lanes.
+    }
+  }
+}
+
+function setupRealtimeMultiplayer() {
+  const canUseSocket = typeof WebSocket !== "undefined" && location.protocol.startsWith("http");
+  if (!canUseSocket || !multiplayer.networkId || !multiplayer.socket || multiplayer.socket.readyState !== WebSocket.OPEN) return;
+  if (multiplayer.fastSocket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(multiplayer.fastSocket.readyState)) return;
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${protocol}//${location.host}/?lane=fast&client=${encodeURIComponent(multiplayer.networkId)}`);
+  multiplayer.fastSocket = socket;
+  multiplayer.fastReady = false;
+  socket.addEventListener("open", () => {
+    if (multiplayer.fastSocket === socket) socket.send(JSON.stringify({ type: "fastHello", id: multiplayer.networkId }));
+  });
+  socket.addEventListener("message", (event) => {
+    try {
+      handleMultiplayerMessage(JSON.parse(event.data));
+    } catch {
+      // Ignore malformed real-time packets.
+    }
+  });
+  socket.addEventListener("close", () => {
+    if (multiplayer.fastSocket !== socket) return;
+    multiplayer.fastSocket = null;
+    multiplayer.fastReady = false;
+    scheduleRealtimeReconnect();
+  });
+  socket.addEventListener("error", () => {
+    if (multiplayer.fastSocket !== socket) return;
+    multiplayer.fastSocket = null;
+    multiplayer.fastReady = false;
+    scheduleRealtimeReconnect();
+  });
+}
+
 function setupMultiplayer(reconnecting = false) {
   const canUseSocket = typeof WebSocket !== "undefined" && location.protocol.startsWith("http");
   if (!canUseSocket) {
@@ -13850,6 +13944,7 @@ function setupMultiplayer(reconnecting = false) {
       multiplayer.channel = null;
     }
     if (state.joined) sendMultiplayer({ type: "hello", player: multiplayerPayload() });
+    setupRealtimeMultiplayer();
     toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
   });
 
@@ -13867,6 +13962,7 @@ function setupMultiplayer(reconnecting = false) {
 
   socket.addEventListener("close", () => {
     if (multiplayer.socket === socket) multiplayer.socket = null;
+    closeRealtimeSocket();
     if (opened || multiplayer.hasConnected) {
       if (multiplayer.mode !== "reconnecting") toast("Multiplayer disconnected. Reconnecting...");
       scheduleMultiplayerReconnect();
@@ -13877,6 +13973,7 @@ function setupMultiplayer(reconnecting = false) {
 }
 
 addEventListener("beforeunload", () => {
+  closeRealtimeSocket();
   if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
 });
 
@@ -13910,6 +14007,13 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
 
 function publishMultiplayer() {
   if (!state.joined) return;
+  if (realtimeSocketOpen() && clock.elapsedTime - multiplayer.motionLastSent >= MULTIPLAYER_MOTION_INTERVAL) {
+    multiplayer.motionLastSent = clock.elapsedTime;
+    sendRealtimeMultiplayer({
+      type: "motion",
+      player: { ...multiplayerMotionPayload(), id: playerId },
+    });
+  }
   if (clock.elapsedTime - multiplayer.lastSent >= MULTIPLAYER_STATE_INTERVAL) {
     multiplayer.lastSent = clock.elapsedTime;
     const player = multiplayerPayload();
