@@ -994,7 +994,16 @@ const bots = [];
 const remotePlayers = new Map();
 const projectiles = [];
 const seenRemoteShots = new Set();
+const pendingShotBatch = [];
+let shotBatchQueued = false;
 const impactEffects = [];
+const projectileSharedAssets = {
+  sphereGeometries: new Map(),
+  materials: new Map(),
+  rocket: null,
+  sparkGeometry: null,
+  sparkMaterials: new Map(),
+};
 const fish = [];
 const animals = [];
 const storms = [];
@@ -7671,6 +7680,87 @@ function makeCharacter() {
   return group;
 }
 
+function markSharedProjectileAsset(asset) {
+  if (asset?.userData) asset.userData.sharedProjectileAsset = true;
+  return asset;
+}
+
+function sharedProjectileMaterial(key, factory) {
+  let material = projectileSharedAssets.materials.get(key);
+  if (!material) {
+    material = markSharedProjectileAsset(factory());
+    projectileSharedAssets.materials.set(key, material);
+  }
+  return material;
+}
+
+function sharedSphereProjectileGeometry(radius) {
+  const key = radius.toFixed(3);
+  let geometry = projectileSharedAssets.sphereGeometries.get(key);
+  if (!geometry) {
+    geometry = markSharedProjectileAsset(new THREE.SphereGeometry(radius, 10, 8));
+    projectileSharedAssets.sphereGeometries.set(key, geometry);
+  }
+  return geometry;
+}
+
+function sharedRocketAssets() {
+  if (!projectileSharedAssets.rocket) {
+    projectileSharedAssets.rocket = {
+      bodyGeometry: markSharedProjectileAsset(new THREE.CylinderGeometry(0.075, 0.1, 0.58, 10)),
+      bodyMaterial: sharedProjectileMaterial("rocket-body", () => new THREE.MeshStandardMaterial({ color: 0x8b2f25, roughness: 0.72, metalness: 0.08 })),
+      noseGeometry: markSharedProjectileAsset(new THREE.ConeGeometry(0.12, 0.22, 10)),
+      noseMaterial: sharedProjectileMaterial("rocket-nose", () => mat(0xf2c85d)),
+      nozzleGeometry: markSharedProjectileAsset(new THREE.ConeGeometry(0.11, 0.24, 10)),
+      nozzleMaterial: sharedProjectileMaterial("rocket-nozzle", () => new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.86 })),
+    };
+  }
+  return projectileSharedAssets.rocket;
+}
+
+function makeProjectileMesh(ammo, shotDir) {
+  if (ammo.id === "rocketburst") {
+    const assets = sharedRocketAssets();
+    const mesh = new THREE.Mesh(assets.bodyGeometry, assets.bodyMaterial);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), shotDir);
+    const nose = new THREE.Mesh(assets.noseGeometry, assets.noseMaterial);
+    nose.position.y = 0.39;
+    mesh.add(nose);
+    const nozzle = new THREE.Mesh(assets.nozzleGeometry, assets.nozzleMaterial);
+    nozzle.position.y = -0.4;
+    nozzle.rotation.x = Math.PI;
+    mesh.add(nozzle);
+    return mesh;
+  }
+  const radius = ammo.radius || 0.35;
+  const color = ammo.color || 0x2f3342;
+  return new THREE.Mesh(
+    sharedSphereProjectileGeometry(radius),
+    sharedProjectileMaterial(`shot-${radius.toFixed(3)}-${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.84, metalness: 0.04 }))
+  );
+}
+
+function sharedSparkGeometry() {
+  if (!projectileSharedAssets.sparkGeometry) {
+    projectileSharedAssets.sparkGeometry = markSharedProjectileAsset(new THREE.SphereGeometry(1, 6, 4));
+  }
+  return projectileSharedAssets.sparkGeometry;
+}
+
+function sharedSparkMaterial(color) {
+  let material = projectileSharedAssets.sparkMaterials.get(color);
+  if (!material) {
+    material = markSharedProjectileAsset(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 }));
+    projectileSharedAssets.sparkMaterials.set(color, material);
+  }
+  return material;
+}
+
+function disposeMaybeShared(resource) {
+  if (!resource?.dispose || resource.userData?.sharedProjectileAsset) return;
+  resource.dispose();
+}
+
 function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const ammo = CANNONBALL_TYPES[options.ammoType] || CANNONBALL_TYPES.basic;
   const shotDir = dir.clone().normalize();
@@ -7695,25 +7785,7 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const initialAge = clamp(Number.isFinite(Number(options.initialAge)) ? Number(options.initialAge) : replayAge, 0, Math.max(0, flightTime - 0.02));
   const initialTraveled = clamp(Number.isFinite(Number(options.initialTraveled)) ? Number(options.initialTraveled) : initialAge * shotSpeed, 0, distance);
   const arcHeight = ammo.airburst ? 0 : clamp(distance * 0.16, 3.2, 10.5);
-  const mesh = ammo.id === "rocketburst"
-    ? new THREE.Mesh(
-      new THREE.CylinderGeometry(0.075, 0.1, 0.58, 10),
-      new THREE.MeshStandardMaterial({ color: 0x8b2f25, roughness: 0.72, metalness: 0.08 })
-    )
-    : new THREE.Mesh(
-      new THREE.SphereGeometry(ammo.radius || 0.35, 10, 8),
-      new THREE.MeshStandardMaterial({ color: ammo.color || 0x2f3342, roughness: 0.84, metalness: 0.04 })
-    );
-  if (ammo.id === "rocketburst") {
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), shotDir.clone().normalize());
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.22, 10), mat(0xf2c85d));
-    nose.position.y = 0.39;
-    mesh.add(nose);
-    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.24, 10), new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.86 }));
-    nozzle.position.y = -0.4;
-    nozzle.rotation.x = Math.PI;
-    mesh.add(nozzle);
-  }
+  const mesh = makeProjectileMesh(ammo, shotDir);
   mesh.position.copy(start);
   if (initialTraveled > 0.001) {
     const initialProgress = clamp(initialTraveled / distance, 0, 1);
@@ -7789,8 +7861,9 @@ function removeProjectile(shot, impact = "none") {
   if (impact === "splash") makeSplashEffect(shot.target);
   scene.remove(shot.mesh, shot.trail);
   shot.mesh.traverse?.((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) child.material.dispose();
+    if (child.geometry) disposeMaybeShared(child.geometry);
+    if (Array.isArray(child.material)) child.material.forEach(disposeMaybeShared);
+    else if (child.material) disposeMaybeShared(child.material);
   });
   shot.trail.geometry.dispose();
   shot.trail.material.dispose();
@@ -12064,10 +12137,10 @@ function updateProjectiles(dt) {
         const sparkGroup = new THREE.Group();
         const sparkCount = 2 + Math.floor(Math.random() * 3);
         for (let s = 0; s < sparkCount; s++) {
-          const spark = new THREE.Mesh(
-            new THREE.SphereGeometry(0.055 + Math.random() * 0.045, 6, 4),
-            new THREE.MeshBasicMaterial({ color: Math.random() > 0.45 ? 0xffd35c : 0xff6f2a, transparent: true, opacity: 0.8 })
-          );
+          const sparkSize = 0.055 + Math.random() * 0.045;
+          const sparkColor = Math.random() > 0.45 ? 0xffd35c : 0xff6f2a;
+          const spark = new THREE.Mesh(sharedSparkGeometry(), sharedSparkMaterial(sparkColor));
+          spark.scale.setScalar(sparkSize);
           spark.position.copy(shot.mesh.position).add(shot.dir.clone().multiplyScalar(-0.35 - Math.random() * 0.25));
           spark.position.x += (Math.random() - 0.5) * 0.18;
           spark.position.y += (Math.random() - 0.5) * 0.18;
@@ -12269,8 +12342,9 @@ function updateImpactEffects(dt) {
     if (effect.age >= effect.life || (Number.isFinite(effect.maxWallAge) && nowWall - effect.bornWall > effect.maxWallAge)) {
       scene.remove(effect.group);
       effect.group.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
+        if (obj.geometry) disposeMaybeShared(obj.geometry);
+        if (Array.isArray(obj.material)) obj.material.forEach(disposeMaybeShared);
+        else if (obj.material) disposeMaybeShared(obj.material);
       });
       impactEffects.splice(i, 1);
     }
@@ -12281,9 +12355,9 @@ function disposeTransientObject(object) {
   if (!object) return;
   scene.remove(object);
   object.traverse?.((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose?.());
-    else if (child.material) child.material.dispose?.();
+    if (child.geometry) disposeMaybeShared(child.geometry);
+    if (Array.isArray(child.material)) child.material.forEach(disposeMaybeShared);
+    else if (child.material) disposeMaybeShared(child.material);
   });
 }
 
@@ -13127,7 +13201,7 @@ function sendRealtimeMultiplayer(message, force = false) {
 }
 
 function sendMultiplayer(message) {
-  if (message?.type === "shot" && sendRealtimeMultiplayer(message, true)) return true;
+  if ((message?.type === "shot" || message?.type === "shots") && sendRealtimeMultiplayer(message, true)) return true;
   if (typeof WebSocket !== "undefined" && multiplayer.socket?.readyState === WebSocket.OPEN) {
     multiplayer.socket.send(JSON.stringify(message));
     return true;
@@ -13748,6 +13822,8 @@ function handleMultiplayerMessage(message) {
     removeRemotePlayer(message.id);
   } else if (message.type === "shot") {
     spawnRemoteShot(message.shot);
+  } else if (message.type === "shots") {
+    (Array.isArray(message.shots) ? message.shots : []).forEach(spawnRemoteShot);
   } else if (message.type === "world") {
     syncServerWorld(message);
   } else if (message.type === "crateReward") {
@@ -13977,31 +14053,47 @@ addEventListener("beforeunload", () => {
   if (multiplayer.channel) multiplayer.channel.postMessage({ type: "leave", id: playerId });
 });
 
+function flushPendingShotBatch() {
+  shotBatchQueued = false;
+  if (!pendingShotBatch.length) return;
+  const shots = pendingShotBatch.splice(0);
+  if (shots.length === 1) {
+    sendMultiplayer({ type: "shot", shot: shots[0] });
+  } else {
+    sendMultiplayer({ type: "shots", shots });
+  }
+}
+
+function queueShotPayload(shot) {
+  pendingShotBatch.push(shot);
+  if (shotBatchQueued) return;
+  shotBatchQueued = true;
+  if (typeof queueMicrotask === "function") queueMicrotask(flushPendingShotBatch);
+  else Promise.resolve().then(flushPendingShotBatch);
+}
+
 function publishShot(origin, dir, damage, range, target = null, ammoType = "basic", options = {}) {
-  sendMultiplayer({
-    type: "shot",
-    shot: {
-      id: crypto.randomUUID(),
-      owner: playerId,
-      sentAt: Date.now(),
-      x: origin.x,
-      y: origin.y,
-      z: origin.z,
-      dirX: dir.x,
-      dirZ: dir.z,
-      targetX: target?.x,
-      targetZ: target?.z,
-      damage,
-      baseDamage: Number(options.baseDamage) || damage,
-      range,
-      targetKind: options.targetKind || "any",
-      ammoType,
-      ballistic: Boolean(options.ballistic),
-      startY: Number(options.startY) || origin.y,
-      rangeDamage: Boolean(options.rangeDamage),
-      gravity: Number.isFinite(Number(options.gravity)) ? Number(options.gravity) : undefined,
-      verticalVelocity: Number.isFinite(Number(options.verticalVelocity)) ? Number(options.verticalVelocity) : undefined,
-    },
+  queueShotPayload({
+    id: crypto.randomUUID(),
+    owner: playerId,
+    sentAt: Date.now(),
+    x: origin.x,
+    y: origin.y,
+    z: origin.z,
+    dirX: dir.x,
+    dirZ: dir.z,
+    targetX: target?.x,
+    targetZ: target?.z,
+    damage,
+    baseDamage: Number(options.baseDamage) || damage,
+    range,
+    targetKind: options.targetKind || "any",
+    ammoType,
+    ballistic: Boolean(options.ballistic),
+    startY: Number(options.startY) || origin.y,
+    rangeDamage: Boolean(options.rangeDamage),
+    gravity: Number.isFinite(Number(options.gravity)) ? Number(options.gravity) : undefined,
+    verticalVelocity: Number.isFinite(Number(options.verticalVelocity)) ? Number(options.verticalVelocity) : undefined,
   });
 }
 

@@ -61,6 +61,7 @@ const rocketBurstCount = 30;
 const rocketBurstDamage = 20;
 const rocketBurstFire = { dps: 10, duration: 4 };
 const rocketBurstCooldownMs = 20000;
+const rocketBurstIntervalMs = 75;
 const rocketBurstSpread = 0.82;
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
@@ -1175,50 +1176,131 @@ function botRocketOrigin(bot, index = 0) {
   };
 }
 
-function launchBotRocketBurst(bot, shotTarget, now) {
+function botRocketShotPayload(bot, shotTarget, now, index) {
   const rocketRange = botCannonRangeFor(bot) * 1.85;
-  for (let i = 0; i < rocketBurstCount; i++) {
-    const origin = botRocketOrigin(bot, i);
-    const { targetX, targetZ } = aimBotShot(bot, shotTarget, rocketRange);
-    let dx = targetX - origin.x;
-    let dz = targetZ - origin.z;
-    const distance = Math.hypot(dx, dz) || 1;
-    dx /= distance;
-    dz /= distance;
-    const dir = rotateFlatVector(dx, dz, (Math.random() - 0.5) * rocketBurstSpread);
-    const shotRange = clamp(distance * (0.78 + Math.random() * 0.66), 22, rocketRange * 1.18);
-    broadcastRealtime({
-      type: "shot",
-      shot: {
-        id: crypto.randomUUID(),
-        owner: bot.id,
-        sentAt: now,
-        x: origin.x,
-        y: 2.18,
-        z: origin.z,
-        dirX: dir.x,
-        dirZ: dir.z,
-        targetX: origin.x + dir.x * shotRange,
-        targetZ: origin.z + dir.z * shotRange,
-        targetKind: shotTarget.kind,
-        ammoType: "rocketburst",
-        damage: rocketBurstDamage,
-        baseDamage: rocketBurstDamage,
-        rangeDamage: false,
-        ballistic: true,
-        startY: 2.18,
-        gravity: 5.2 * 1.55,
-        range: shotRange,
-      },
-    });
+  const origin = botRocketOrigin(bot, index);
+  const { targetX, targetZ } = aimBotShot(bot, shotTarget, rocketRange);
+  let dx = targetX - origin.x;
+  let dz = targetZ - origin.z;
+  const distance = Math.hypot(dx, dz) || 1;
+  dx /= distance;
+  dz /= distance;
+  const dir = rotateFlatVector(dx, dz, (Math.random() - 0.5) * rocketBurstSpread);
+  const shotRange = clamp(distance * (0.78 + Math.random() * 0.66), 22, rocketRange * 1.18);
+  return {
+    id: crypto.randomUUID(),
+    owner: bot.id,
+    sentAt: now,
+    x: origin.x,
+    y: 2.18,
+    z: origin.z,
+    dirX: dir.x,
+    dirZ: dir.z,
+    targetX: origin.x + dir.x * shotRange,
+    targetZ: origin.z + dir.z * shotRange,
+    targetKind: shotTarget.kind,
+    ammoType: "rocketburst",
+    damage: rocketBurstDamage,
+    baseDamage: rocketBurstDamage,
+    rangeDamage: false,
+    ballistic: true,
+    startY: 2.18,
+    gravity: 5.2 * 1.55,
+    range: shotRange,
+  };
+}
+
+function rememberBotRocketTarget(bot, shotTarget) {
+  if (!bot.rocketBurst || !shotTarget) return;
+  bot.rocketBurst.target = {
+    x: shotTarget.x,
+    z: shotTarget.z,
+    vx: shotTarget.vx || 0,
+    vz: shotTarget.vz || 0,
+    kind: shotTarget.kind,
+    targetId: shotTarget.targetId || shotTarget.bot?.id || null,
+    shipType: shotTarget.shipType || "skiff",
+  };
+}
+
+function fallbackBotRocketTarget(bot) {
+  const target = bot.rocketBurst?.target;
+  if (!target) return null;
+  if (target.kind === "player" && target.targetId) {
+    const socket = clients.get(target.targetId);
+    if (socket?.player) {
+      return {
+        x: Number(socket.player.x) || target.x,
+        z: Number(socket.player.z) || target.z,
+        vx: Number(socket.player.vx) || 0,
+        vz: Number(socket.player.vz) || 0,
+        kind: "player",
+        targetId: socket.id,
+        shipType: socket.player.shipType || target.shipType || "skiff",
+      };
+    }
   }
+  if (target.kind === "bot" && target.targetId) {
+    const targetBot = bots.find((item) => item.id === target.targetId && item.hp > 0);
+    if (targetBot) {
+      return {
+        x: targetBot.x,
+        z: targetBot.z,
+        vx: targetBot.vx,
+        vz: targetBot.vz,
+        kind: "bot",
+        bot: targetBot,
+        targetId: targetBot.id,
+        shipType: targetBot.shipType || "skiff",
+      };
+    }
+  }
+  return { ...target };
+}
+
+function updateBotRocketBurst(bot, shotTarget, now) {
+  if (!bot.rocketBurst) return false;
+  const burst = bot.rocketBurst;
+  const target = shotTarget && shotTarget.kind !== "kraken" ? shotTarget : fallbackBotRocketTarget(bot);
+  if (!target || target.kind === "kraken") {
+    bot.rocketBurst = null;
+    return false;
+  }
+  rememberBotRocketTarget(bot, target);
+  let firedThisTick = 0;
+  const shots = [];
+  while (burst.shotsRemaining > 0 && now >= burst.nextAt && firedThisTick < 2) {
+    shots.push(botRocketShotPayload(bot, target, now, burst.fired || 0));
+    if (target.bot) {
+      damageBot(target.bot, rocketBurstDamage * 0.22, null, rocketBurstFire);
+      target.bot.targetBot = bot.id;
+      target.bot.botFightUntil = now + 9000;
+    }
+    burst.shotsRemaining -= 1;
+    burst.fired = (burst.fired || 0) + 1;
+    burst.nextAt += rocketBurstIntervalMs;
+    firedThisTick += 1;
+  }
+  if (shots.length) broadcastShotsFrom(bot.id, shots);
+  if (burst.shotsRemaining <= 0) bot.rocketBurst = null;
+  return Boolean(bot.rocketBurst);
+}
+
+function launchBotRocketBurst(bot, shotTarget, now) {
+  bot.rocketBurst = {
+    shotsRemaining: rocketBurstCount,
+    fired: 0,
+    nextAt: now,
+    target: null,
+  };
+  rememberBotRocketTarget(bot, shotTarget);
   if (shotTarget.bot) {
-    damageBot(shotTarget.bot, rocketBurstDamage * rocketBurstCount * 0.22, null, rocketBurstFire);
     shotTarget.bot.targetBot = bot.id;
     shotTarget.bot.botFightUntil = now + 9000;
   }
   bot.rocketCooldownUntil = now + rocketBurstCooldownMs;
-  bot.fireCooldown = Math.max(bot.fireCooldown || 0, 2.3);
+  bot.fireCooldown = Math.max(bot.fireCooldown || 0, rocketBurstCount * rocketBurstIntervalMs / 1000 + 0.15);
+  updateBotRocketBurst(bot, shotTarget, now);
 }
 
 function separateBotFromPoint(bot, point, pointType, pushShare = 1) {
@@ -2642,6 +2724,8 @@ function resetBot(bot) {
   delete bot.fireSourceId;
   delete bot.turtleFireActiveUntil;
   delete bot.turtleFireCooldownUntil;
+  delete bot.rocketBurst;
+  delete bot.rocketCooldownUntil;
   botBalloons.forEach((balloon) => {
     if (balloon.owner === bot.id) crashBotBalloon(balloon, "owner-sunk");
   });
@@ -3012,6 +3096,7 @@ function updateWorld() {
         : targetKraken && kraken?.alive
           ? { ...krakenHeadPoint(), vx: kraken.vx || 0, vz: kraken.vz || 0, kind: "kraken", kraken: true }
           : null;
+    if (updateBotRocketBurst(bot, shotTarget, now)) continue;
     if (shotTarget && bot.fireCooldown <= 0) {
       const dx = shotTarget.x - bot.x;
       const dz = shotTarget.z - bot.z;
@@ -3055,32 +3140,31 @@ function updateWorld() {
         const baseDamage = botCannonDamage(bot);
         const damage = scaleDamageByRange(baseDamage, shotDistance, shotRange);
         const origins = botBroadsideOrigins(bot, broadside.side);
+        const shots = [];
         for (const origin of origins) {
           const targetX = origin.x + origin.dirX * shotRange;
           const targetZ = origin.z + origin.dirZ * shotRange;
-          broadcastRealtime({
-            type: "shot",
-            shot: {
-              id: crypto.randomUUID(),
-              owner: bot.id,
-              sentAt: now,
-              x: origin.x,
-              y: 1.15,
-              z: origin.z,
-              dirX: origin.dirX,
-              dirZ: origin.dirZ,
-              targetX,
-              targetZ,
-              targetKind: shotTarget.kind,
-              damage: baseDamage,
-              baseDamage,
-              rangeDamage: true,
-              ballistic: true,
-              startY: 1.15,
-              range: shotRange,
-            },
+          shots.push({
+            id: crypto.randomUUID(),
+            owner: bot.id,
+            sentAt: now,
+            x: origin.x,
+            y: 1.15,
+            z: origin.z,
+            dirX: origin.dirX,
+            dirZ: origin.dirZ,
+            targetX,
+            targetZ,
+            targetKind: shotTarget.kind,
+            damage: baseDamage,
+            baseDamage,
+            rangeDamage: true,
+            ballistic: true,
+            startY: 1.15,
+            range: shotRange,
           });
         }
+        broadcastShotsFrom(bot.id, shots);
         if (shotTarget.bot) {
           damageBot(shotTarget.bot, damage * origins.length);
           shotTarget.bot.targetBot = bot.id;
@@ -3256,17 +3340,31 @@ function readFrames(socket, chunk) {
   socket.pending = offset < buffer.length ? buffer.subarray(offset) : Buffer.alloc(0);
 }
 
-function broadcastShotFrom(ownerId, shot) {
+function normalizedShot(ownerId, shot, sentAt) {
+  return {
+    ...(shot || {}),
+    id: shot?.id || crypto.randomUUID(),
+    owner: ownerId,
+    sentAt,
+  };
+}
+
+function broadcastShotsFrom(ownerId, shots) {
   if (!ownerId) return;
-  broadcastRealtime({
-    type: "shot",
-    shot: {
-      ...(shot || {}),
-      id: shot?.id || crypto.randomUUID(),
-      owner: ownerId,
-      sentAt: Date.now(),
-    },
-  }, ownerId);
+  const now = Date.now();
+  const list = (Array.isArray(shots) ? shots : [shots])
+    .filter(Boolean)
+    .map((shot) => normalizedShot(ownerId, shot, now));
+  if (!list.length) return;
+  if (list.length === 1) {
+    broadcastRealtime({ type: "shot", shot: list[0] }, ownerId);
+  } else {
+    broadcastRealtime({ type: "shots", shots: list }, ownerId);
+  }
+}
+
+function broadcastShotFrom(ownerId, shot) {
+  broadcastShotsFrom(ownerId, shot);
 }
 
 function handleRealtimeMessage(socket, text) {
@@ -3299,6 +3397,9 @@ function handleRealtimeMessage(socket, text) {
   }
   if (message.type === "shot") {
     broadcastShotFrom(socket.fastFor, message.shot);
+  }
+  if (message.type === "shots") {
+    broadcastShotsFrom(socket.fastFor, message.shots);
   }
 }
 
@@ -3358,6 +3459,7 @@ function handleMessage(socket, text) {
     }, socket.id);
   }
   if (message.type === "shot") broadcastShotFrom(socket.id, message.shot);
+  if (message.type === "shots") broadcastShotsFrom(socket.id, message.shots);
   if (
     message.type === "buyBuild"
     || message.type === "clearBuildInventory"
