@@ -61,6 +61,7 @@ const rocketBurstCooldownMs = 20000;
 const rocketBurstSpread = 0.82;
 const krakenSlamDelayMs = 2900;
 const maxReloadUpgrades = 20;
+const botUpgradeCache = new Map();
 const dayLengthSeconds = 600;
 const nightLengthSeconds = 600;
 const dayCycleSeconds = dayLengthSeconds + nightLengthSeconds;
@@ -172,6 +173,18 @@ const shipStats = [
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
 ];
+
+const shipStatsById = new Map(shipStats.map((ship) => [ship.id, ship]));
+const SHIP_SIDE_CANNONS = {
+  skiff: 1, shallop: 1, pinnace: 1, yawl: 1, felucca: 1, cat: 1, dart: 1, sloop: 1, longship: 1,
+  hoy: 2, balinger: 2, bilander: 2, cog: 2, dogger: 2, dhow: 2, knarr: 2, lugger: 2, tartane: 2,
+  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2,
+  brigantine: 3, caravel: 3, snow: 3, packet: 3, chassemaree: 3, barquentine: 3, clipper: 3,
+  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, barque: 3, storm: 3, corvette: 3, whaler: 3,
+  ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
+  eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
+  grandfrigate: 7, windrunner: 6, firstrate: 8, manowar: 7,
+};
 
 const buildItemTypes = new Set(["flag", "floor", "wall", "cornerWall", "door", "roof", "table"]);
 const buildItemPrices = { flag: 200, floor: 20, wall: 20, cornerWall: 20, door: 20, roof: 20, table: 20 };
@@ -577,14 +590,26 @@ function randomShip() {
   return botShips[Math.floor(Math.random() * botShips.length)];
 }
 
+function normalizeShipType(type) {
+  const raw = String(type || "").trim();
+  if (!raw) return "skiff";
+  const direct = shipStatsById.get(raw);
+  if (direct) return direct.id;
+  const compact = raw.toLowerCase().replace(/[\s_-]+/g, "");
+  const matched = shipStats.find((ship) => ship.id.toLowerCase().replace(/[\s_-]+/g, "") === compact);
+  return matched?.id || "skiff";
+}
+
 function shipSpec(type) {
-  return shipStats.find((ship) => ship.id === type) || shipStats[0];
+  const normalizedType = normalizeShipType(type);
+  return shipStatsById.get(normalizedType) || shipStats[0];
 }
 
 function shipTierForDrop(type) {
-  const listed = shipStats.find((ship) => ship.id === type);
+  const normalizedType = normalizeShipType(type);
+  const listed = shipStatsById.get(normalizedType);
   if (listed) return listed.tier || 0;
-  return playerShipTiers[type] || 0;
+  return playerShipTiers[normalizedType] || 0;
 }
 
 function radiusScaleForPhysics(radius) {
@@ -596,6 +621,7 @@ function radiusScaleForPhysics(radius) {
 }
 
 function shipRadius(type) {
+  type = normalizeShipType(type);
   if (shipPhysics[type]?.radius) return shipPhysics[type].radius * radiusScaleForPhysics(shipPhysics[type].radius);
   const spec = shipSpec(type);
   return 2.35 + spec.tier * 0.48;
@@ -986,13 +1012,16 @@ function krakenAttackEvadePointForBot(bot, attack, now = Date.now()) {
 }
 
 function botUpgradeLevels(botOrLevel = 1) {
-  const level = typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1;
+  const level = Math.max(1, Math.floor(typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1));
   const focus = typeof botOrLevel === "object" ? botOrLevel.upgradeFocus || "damage" : "damage";
+  const cacheKey = `${focus}:${level}`;
+  const cached = botUpgradeCache.get(cacheKey);
+  if (cached) return cached;
   const order = focus === "reload" ? ["reload", "range", "damage"]
     : focus === "range" ? ["range", "damage", "reload"]
       : ["damage", "reload", "range"];
   const upgrades = { damage: 0, reload: 0, range: 0 };
-  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) {
+  for (let i = 0; i < level - 1; i++) {
     for (let offset = 0; offset < order.length; offset++) {
       const kind = order[(i + offset) % order.length];
       if (kind === "reload" && upgrades.reload >= maxReloadUpgrades) continue;
@@ -1000,6 +1029,7 @@ function botUpgradeLevels(botOrLevel = 1) {
       break;
     }
   }
+  botUpgradeCache.set(cacheKey, upgrades);
   return upgrades;
 }
 
@@ -1020,66 +1050,8 @@ function scaleDamageByRange(baseDamage, distance, range) {
 }
 
 function shipSideCannons(type = "skiff") {
-  const explicit = {
-    skiff: 1,
-    shallop: 1,
-    pinnace: 1,
-    yawl: 1,
-    felucca: 1,
-    cat: 1,
-    dart: 1,
-    sloop: 1,
-    longship: 1,
-    hoy: 2,
-    balinger: 2,
-    bilander: 2,
-    cog: 2,
-    dogger: 2,
-    dhow: 2,
-    knarr: 2,
-    lugger: 2,
-    tartane: 2,
-    pink: 2,
-    junk: 2,
-    ketch: 2,
-    schooner: 2,
-    modernschooner: 1,
-    galley: 2,
-    xebec: 2,
-    brigantine: 3,
-    caravel: 3,
-    snow: 3,
-    packet: 3,
-    chassemaree: 3,
-    barquentine: 3,
-    clipper: 3,
-    fluyt: 3,
-    polacre: 3,
-    bombketch: 3,
-    brig: 3,
-    barque: 3,
-    storm: 3,
-    corvette: 3,
-    whaler: 3,
-    ballooner: 3,
-    turtle: 5,
-    frigate: 4,
-    postship: 4,
-    sixthrate: 4,
-    carrack: 4,
-    merchantman: 5,
-    eastindiaman: 5,
-    galleon: 5,
-    rocketeer: 5,
-    razee: 5,
-    treasure: 7,
-    fourthrate: 6,
-    grandfrigate: 7,
-    windrunner: 6,
-    firstrate: 8,
-    manowar: 7,
-  };
-  if (explicit[type]) return explicit[type];
+  type = normalizeShipType(type);
+  if (SHIP_SIDE_CANNONS[type]) return SHIP_SIDE_CANNONS[type];
   return clamp(1 + Math.floor((shipSpec(type).tier + 1) / 2), 1, 8);
 }
 

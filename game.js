@@ -22,6 +22,7 @@ const clock = new THREE.Clock();
 const scratchV1 = new THREE.Vector3();
 const scratchV2 = new THREE.Vector3();
 const scratchV3 = new THREE.Vector3();
+const projectileHitLocal = new THREE.Vector3();
 
 const ui = {
   playerName: document.querySelector("#playerName"),
@@ -500,6 +501,70 @@ const shipBalance = {
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
 };
 
+const SHIP_SIDE_CANNONS = {
+  skiff: 1, shallop: 1, pinnace: 1, yawl: 1, felucca: 1, cat: 1, dart: 1, sloop: 1, longship: 1,
+  hoy: 2, balinger: 2, bilander: 2, cog: 2, dogger: 2, dhow: 2, knarr: 2, lugger: 2, tartane: 2,
+  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2,
+  brigantine: 3, caravel: 3, snow: 3, packet: 3, chassemaree: 3, barquentine: 3, clipper: 3,
+  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, barque: 3, storm: 3, corvette: 3, whaler: 3,
+  ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
+  eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
+  grandfrigate: 7, windrunner: 6, firstrate: 8, manowar: 7,
+};
+
+const SHIP_VISUAL_BASE_SCALE = {
+  skiff: 0.72, shallop: 0.78, pinnace: 0.8, yawl: 0.82, balinger: 0.88, felucca: 0.88,
+  bilander: 0.92, dart: 0.82, cat: 0.86, longship: 0.86, cog: 0.86, knarr: 0.88,
+  dhow: 0.88, dogger: 0.88, sloop: 0.9, modernschooner: 0.86, lugger: 0.9, tartane: 0.9,
+  storm: 0.92, brig: 1.12, brigantine: 1.18, packet: 1.05, barquentine: 1.12,
+  barque: 1.15, bombketch: 1.22, turtle: 1.22, corvette: 1.16, frigate: 1.22,
+  whaler: 1.36, ballooner: 1.18, razee: 1.28, grandfrigate: 1.38, windrunner: 1.34,
+  galleon: 1.28, rocketeer: 1.28, merchantman: 1.28, eastindiaman: 1.34, carrack: 1.34,
+  treasure: 1.52, fourthrate: 1.38, manowar: 1.42, firstrate: 1.5, ironclad: 1.48,
+};
+
+const DEFAULT_SHIP_HULL_DIMENSIONS = [6.5, 2.7];
+const SHIP_HULL_DIMENSIONS = {
+  shallop: [5.6, 1.85], pinnace: [6.5, 1.75], yawl: [6.0, 1.85], balinger: [6.4, 2.7],
+  felucca: [7.4, 1.95], bilander: [6.8, 2.55], dart: [7.7, 1.75], clipper: [7.4, 2.35],
+  galleon: [7.2, 3.25], rocketeer: [7.2, 3.25], modernschooner: [6.4, 1.85],
+  brig: [7.8, 2.72], brigantine: [7.2, 2.75], cat: [5.8, 1.45], turtle: [6.2, 3.55],
+  bombketch: [6.4, 3.4], storm: [8.1, 2.25], sloop: [7.4, 2.0], dhow: [7.1, 2.25],
+  cog: [6.2, 3.05], hoy: [5.9, 2.85], dogger: [6.6, 2.2], xebec: [8.3, 2.4],
+  tartane: [7.2, 2.15], caravel: [6.9, 2.65], pink: [6.6, 2.55], ketch: [6.9, 2.5],
+  frigate: [8.2, 2.9], whaler: [8.3, 3.05], ballooner: [8.0, 3.05], corvette: [7.8, 2.65],
+  razee: [8.5, 3.0], grandfrigate: [8.9, 3.18], windrunner: [9.4, 2.55], carrack: [7.4, 3.5],
+  manowar: [8.4, 3.8], fourthrate: [8.3, 3.65], firstrate: [9.0, 4.0], longship: [8.7, 1.7],
+  knarr: [6.5, 2.6], lugger: [7.0, 2.15], galley: [8.8, 2.2], snow: [7.5, 2.8],
+  packet: [7.8, 2.45], chassemaree: [7.6, 2.25], barquentine: [7.7, 2.55],
+  polacre: [7.9, 2.45], barque: [8.0, 2.8], fluyt: [7.0, 3.4], merchantman: [7.4, 3.45],
+  eastindiaman: [7.8, 3.55], treasure: [12.0, 4.45], ironclad: [7.8, 3.7],
+};
+
+const shipVisualScaleCache = new Map();
+const shipHullDimensionCache = new Map();
+
+const shipLookup = {
+  byId: new Map(),
+  byCompact: new Map(),
+};
+
+function compactShipKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function rebuildShipLookupMaps() {
+  shipLookup.byId.clear();
+  shipLookup.byCompact.clear();
+  for (const ship of shipCatalog) {
+    shipLookup.byId.set(ship.id, ship);
+    shipLookup.byCompact.set(compactShipKey(ship.id), ship);
+    shipLookup.byCompact.set(compactShipKey(ship.name), ship);
+  }
+}
+
+rebuildShipLookupMaps();
+
 Object.assign(I18N.en.ships, Object.fromEntries(shipCatalog.map((ship) => [ship.id, ship.name])));
 Object.assign(I18N.zh.ships, {
   skiff: "小艇", shallop: "浅水帆船", pinnace: "小型快艇", hoy: "霍伊船", yawl: "偏帆小船", balinger: "巴林杰帆船", felucca: "费卢卡帆船", bilander: "双桅小商船", cog: "柯克船", longship: "长船", dogger: "多格尔渔船", dhow: "独桅三角帆船", sloop: "单桅帆船", knarr: "克纳尔货船", lugger: "斜桅小帆船", tartane: "塔尔塔纳帆船", pink: "平克帆船", cat: "双体帆船", dart: "快艇", junk: "中式帆船", ketch: "双桅帆船", schooner: "纵帆船", galley: "桨帆船", xebec: "三桅小帆船", brigantine: "双桅纵帆船", caravel: "卡拉维尔帆船", snow: "斯诺双桅船", packet: "邮船", barquentine: "巴肯廷帆船", clipper: "飞剪船", fluyt: "荷兰货船", bombketch: "臼炮双桅船", barque: "三桅帆船", corvette: "轻型护卫舰", frigate: "护卫舰", storm: "战争单桅船", galleon: "盖伦船", merchantman: "武装商船", eastindiaman: "东印度商船", carrack: "卡拉克帆船", treasure: "宝船", whaler: "捕鲸船", razee: "削层护卫舰", ballooner: "气球船", fourthrate: "四级战列舰", grandfrigate: "大型护卫舰", manowar: "战列舰", windrunner: "逐风船", firstrate: "一级战列舰",
@@ -579,7 +644,7 @@ for (const ship of shipCatalog) {
   ship.price = balance.fixedPrice && keepExactShipPrice(ship.id)
     ? Math.max(balance.price, broadsidePriceFloor(ship))
     : deriveFairShipPrice(ship);
-  if (ship.price < 2500) {
+  if (ship.price < 2500 && !balance.fixedPrice) {
     const progress = clamp(ship.price / 2500, 0, 1);
     ship.hp = Math.min(ship.hp, Math.round(420 + progress * 380));
     ship.speed = Math.min(ship.speed, Math.round(15 + progress * 9));
@@ -591,6 +656,7 @@ for (const ship of shipCatalog) {
   ship.hitbox = Math.round((ship.hitbox || 3) * tierScale * 10) / 10;
   ship.weight = Math.round((balance.weight ?? deriveShipWeight(ship)) * tierScale * tierScale);
 }
+rebuildShipLookupMaps();
 
 function readSavedValue(key, fallback = "") {
   try {
@@ -938,6 +1004,11 @@ const balloonBombs = [];
 const crates = [];
 const buildingPieces = [];
 const buildingPieceMap = new Map();
+const serverBotMap = new Map();
+const serverCrateMap = new Map();
+const serverFishMap = new Map();
+const serverWhaleMap = new Map();
+const serverStormMap = new Map();
 let buildPreview = null;
 let buildPreviewType = null;
 let lastBuildPreviewAt = 0;
@@ -949,6 +1020,7 @@ const ramCooldowns = new Map();
 const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
+const botUpgradeCache = new Map();
 const SHOT_REPLAY_MAX_AGE_MS = 3200;
 const TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS = 4200;
 const BOMB_EXPLOSION_REPLAY_MAX_AGE_MS = 2600;
@@ -1114,8 +1186,18 @@ function addXP(amount) {
   }
 }
 
+function normalizeShipType(type) {
+  const raw = String(type || "").trim();
+  if (!raw) return STARTER_SHIP;
+  const direct = shipLookup.byId.get(raw);
+  if (direct) return direct.id;
+  const matched = shipLookup.byCompact.get(compactShipKey(raw));
+  return matched?.id || STARTER_SHIP;
+}
+
 function getShipStats(type = state.shipType) {
-  return shipCatalog.find((ship) => ship.id === type) || shipCatalog[0];
+  const normalizedType = normalizeShipType(type);
+  return shipLookup.byId.get(normalizedType) || shipCatalog[0];
 }
 
 function maxHp() {
@@ -1134,66 +1216,8 @@ function shipTier(type) {
 }
 
 function shipSideCannons(type = state.shipType) {
-  const explicit = {
-    skiff: 1,
-    shallop: 1,
-    pinnace: 1,
-    yawl: 1,
-    felucca: 1,
-    cat: 1,
-    dart: 1,
-    sloop: 1,
-    longship: 1,
-    hoy: 2,
-    balinger: 2,
-    bilander: 2,
-    cog: 2,
-    dogger: 2,
-    dhow: 2,
-    knarr: 2,
-    lugger: 2,
-    tartane: 2,
-    pink: 2,
-    junk: 2,
-    ketch: 2,
-    schooner: 2,
-    modernschooner: 1,
-    galley: 2,
-    xebec: 2,
-    brigantine: 3,
-    caravel: 3,
-    snow: 3,
-    packet: 3,
-    chassemaree: 3,
-    barquentine: 3,
-    clipper: 3,
-    fluyt: 3,
-    polacre: 3,
-    bombketch: 3,
-    brig: 3,
-    barque: 3,
-    storm: 3,
-    corvette: 3,
-    whaler: 3,
-    ballooner: 3,
-    turtle: 5,
-    frigate: 4,
-    postship: 4,
-    sixthrate: 4,
-    carrack: 4,
-    merchantman: 5,
-    eastindiaman: 5,
-    galleon: 5,
-    rocketeer: 5,
-    razee: 5,
-    treasure: 7,
-    fourthrate: 6,
-    grandfrigate: 7,
-    windrunner: 6,
-    firstrate: 8,
-    manowar: 7,
-  };
-  if (explicit[type]) return explicit[type];
+  type = normalizeShipType(type);
+  if (SHIP_SIDE_CANNONS[type]) return SHIP_SIDE_CANNONS[type];
   return clamp(1 + Math.floor((shipTier(type) + 1) / 2), 1, 8);
 }
 
@@ -1282,115 +1306,24 @@ function bombDamageForShip(type, amount) {
 }
 
 function shipVisualScale(type = state.shipType) {
-  const baseScale = {
-    skiff: 0.72,
-    shallop: 0.78,
-    pinnace: 0.8,
-    yawl: 0.82,
-    balinger: 0.88,
-    felucca: 0.88,
-    bilander: 0.92,
-    dart: 0.82,
-    cat: 0.86,
-    longship: 0.86,
-    cog: 0.86,
-    knarr: 0.88,
-    dhow: 0.88,
-    dogger: 0.88,
-    sloop: 0.9,
-    modernschooner: 0.86,
-    lugger: 0.9,
-    tartane: 0.9,
-    storm: 0.92,
-    brig: 1.12,
-    brigantine: 1.18,
-    packet: 1.05,
-    barquentine: 1.12,
-    barque: 1.15,
-    bombketch: 1.22,
-    turtle: 1.22,
-    corvette: 1.16,
-    frigate: 1.22,
-    whaler: 1.36,
-    ballooner: 1.18,
-    razee: 1.28,
-    grandfrigate: 1.38,
-    windrunner: 1.34,
-    galleon: 1.28,
-    rocketeer: 1.28,
-    merchantman: 1.28,
-    eastindiaman: 1.34,
-    carrack: 1.34,
-    treasure: 1.52,
-    fourthrate: 1.38,
-    manowar: 1.42,
-    firstrate: 1.5,
-    ironclad: 1.48,
-  }[type] || 1;
-  return baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055) * 1.2;
+  type = normalizeShipType(type);
+  const cached = shipVisualScaleCache.get(type);
+  if (cached) return cached;
+  const baseScale = SHIP_VISUAL_BASE_SCALE[type] || 1;
+  const scale = baseScale * (1 + Math.max(0, shipTier(type) - 3) * 0.055) * 1.2;
+  shipVisualScaleCache.set(type, scale);
+  return scale;
 }
 
 function shipHullDimensions(type = state.shipType) {
-  const [length, width] = {
-    shallop: [5.6, 1.85],
-    pinnace: [6.5, 1.75],
-    yawl: [6.0, 1.85],
-    balinger: [6.4, 2.7],
-    felucca: [7.4, 1.95],
-    bilander: [6.8, 2.55],
-    dart: [7.7, 1.75],
-    clipper: [7.4, 2.35],
-    galleon: [7.2, 3.25],
-    rocketeer: [7.2, 3.25],
-    modernschooner: [6.4, 1.85],
-    brig: [6.9, 3.05],
-    brigantine: [7.2, 2.75],
-    cat: [5.8, 1.45],
-    turtle: [6.2, 3.55],
-    bombketch: [6.4, 3.4],
-    storm: [8.1, 2.25],
-    sloop: [7.4, 2.0],
-    dhow: [7.1, 2.25],
-    cog: [6.2, 3.05],
-    hoy: [5.9, 2.85],
-    dogger: [6.6, 2.2],
-    xebec: [8.3, 2.4],
-    tartane: [7.2, 2.15],
-    caravel: [6.9, 2.65],
-    pink: [6.6, 2.55],
-    ketch: [6.9, 2.5],
-    frigate: [8.2, 2.9],
-    whaler: [8.6, 3.05],
-    ballooner: [8.1, 2.9],
-    corvette: [7.8, 2.65],
-    razee: [8.5, 3.0],
-    grandfrigate: [8.9, 3.18],
-    windrunner: [9.4, 2.55],
-    carrack: [7.4, 3.5],
-    manowar: [8.4, 3.8],
-    fourthrate: [8.3, 3.65],
-    firstrate: [9.0, 4.0],
-    longship: [8.7, 1.7],
-    knarr: [6.5, 2.6],
-    lugger: [7.0, 2.15],
-    galley: [8.8, 2.2],
-    snow: [7.5, 2.8],
-    packet: [7.8, 2.45],
-    chassemaree: [7.6, 2.25],
-    barquentine: [7.7, 2.55],
-    polacre: [7.9, 2.45],
-    barque: [8.0, 2.8],
-    brig: [7.8, 2.72],
-    fluyt: [7.0, 3.4],
-    merchantman: [7.4, 3.45],
-    eastindiaman: [7.8, 3.55],
-    treasure: [12.0, 4.45],
-    whaler: [8.3, 3.05],
-    ballooner: [8.0, 3.05],
-    ironclad: [7.8, 3.7],
-  }[type] || [6.5, 2.7];
+  type = normalizeShipType(type);
+  const cached = shipHullDimensionCache.get(type);
+  if (cached) return cached;
+  const [length, width] = SHIP_HULL_DIMENSIONS[type] || DEFAULT_SHIP_HULL_DIMENSIONS;
   const scale = shipVisualScale(type);
-  return { length: length * scale, width: width * scale };
+  const dimensions = { length: length * scale, width: width * scale };
+  shipHullDimensionCache.set(type, dimensions);
+  return dimensions;
 }
 
 function projectileHitsHull(localPoint, type) {
@@ -1424,10 +1357,13 @@ function projectileHitsMast(localPoint, type) {
 function projectileHitsShip(shot, ship, type) {
   if (!ship) return false;
   const broadRadius = Math.max(shipHitRadius(type) + 0.75, shipHullDimensions(type).length * 0.56);
-  if (dist2(shot.mesh.position, ship.position || ship) >= broadRadius) return false;
+  const shipPosition = ship.position || ship;
+  const dx = shot.mesh.position.x - shipPosition.x;
+  const dz = shot.mesh.position.z - shipPosition.z;
+  if (dx * dx + dz * dz >= broadRadius * broadRadius) return false;
   const localPoint = ship.worldToLocal
-    ? ship.worldToLocal(shot.mesh.position.clone())
-    : shot.mesh.position.clone().sub(ship.position || ship);
+    ? ship.worldToLocal(projectileHitLocal.copy(shot.mesh.position))
+    : projectileHitLocal.copy(shot.mesh.position).sub(shipPosition);
   return projectileHitsHull(localPoint, type) || projectileHitsMast(localPoint, type);
 }
 
@@ -2045,13 +1981,16 @@ function updateAmmoHotbar(force = false) {
 }
 
 function botUpgradeLevels(botOrLevel = 1) {
-  const level = typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1;
+  const level = Math.max(1, Math.floor(typeof botOrLevel === "number" ? botOrLevel : botOrLevel?.level || 1));
   const focus = typeof botOrLevel === "object" ? botOrLevel.upgradeFocus || "damage" : "damage";
+  const cacheKey = `${focus}:${level}`;
+  const cached = botUpgradeCache.get(cacheKey);
+  if (cached) return cached;
   const order = focus === "reload" ? ["reload", "range", "damage"]
     : focus === "range" ? ["range", "damage", "reload"]
       : ["damage", "reload", "range"];
   const upgrades = { damage: 0, reload: 0, range: 0 };
-  for (let i = 0; i < Math.max(0, Math.floor(level) - 1); i++) {
+  for (let i = 0; i < level - 1; i++) {
     for (let offset = 0; offset < order.length; offset++) {
       const kind = order[(i + offset) % order.length];
       if (kind === "reload" && upgrades.reload >= MAX_RELOAD_UPGRADES) continue;
@@ -2059,6 +1998,7 @@ function botUpgradeLevels(botOrLevel = 1) {
       break;
     }
   }
+  botUpgradeCache.set(cacheKey, upgrades);
   return upgrades;
 }
 
@@ -2095,7 +2035,8 @@ function shipCompareMarkup(ship) {
 
 function playerOwnsShip(type) {
   if (!type) return false;
-  return state.shipType === type || ownedShips.some((ship) => ship.type === type);
+  const normalizedType = normalizeShipType(type);
+  return state.shipType === normalizedType || ownedShips.some((ship) => normalizeShipType(ship.type) === normalizedType);
 }
 
 function maybeRollModernSchooner(island) {
@@ -2113,7 +2054,7 @@ function maybeRollModernSchooner(island) {
 function availableShipsForIsland(island) {
   maybeRollModernSchooner(island);
   const ids = new Set([STARTER_SHIP, ...(island?.shipMarket || [])]);
-  if (island?.name === "Port Azure" && state.modernSchoonerAvailable && !state.modernSchoonerPurchased) ids.add("modernschooner");
+  if (island?.name === "Port Azure" && (state.modernSchoonerAvailable || playerOwnsShip("modernschooner"))) ids.add("modernschooner");
   return shipCatalog.filter((ship) => ids.has(ship.id)).sort((a, b) => a.price - b.price);
 }
 
@@ -7120,6 +7061,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
 
 function makeShip(type = "skiff", remote = false) {
   const spec = getShipStats(type);
+  type = spec.id;
   const group = new THREE.Group();
   group.userData.shipType = type;
   group.userData.hitRadius = shipHitRadius(type);
@@ -7199,7 +7141,8 @@ function makeShip(type = "skiff", remote = false) {
       profile,
     );
   });
-  const deck = hullMesh(hullSize[0] * (type === "treasure" ? 0.64 : 0.58) * scale, hullSize[1] * (type === "treasure" ? 0.68 : 0.62) * scale, (type === "treasure" ? 0.28 : 0.24) * scale, mats.wood, profile);
+  const deckMaterial = type === "modernschooner" ? mat(0xf8fbff) : mats.wood;
+  const deck = hullMesh(hullSize[0] * (type === "treasure" ? 0.64 : 0.58) * scale, hullSize[1] * (type === "treasure" ? 0.68 : 0.62) * scale, (type === "treasure" ? 0.28 : 0.24) * scale, deckMaterial, profile);
   deck.position.y = (type === "treasure" ? 1.24 : 1.08) * scale;
   deck.castShadow = true;
   group.add(deck);
@@ -7290,10 +7233,27 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "modernschooner") {
     addSail(group, -0.36, -1.2, 0.82, 0xf8f8f2);
     addSail(group, 0.38, 0.85, 0.9, 0xf8f8f2);
-    const blueStripe = new THREE.Mesh(new THREE.BoxGeometry(1.86 * scale, 0.08 * scale, 4.8 * scale), mat(0x2e8ed8));
-    blueStripe.position.set(0, 1.26 * scale, -0.12 * scale);
-    blueStripe.castShadow = true;
-    group.add(blueStripe);
+    const accent = mat(0x2e8ed8);
+    [-1, 1].forEach((side) => {
+      addHullSideLine(
+        group,
+        hullSize[0],
+        hullSize[1],
+        scale,
+        side,
+        1.28 * scale,
+        -hullSize[0] * 0.31 * scale,
+        hullSize[0] * 0.28 * scale,
+        accent,
+        0.014,
+        1.0,
+        profile,
+      );
+      const deckTrim = new THREE.Mesh(new THREE.BoxGeometry(0.035 * scale, 0.055 * scale, 2.35 * scale), accent);
+      deckTrim.position.set(side * 0.72 * scale, 1.39 * scale, 0.15 * scale);
+      deckTrim.castShadow = true;
+      group.add(deckTrim);
+    });
     const cockpit = new THREE.Mesh(new THREE.BoxGeometry(1.18 * scale, 0.46 * scale, 0.92 * scale), mat(0xf8fbff));
     cockpit.position.set(0, 1.52 * scale, 1.58 * scale);
     cockpit.castShadow = true;
@@ -7305,6 +7265,9 @@ function makeShip(type = "skiff", remote = false) {
     const glass = new THREE.Mesh(new THREE.BoxGeometry(0.86 * scale, 0.26 * scale, 0.08 * scale), mat(0x8edcff));
     glass.position.set(0, 1.64 * scale, 1.15 * scale);
     group.add(glass);
+    const glassTrim = new THREE.Mesh(new THREE.BoxGeometry(1.0 * scale, 0.035 * scale, 0.1 * scale), accent);
+    glassTrim.position.set(0, 1.82 * scale, 1.14 * scale);
+    group.add(glassTrim);
     const chrome = mat(0xf8fbff);
     [-1, 1].forEach((side) => {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.055 * scale, 0.18 * scale, 3.35 * scale), chrome);
@@ -7740,8 +7703,17 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   mesh.position.copy(start);
   mesh.castShadow = true;
   scene.add(mesh);
+  const trailPositions = new Float32Array(7 * 3);
+  for (let i = 0; i < 7; i++) {
+    trailPositions[i * 3] = start.x;
+    trailPositions[i * 3 + 1] = start.y;
+    trailPositions[i * 3 + 2] = start.z;
+  }
+  const trailGeometry = new THREE.BufferGeometry();
+  trailGeometry.setAttribute("position", new THREE.BufferAttribute(trailPositions, 3));
+  trailGeometry.setDrawRange(0, 1);
   const trail = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]),
+    trailGeometry,
     new THREE.LineBasicMaterial({ color: ammo.trail || 0xd9fbff, transparent: true, opacity: 0.62 })
   );
   scene.add(trail);
@@ -7749,7 +7721,8 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     owner,
     mesh,
     trail,
-    trailPoints: [start.clone()],
+    trailPositions,
+    trailPointCount: 1,
     start,
     target,
     dir: shotDir,
@@ -9353,6 +9326,7 @@ function makeCrateMesh(x, z, kind = "crate") {
 
 function removeCrate(crate) {
   if (!crate) return;
+  if (crate.serverId) serverCrateMap.delete(crate.serverId);
   scene.remove(crate.mesh);
   const index = crates.indexOf(crate);
   if (index >= 0) crates.splice(index, 1);
@@ -9494,6 +9468,7 @@ function fishHitRadius(item) {
 
 function removeFishItem(item) {
   if (!item) return;
+  if (item.userData?.serverId) serverFishMap.delete(item.userData.serverId);
   scene.remove(item);
   const index = fish.indexOf(item);
   if (index >= 0) fish.splice(index, 1);
@@ -12073,14 +12048,23 @@ function updateProjectiles(dt) {
         addImpactEffect(sparkGroup, 0.32);
       }
     }
-    if (shot.trailPoints.length < 7) {
-      shot.trailPoints.push(shot.mesh.position.clone());
-    } else {
-      const trailPoint = shot.trailPoints.shift();
-      trailPoint.copy(shot.mesh.position);
-      shot.trailPoints.push(trailPoint);
+    const trailPositions = shot.trailPositions;
+    if (trailPositions) {
+      if (shot.trailPointCount < 7) {
+        const index = shot.trailPointCount * 3;
+        trailPositions[index] = shot.mesh.position.x;
+        trailPositions[index + 1] = shot.mesh.position.y;
+        trailPositions[index + 2] = shot.mesh.position.z;
+        shot.trailPointCount++;
+        shot.trail.geometry.setDrawRange(0, shot.trailPointCount);
+      } else {
+        trailPositions.copyWithin(0, 3);
+        trailPositions[18] = shot.mesh.position.x;
+        trailPositions[19] = shot.mesh.position.y;
+        trailPositions[20] = shot.mesh.position.z;
+      }
+      shot.trail.geometry.attributes.position.needsUpdate = true;
     }
-    shot.trail.geometry.setFromPoints(shot.trailPoints);
     shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
     if (shot.ballistic && shot.mesh.position.y <= 0.02 && shot.traveled > 1.2) {
       shot.target.copy(shot.mesh.position).setY(0);
@@ -13272,6 +13256,7 @@ function upsertRemotePlayer(data) {
 function removeBot(bot) {
   if (!bot) return;
   clearBurnVisual(bot);
+  if (bot.serverId) serverBotMap.delete(bot.serverId);
   scene.remove(bot.group);
   const index = bots.indexOf(bot);
   if (index >= 0) bots.splice(index, 1);
@@ -13351,12 +13336,14 @@ function syncServerFish(items = []) {
   (Array.isArray(items) ? items : []).forEach((data) => {
     if (!data?.id) return;
     seen.add(data.id);
-    let item = fish.find((candidate) => candidate.userData.serverId === data.id);
+    let item = serverFishMap.get(data.id);
     if (!item) {
       item = data.kind === "squid" ? makeSquid(data) : makeFish(data);
+      serverFishMap.set(data.id, item);
     }
     item.userData.kind = data.kind === "squid" ? "squid" : "fish";
     item.userData.serverId = data.id;
+    serverFishMap.set(data.id, item);
     item.userData.serverPosition = item.userData.serverPosition || item.position.clone();
     item.userData.serverPosition.set(Number(data.x) || 0, item.userData.kind === "squid" ? 0.12 : 0.15, Number(data.z) || 0);
     item.userData.serverDirection = Number.isFinite(Number(data.direction)) ? Number(data.direction) : item.userData.direction || 0;
@@ -13369,6 +13356,7 @@ function syncServerFish(items = []) {
 
 function removeAnimal(animal) {
   if (!animal) return;
+  if (animal.serverId) serverWhaleMap.delete(animal.serverId);
   scene.remove(animal.group);
   const index = animals.indexOf(animal);
   if (index >= 0) animals.splice(index, 1);
@@ -13382,9 +13370,10 @@ function syncServerWhales(items = []) {
   (Array.isArray(items) ? items : []).forEach((data) => {
     if (!data?.id) return;
     seen.add(data.id);
-    let animal = animals.find((item) => item.serverId === data.id);
+    let animal = serverWhaleMap.get(data.id);
     if (!animal) {
       animal = makeWhale(data);
+      serverWhaleMap.set(data.id, animal);
     }
     animal.hp = Number(data.hp) || animal.hp;
     animal.maxHp = Number(data.maxHp) || animal.maxHp || 1000;
@@ -13402,6 +13391,7 @@ function syncServerWhales(items = []) {
 
 function removeStorm(storm) {
   if (!storm) return;
+  if (storm.serverId) serverStormMap.delete(storm.serverId);
   scene.remove(storm.group);
   const index = storms.indexOf(storm);
   if (index >= 0) storms.splice(index, 1);
@@ -13415,7 +13405,7 @@ function syncServerStorms(items = []) {
   (Array.isArray(items) ? items : []).forEach((data) => {
     if (!data?.id) return;
     seen.add(data.id);
-    let storm = storms.find((item) => item.serverId === data.id);
+    let storm = serverStormMap.get(data.id);
     if (!storm) {
       const group = makeStormCloud();
       scene.add(group);
@@ -13428,6 +13418,7 @@ function syncServerStorms(items = []) {
         strikeAt: Infinity,
       };
       storms.push(storm);
+      serverStormMap.set(data.id, storm);
     }
     storm.radius = Number(data.radius) || storm.radius || 70;
     storm.serverPosition = storm.serverPosition || new THREE.Vector3();
@@ -13460,7 +13451,7 @@ function syncServerWorld(world) {
   (world.bots || []).forEach((data) => {
     if (!data?.id) return;
     seenBots.add(data.id);
-    let bot = bots.find((item) => item.serverId === data.id);
+    let bot = serverBotMap.get(data.id);
     const serverRotation = Number(data.rotation) || 0;
     if (!bot) {
       const group = makeShip(data.shipType || "cog", true);
@@ -13479,6 +13470,7 @@ function syncServerWorld(world) {
       bot.group.position.copy(serverPosition);
       bot.group.rotation.y = serverRotation;
       bots.push(bot);
+      serverBotMap.set(data.id, bot);
     } else if (bot.shipType !== data.shipType) {
       clearBurnVisual(bot);
       scene.remove(bot.group);
@@ -13523,7 +13515,7 @@ function syncServerWorld(world) {
   (world.crates || []).forEach((data) => {
     if (!data?.id) return;
     seenCrates.add(data.id);
-    let crate = crates.find((item) => item.serverId === data.id);
+    let crate = serverCrateMap.get(data.id);
     const serverKind = data.kind === "treasure" ? "treasure" : data.kind === "kraken" ? "kraken" : data.kind === "whale" ? "whale" : "crate";
     if (!crate) {
       const kind = serverKind;
@@ -13538,6 +13530,7 @@ function syncServerWorld(world) {
         born: Number.isFinite(Number(data.born)) ? clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000) : clock.elapsedTime,
       };
       crates.push(crate);
+      serverCrateMap.set(data.id, crate);
     }
     crate.kind = serverKind;
     if (Number.isFinite(Number(data.born))) crate.born = clock.elapsedTime - Math.max(0, (Date.now() - Number(data.born)) / 1000);
