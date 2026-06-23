@@ -24,8 +24,9 @@ const islandSpacingAnchor = { x: -34, z: -24 };
 const botCount = 14;
 const cannonballSpeed = 29.3;
 const botCannonRange = 34;
-const worldBackpressureSkipBytes = 1200000;
+const worldBackpressureSkipBytes = 240000;
 const realtimeMotionBackpressureSkipBytes = 160000;
+const worldBroadcastIntervalMs = 180;
 const centerBotClearRadius = 88;
 const crateLifetimeMs = 120000;
 const whaleBitLifetimeMs = 300000;
@@ -82,6 +83,7 @@ let nextBombId = 1;
 let nextBotBalloonId = 1;
 let nextBuildingId = 1;
 let nextFishId = 1;
+let lastWorldBroadcastAt = 0;
 let kraken = null;
 let leviathan = null;
 const leviathanCooldowns = new Map();
@@ -3187,7 +3189,10 @@ function updateWorld() {
   updateLeviathanServer(now, dt);
   updateBotBalloons(now, dt);
   updateBalloonBombs(now);
-  broadcast(worldSnapshot());
+  if (now - lastWorldBroadcastAt >= worldBroadcastIntervalMs) {
+    lastWorldBroadcastAt = now;
+    broadcast(worldSnapshot());
+  }
 }
 
 for (let i = 0; i < botCount; i++) bots.push(makeBot());
@@ -3688,9 +3693,7 @@ function broadcastRealtime(message, exceptId = "") {
   const priority = message?.type !== "motion";
   for (const client of clients.values()) {
     if (client.id === exceptId) continue;
-    const fast = fastClients.get(client.id);
-    if (fast && !fast.destroyed) writeRealtimeFrame(fast, frame, priority);
-    else writeFrame(client, frame, priority);
+    writeFrame(client, frame, priority);
   }
 }
 

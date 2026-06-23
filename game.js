@@ -1034,8 +1034,8 @@ const SHIP_WATERLINE_Y = -0.42;
 const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const botUpgradeCache = new Map();
-const MULTIPLAYER_STATE_INTERVAL = 0.09;
-const MULTIPLAYER_MOTION_INTERVAL = 0.033;
+const MULTIPLAYER_STATE_INTERVAL = 0.22;
+const MULTIPLAYER_MOTION_INTERVAL = 0.05;
 const REALTIME_SOCKET_MAX_BUFFER = 65536;
 const REMOTE_POSITION_LERP = 8;
 const REMOTE_ROTATION_LERP = 10;
@@ -13188,6 +13188,11 @@ function realtimeSocketOpen() {
     && multiplayer.fastReady;
 }
 
+function multiplayerSocketOpen() {
+  return (typeof WebSocket !== "undefined" && multiplayer.socket?.readyState === WebSocket.OPEN)
+    || Boolean(multiplayer.channel);
+}
+
 function sendRealtimeMultiplayer(message, force = false) {
   if (typeof WebSocket !== "undefined" && multiplayer.fastSocket?.readyState === WebSocket.OPEN) {
     if (!force && Number(multiplayer.fastSocket.bufferedAmount || 0) > REALTIME_SOCKET_MAX_BUFFER) return false;
@@ -13202,7 +13207,6 @@ function sendRealtimeMultiplayer(message, force = false) {
 }
 
 function sendMultiplayer(message) {
-  if ((message?.type === "shot" || message?.type === "shots") && sendRealtimeMultiplayer(message, true)) return true;
   if (typeof WebSocket !== "undefined" && multiplayer.socket?.readyState === WebSocket.OPEN) {
     multiplayer.socket.send(JSON.stringify(message));
     return true;
@@ -13831,7 +13835,6 @@ function handleMultiplayerMessage(message) {
   if (!message) return;
   if (message.type === "welcome") {
     multiplayer.networkId = message.id;
-    setupRealtimeMultiplayer();
   } else if (message.type === "fastWelcome") {
     multiplayer.fastReady = true;
   } else if (message.type === "state") {
@@ -14040,7 +14043,6 @@ function setupMultiplayer(reconnecting = false) {
       multiplayer.channel = null;
     }
     if (state.joined) sendMultiplayer({ type: "hello", player: multiplayerPayload() });
-    setupRealtimeMultiplayer();
     toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
   });
 
@@ -14119,9 +14121,9 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
 
 function publishMultiplayer() {
   if (!state.joined) return;
-  if (realtimeSocketOpen() && clock.elapsedTime - multiplayer.motionLastSent >= MULTIPLAYER_MOTION_INTERVAL) {
+  if (multiplayerSocketOpen() && clock.elapsedTime - multiplayer.motionLastSent >= MULTIPLAYER_MOTION_INTERVAL) {
     multiplayer.motionLastSent = clock.elapsedTime;
-    sendRealtimeMultiplayer({
+    sendMultiplayer({
       type: "motion",
       player: { ...multiplayerMotionPayload(), id: playerId },
     });
