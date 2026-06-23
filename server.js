@@ -3367,6 +3367,18 @@ function broadcastShotFrom(ownerId, shot) {
   broadcastShotsFrom(ownerId, shot);
 }
 
+function mergeSocketPlayerPose(clientId, player, now = Date.now()) {
+  const socket = clients.get(clientId);
+  const next = {
+    ...(socket?.player || {}),
+    ...(player || {}),
+    id: clientId,
+    updated: now,
+  };
+  if (socket) socket.player = next;
+  return next;
+}
+
 function handleRealtimeMessage(socket, text) {
   let message;
   try {
@@ -3385,13 +3397,16 @@ function handleRealtimeMessage(socket, text) {
     return;
   }
   if (message.type === "motion" && socket.fastFor) {
+    const now = Date.now();
+    const player = {
+      ...(message.player || {}),
+      id: socket.fastFor,
+      updated: now,
+    };
+    mergeSocketPlayerPose(socket.fastFor, player, now);
     broadcastRealtime({
       type: "motion",
-      player: {
-        ...(message.player || {}),
-        id: socket.fastFor,
-        updated: Date.now(),
-      },
+      player,
     }, socket.fastFor);
     return;
   }
@@ -3449,13 +3464,16 @@ function handleMessage(socket, text) {
     }
   }
   if (message.type === "motion") {
+    const now = Date.now();
+    const player = {
+      ...(message.player || {}),
+      id: socket.id,
+      updated: now,
+    };
+    mergeSocketPlayerPose(socket.id, player, now);
     broadcastRealtime({
       type: "motion",
-      player: {
-        ...(message.player || {}),
-        id: socket.id,
-        updated: Date.now(),
-      },
+      player,
     }, socket.id);
   }
   if (message.type === "shot") broadcastShotFrom(socket.id, message.shot);

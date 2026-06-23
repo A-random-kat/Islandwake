@@ -1035,10 +1035,10 @@ const CANNONBALL_SPEED = 29.3;
 const BOT_CANNON_RANGE = 34;
 const botUpgradeCache = new Map();
 const MULTIPLAYER_STATE_INTERVAL = 0.09;
-const MULTIPLAYER_MOTION_INTERVAL = 0.045;
+const MULTIPLAYER_MOTION_INTERVAL = 0.033;
 const REALTIME_SOCKET_MAX_BUFFER = 65536;
-const REMOTE_POSITION_LERP = 10;
-const REMOTE_ROTATION_LERP = 12;
+const REMOTE_POSITION_LERP = 8;
+const REMOTE_ROTATION_LERP = 10;
 const SHOT_REPLAY_MAX_AGE_MS = 7000;
 const TRANSIENT_EFFECT_REPLAY_MAX_AGE_MS = 4200;
 const BOMB_EXPLOSION_REPLAY_MAX_AGE_MS = 2600;
@@ -13128,6 +13128,7 @@ function updateMinimap() {
 
 function multiplayerMotionPayload() {
   return {
+    poseTime: Date.now(),
     name: captainName(),
     level: state.level,
     gold: Math.floor(state.gold),
@@ -13325,8 +13326,16 @@ function upsertRemotePlayer(data) {
   const z = Number(data.z);
   if (!Number.isFinite(x) || !Number.isFinite(z)) return;
 
-  const shipType = data.shipType || "skiff";
+  const incomingPoseTime = Number(data.poseTime);
+  const fallbackPoseTime = Number(data.updated);
+  const poseTime = Number.isFinite(incomingPoseTime) && incomingPoseTime > 0
+    ? incomingPoseTime
+    : Number.isFinite(fallbackPoseTime) && fallbackPoseTime > 0
+      ? fallbackPoseTime
+      : 0;
   let remote = remotePlayers.get(data.id);
+  const acceptPose = !remote || !poseTime || poseTime >= (Number(remote.lastPoseTime) || 0);
+  const shipType = acceptPose ? (data.shipType || remote?.shipType || "skiff") : (remote.shipType || data.shipType || "skiff");
   if (!remote) {
     const group = makeShip(shipType, true);
     const avatar = makeRemoteCharacter();
@@ -13343,9 +13352,10 @@ function upsertRemotePlayer(data) {
       fleetShips: [],
       serverPosition: new THREE.Vector3(),
       avatarTargetPosition: new THREE.Vector3(),
+      lastPoseTime: poseTime || 0,
     };
     remotePlayers.set(data.id, remote);
-  } else if (remote.shipType !== shipType) {
+  } else if (acceptPose && remote.shipType !== shipType) {
     const previousPosition = remote.group.position.clone();
     const previousRotation = remote.group.rotation.y;
     clearBurnVisual(remote);
@@ -13359,25 +13369,35 @@ function upsertRemotePlayer(data) {
 
   updateRemoteLabel(remote, data.name || "Captain");
   remote.updated = clock.elapsedTime;
-  remote.mode = data.mode || "ship";
   remote.level = data.level || 1;
   remote.gold = Number(data.gold) || 0;
   remote.hp = data.hp || getShipStats(shipType).hp;
-  remote.whalerNets = Boolean(data.whalerNets);
-  remote.turtleFire = Boolean(shipType === "turtle" && data.turtleFire && remote.mode === "ship");
-  remote.velocity = remote.velocity || new THREE.Vector3();
-  remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
-  remote.serverPosition = remote.serverPosition || new THREE.Vector3();
-  remote.serverPosition.set(x, SHIP_WATERLINE_Y, z);
-  remote.serverRotation = Number(data.rotation) || 0;
-  if (!remote.initialized) {
-    remote.group.position.copy(remote.serverPosition);
-    remote.group.rotation.y = remote.serverRotation;
-    remote.initialized = true;
+  if (acceptPose) {
+    if (poseTime) remote.lastPoseTime = poseTime;
+    remote.mode = data.mode || "ship";
+    remote.viewMode = data.viewMode || "ship";
+    remote.whalerNets = Boolean(data.whalerNets);
+    remote.turtleFire = Boolean(shipType === "turtle" && data.turtleFire && remote.mode === "ship");
+    remote.velocity = remote.velocity || new THREE.Vector3();
+    remote.velocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
+    remote.serverPosition = remote.serverPosition || new THREE.Vector3();
+    remote.serverPosition.set(x, SHIP_WATERLINE_Y, z);
+    remote.serverRotation = Number(data.rotation) || 0;
+    if (!remote.initialized) {
+      remote.group.position.copy(remote.serverPosition);
+      remote.group.rotation.y = remote.serverRotation;
+      remote.initialized = true;
+    }
   }
   remote.group.visible = true;
 
-  const remoteView = data.viewMode || "ship";
+  if (!acceptPose) {
+    if (Array.isArray(data.balloons)) syncRemoteBalloons(remote, data.balloons);
+    if (Array.isArray(data.fleetShips)) syncRemoteFleet(remote, data.fleetShips);
+    return;
+  }
+
+  const remoteView = remote.viewMode || "ship";
   const avatarVisible = data.mode === "land" || remoteView === "deck" || remoteView === "swim";
   remote.avatar.visible = avatarVisible;
   const charX = Number.isFinite(Number(data.charX)) ? Number(data.charX) : Number(data.landX);
