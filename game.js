@@ -7834,6 +7834,8 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     baseDamage: Number(options.baseDamage) || damage,
     rangeDamage: Boolean(options.rangeDamage),
     targetKind: options.targetKind || "any",
+    serverId: options.serverId || null,
+    serverAuthoritative: Boolean(options.serverAuthoritative),
     ammoType: ammo.id,
     airburst: Boolean(ammo.airburst),
     ballistic,
@@ -12180,65 +12182,63 @@ function updateProjectiles(dt) {
     }
     let hit = false;
     if (shot.owner === playerId) {
-      animals.forEach((animal) => {
-        if (!hit && projectileHitsAnimal(shot, animal)) {
-          damageAnimal(animal, shot);
-          hit = true;
-        }
-      });
-      if (shot.ammoType !== "airburst") {
-        bots.forEach((bot) => {
-          if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            const hitPosition = shot.mesh.position.clone();
-            const impactDamage = projectileDamageAtImpact(shot);
-            if (multiplayer.serverWorld && bot.serverId) {
-              sendMultiplayer({ type: "hitBot", id: bot.serverId, damage: impactDamage, fire: shot.fire || null });
-              if (shot.fire) igniteTarget(bot, shot.fire, hitPosition, true);
-            } else {
+      if (!multiplayer.serverWorld) {
+        animals.forEach((animal) => {
+          if (!hit && projectileHitsAnimal(shot, animal)) {
+            damageAnimal(animal, shot);
+            hit = true;
+          }
+        });
+        if (shot.ammoType !== "airburst") {
+          bots.forEach((bot) => {
+            if (!hit && projectileHitsShip(shot, bot.group, bot.shipType)) {
+              const hitPosition = shot.mesh.position.clone();
+              const impactDamage = projectileDamageAtImpact(shot);
               damageTarget(bot, impactDamage, { fire: shot.fire, hitPosition });
+              addXP(1 + Math.floor(impactDamage / 27));
+              hit = true;
             }
-            addXP(1 + Math.floor(impactDamage / 27));
-            hit = true;
-          }
-        });
-        remotePlayers.forEach((remote) => {
-          if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
+          });
+          remotePlayers.forEach((remote) => {
+            if (!hit && projectileHitsShip(shot, remote.group, remote.shipType)) {
+              const impactDamage = projectileDamageAtImpact(shot);
+              if (remote.mode !== "land") addXP(2 + Math.floor(impactDamage / 24));
+              if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
+              hit = true;
+            }
+          });
+          if (!hit && projectileHitsKraken(shot)) {
             const impactDamage = projectileDamageAtImpact(shot);
-            if (remote.mode !== "land") addXP(2 + Math.floor(impactDamage / 24));
-            if (shot.fire) igniteTarget(remote, shot.fire, shot.mesh.position.clone(), true);
+            krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - impactDamage);
             hit = true;
           }
-        });
-        if (!hit && projectileHitsKraken(shot)) {
-          const impactDamage = projectileDamageAtImpact(shot);
-          if (multiplayer.serverWorld) sendMultiplayer({ type: "hitKraken", damage: impactDamage });
-          krakenBoss.hp = Math.max(0, (krakenBoss.hp || 0) - impactDamage);
-          hit = true;
         }
       }
     } else {
-      if (shot.targetKind !== "bot") {
-        if (projectileHitsCharacter(shot)) {
-          damageCharacter(CHARACTER_MAX_HP, { hitPosition: shot.mesh.position.clone() });
-          hit = true;
-        } else if (state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
-          damageTarget(state, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-          hit = true;
+      if (!multiplayer.serverWorld) {
+        if (shot.targetKind !== "bot") {
+          if (projectileHitsCharacter(shot)) {
+            damageCharacter(CHARACTER_MAX_HP, { hitPosition: shot.mesh.position.clone() });
+            hit = true;
+          } else if (state.mode === "ship" && projectileHitsShip(shot, playerShip, state.shipType)) {
+            damageTarget(state, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+            hit = true;
+          }
+          ownedShips.forEach((ship) => {
+            if (!hit && projectileHitsShip(shot, ship.group, ship.type)) {
+              damageOwnedShip(ship, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+              hit = true;
+            }
+          });
         }
-        ownedShips.forEach((ship) => {
-          if (!hit && projectileHitsShip(shot, ship.group, ship.type)) {
-            damageOwnedShip(ship, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-            hit = true;
-          }
-        });
-      }
-      if (!hit && !multiplayer.serverWorld && shot.targetKind !== "player") {
-        bots.forEach((bot) => {
-          if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            damageTarget(bot, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
-            hit = true;
-          }
-        });
+        if (!hit && shot.targetKind !== "player") {
+          bots.forEach((bot) => {
+            if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
+              damageTarget(bot, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+              hit = true;
+            }
+          });
+        }
       }
     }
     if (progress >= 1 || hit) {
@@ -13828,7 +13828,45 @@ function spawnRemoteShot(data) {
     gravity: Number.isFinite(Number(data.gravity)) ? Number(data.gravity) : undefined,
     verticalVelocity: Number.isFinite(Number(data.verticalVelocity)) ? Number(data.verticalVelocity) : undefined,
     createdWallAt: Number.isFinite(sentAt) ? sentAt : undefined,
+    serverId: data.id || null,
+    serverAuthoritative: Boolean(data.serverAuth),
   });
+}
+
+function applyServerShipDamage(message) {
+  const sentAt = Number(message.sentAt);
+  if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
+  if (state.mode !== "ship") return;
+  const hitPosition = new THREE.Vector3(
+    Number.isFinite(Number(message.x)) ? Number(message.x) : playerShip.position.x,
+    Number.isFinite(Number(message.y)) ? Number(message.y) : SHIP_WATERLINE_Y + 1,
+    Number.isFinite(Number(message.z)) ? Number(message.z) : playerShip.position.z
+  );
+  const fire = message.fire && typeof message.fire === "object"
+    ? {
+        dps: Number(message.fire.dps) || 0,
+        duration: Number(message.fire.duration ?? message.fire.remaining) || 0,
+      }
+    : null;
+  damageTarget(state, Number(message.damage) || 0, {
+    fire: fire && fire.dps > 0 && fire.duration > 0 ? fire : null,
+    hitPosition,
+  });
+}
+
+function applyServerProjectileImpact(message) {
+  const sentAt = Number(message.sentAt);
+  if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
+  const shot = projectiles.find((item) => item.serverId && item.serverId === message.id);
+  if (!shot) return;
+  const impactPosition = new THREE.Vector3(
+    Number.isFinite(Number(message.x)) ? Number(message.x) : shot.mesh.position.x,
+    Number.isFinite(Number(message.y)) ? Number(message.y) : shot.mesh.position.y,
+    Number.isFinite(Number(message.z)) ? Number(message.z) : shot.mesh.position.z
+  );
+  shot.mesh.position.copy(impactPosition);
+  shot.target.copy(impactPosition).setY(0);
+  removeProjectile(shot, message.impact === "hit" ? "hit" : message.impact === "splash" ? "splash" : "none");
 }
 
 function handleMultiplayerMessage(message) {
@@ -13847,6 +13885,10 @@ function handleMultiplayerMessage(message) {
     spawnRemoteShot(message.shot);
   } else if (message.type === "shots") {
     (Array.isArray(message.shots) ? message.shots : []).forEach(spawnRemoteShot);
+  } else if (message.type === "shipDamage") {
+    applyServerShipDamage(message);
+  } else if (message.type === "projectileImpact") {
+    applyServerProjectileImpact(message);
   } else if (message.type === "world") {
     syncServerWorld(message);
   } else if (message.type === "crateReward") {
