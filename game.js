@@ -1059,6 +1059,8 @@ let hudXpWidth = "";
 let hudStatsText = "";
 let hudCargoHtml = "";
 let hudDockPromptHtml = "";
+let nextHudPanelRefreshAt = 0;
+let nextMinimapRenderAt = 0;
 let leaderboardSignature = "";
 let spyPanelSignature = "";
 const minimapLayerCache = {
@@ -1084,6 +1086,8 @@ const waterfallObjects = [];
 const waterfallFoamObjects = [];
 const waterfallMistObjects = [];
 const shipNightLights = [];
+const HUD_PANEL_REFRESH_INTERVAL = 0.12;
+const MINIMAP_RENDER_INTERVAL = 0.1;
 const environment = {
   hemi: null,
   sun: null,
@@ -1529,7 +1533,18 @@ function shipStructureBoxes(type = state.shipType) {
     });
   }
   if (type === "whaler") {
-    boxes.push({ id: "whaler-cabin", z: -2.0 * scale, w: 2.1 * scale, d: 1.05 * scale, floorY: deckY, roofY: 1.98 * scale });
+    boxes.push({
+      id: "whaler-cabin",
+      z: -2.0 * scale,
+      w: 2.25 * scale,
+      d: 1.2 * scale,
+      floorY: deckY,
+      roofY: 2.24 * scale,
+      interior: true,
+    });
+    boxes.push({ id: "whaler-map-table", z: -2.0 * scale, w: 0.62 * scale, d: 0.38 * scale, floorY: deckY, roofY: 1.7 * scale, noRoofWalk: true });
+    boxes.push({ id: "whaler-bunk", x: -0.68 * scale, z: -1.94 * scale, w: 0.38 * scale, d: 0.74 * scale, floorY: deckY, roofY: 1.62 * scale, noRoofWalk: true });
+    boxes.push({ id: "whaler-sea-chest", x: 0.7 * scale, z: -2.25 * scale, w: 0.42 * scale, d: 0.32 * scale, floorY: deckY, roofY: 1.58 * scale, noRoofWalk: true });
     boxes.push({ id: "tryworks", x: 0.55 * scale, z: 0.1 * scale, w: 1.1 * scale, d: 0.8 * scale, floorY: deckY, roofY: 1.95 * scale });
   } else if (type === "modernschooner") {
     boxes.push({ id: "modern-cockpit", z: -1.58 * scale, w: 1.1 * scale, d: 0.9 * scale, floorY: deckY, roofY: 1.85 * scale });
@@ -1634,7 +1649,7 @@ function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
   const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const generousCabinDoor = ["grandfrigate", "postship", "windrunner"].includes(type);
+  const generousCabinDoor = ["grandfrigate", "postship", "whaler", "windrunner"].includes(type);
   const doorHalfWidth = generousCabinDoor ? 0.62 * scale : 0.48 * scale;
   const doorDepth = generousCabinDoor ? 0.58 * scale : 0.44 * scale;
   const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
@@ -5953,6 +5968,81 @@ function addCabin(group, x, z, width, depth, scale, color = 0x6b432b) {
   }
 }
 
+function addWhalerCabinInterior(group, scale) {
+  const pz = 2.0 * scale;
+  const cabinW = 2.25 * scale;
+  const cabinD = 1.2 * scale;
+  const floorY = 1.43 * scale;
+  const wallH = 0.92 * scale;
+  const wallY = floorY + wallH * 0.5;
+  const wallT = 0.055 * scale;
+  const doorW = 0.92 * scale;
+  const doorH = 0.7 * scale;
+  const frontZ = pz - cabinD * 0.5;
+  const backZ = pz + cabinD * 0.5;
+  const wallMat = mat(0x526069).clone();
+  wallMat.side = THREE.DoubleSide;
+  wallMat.needsUpdate = true;
+  const roofMat = mat(0x2f3342).clone();
+  roofMat.side = THREE.DoubleSide;
+  roofMat.needsUpdate = true;
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(cabinW * 0.9, 0.045 * scale, cabinD * 0.82), mats.plank);
+  floor.position.set(0, floorY, pz);
+  floor.receiveShadow = true;
+  group.add(floor);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(cabinW, wallH, wallT), wallMat);
+  backWall.position.set(0, wallY, backZ);
+  backWall.castShadow = true;
+  group.add(backWall);
+  [-1, 1].forEach((side) => {
+    const sideWall = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, cabinD), wallMat);
+    sideWall.position.set(side * cabinW * 0.5, wallY, pz);
+    sideWall.castShadow = true;
+    group.add(sideWall);
+    const frontPieceW = (cabinW - doorW) * 0.5;
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(frontPieceW, wallH, wallT), wallMat);
+    frontWall.position.set(side * (doorW * 0.5 + frontPieceW * 0.5), wallY, frontZ);
+    frontWall.castShadow = true;
+    group.add(frontWall);
+    const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(wallT * 1.15, 0.28 * scale, 0.34 * scale), mats.gold);
+    sideWindow.position.set(side * (cabinW * 0.5 + wallT * 0.2), wallY + 0.08 * scale, pz + 0.06 * scale);
+    group.add(sideWindow);
+  });
+  const header = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.12 * scale, Math.max(0.12 * scale, wallH - doorH), wallT * 1.2), wallMat);
+  header.position.set(0, floorY + doorH + (wallH - doorH) * 0.5, frontZ);
+  group.add(header);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(cabinW + 0.28 * scale, 0.2 * scale, cabinD + 0.26 * scale), roofMat);
+  roof.position.set(0, 2.18 * scale, pz);
+  roof.castShadow = true;
+  group.add(roof);
+  const threshold = new THREE.Mesh(new THREE.BoxGeometry(doorW * 0.85, 0.045 * scale, 0.18 * scale), mats.plank);
+  threshold.position.set(0, floorY + 0.035 * scale, frontZ - 0.09 * scale);
+  threshold.castShadow = true;
+  group.add(threshold);
+  const table = new THREE.Mesh(new THREE.BoxGeometry(0.56 * scale, 0.14 * scale, 0.34 * scale), mat(0x6b482f));
+  table.position.set(0, floorY + 0.2 * scale, pz);
+  table.castShadow = true;
+  group.add(table);
+  const chart = new THREE.Mesh(new THREE.BoxGeometry(0.34 * scale, 0.025 * scale, 0.22 * scale), mat(0xd8c28f));
+  chart.position.set(0.04 * scale, floorY + 0.285 * scale, pz);
+  chart.rotation.y = -0.18;
+  group.add(chart);
+  const bunk = new THREE.Mesh(new THREE.BoxGeometry(0.34 * scale, 0.14 * scale, 0.68 * scale), mat(0x493425));
+  bunk.position.set(0.68 * scale, floorY + 0.15 * scale, pz - 0.05 * scale);
+  bunk.castShadow = true;
+  group.add(bunk);
+  const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.29 * scale, 0.045 * scale, 0.5 * scale), mat(0x405f88));
+  blanket.position.set(0.68 * scale, floorY + 0.245 * scale, pz - 0.05 * scale);
+  group.add(blanket);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.38 * scale, 0.28 * scale, 0.3 * scale), mat(0x3e2b21));
+  chest.position.set(-0.7 * scale, floorY + 0.17 * scale, pz + 0.25 * scale);
+  chest.castShadow = true;
+  group.add(chest);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.08 * scale, 8, 6), mats.gold);
+  lamp.position.set(0, 2.0 * scale, pz - 0.12 * scale);
+  group.add(lamp);
+}
+
 function addSternGallery(group, length, width, scale, color) {
   const gallery = new THREE.Mesh(new THREE.BoxGeometry(width * 0.64 * scale, 0.72 * scale, 0.28 * scale), mat(color));
   gallery.position.set(0, 1.55 * scale, length * 0.41 * scale);
@@ -7532,7 +7622,7 @@ function makeShip(type = "skiff", remote = false) {
   } else if (type === "whaler") {
     addSquareSail(group, -0.65, -1.55, 0.78, 0xe8eadf, 1);
     addSail(group, 0.45, 0.8, 0.86, 0xf4efd9);
-    addCabin(group, 0, 2.0, 2.1, 1.05, scale * 0.88, 0x526069);
+    addWhalerCabinInterior(group, scale);
     const tryworks = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.42 * scale, 0.8 * scale), mat(0x394047));
     tryworks.position.set(-0.55 * scale, 1.72 * scale, -0.1 * scale);
     group.add(tryworks);
@@ -12788,9 +12878,12 @@ function updateHud() {
   } else {
     hudDockPromptHtml = "";
   }
-  updateSpyPanel();
-  updateAmmoHotbar();
-  renderLeaderboard();
+  if (clock.elapsedTime >= nextHudPanelRefreshAt) {
+    nextHudPanelRefreshAt = clock.elapsedTime + HUD_PANEL_REFRESH_INTERVAL;
+    updateSpyPanel();
+    updateAmmoHotbar();
+    renderLeaderboard();
+  }
 }
 
 function renderLeaderboard() {
@@ -13022,8 +13115,10 @@ function ensureMinimapStaticLayers(size, expanded) {
   renderMinimapIslandLayer(minimapLayerCache.islands.getContext("2d"), size);
 }
 
-function updateMinimap() {
+function updateMinimap(force = false) {
   if (!minimapCtx || ui.minimapPanel.classList.contains("hidden")) return;
+  if (!force && clock.elapsedTime < nextMinimapRenderAt) return;
+  nextMinimapRenderAt = clock.elapsedTime + MINIMAP_RENDER_INTERVAL;
   const canvas = ui.minimap;
   const ratio = Math.min(devicePixelRatio || 1, 2);
   const cssSize = Math.max(120, Math.round(canvas.clientWidth || 180));
