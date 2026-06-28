@@ -14173,8 +14173,7 @@ function flushPendingShotBatch() {
   shotBatchQueued = false;
   if (!pendingShotBatch.length) return;
   const shots = pendingShotBatch.splice(0);
-  if (shots.length === 1) sendMultiplayer({ type: "shot", shot: shots[0] });
-  else sendMultiplayer({ type: "shots", shots });
+  shots.forEach((shot) => sendMultiplayer({ type: "shot", shot }));
 }
 
 function queueShotPayload(shot) {
