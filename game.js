@@ -124,7 +124,7 @@ const TURTLE_FIRE_SMOKE = { dps: 0, duration: 0.7 };
 const ROCKET_BURST_COUNT = 30;
 const ROCKET_BURST_COOLDOWN = 20;
 const ROCKET_BURST_INTERVAL = 0.075;
-const ROCKET_BURST_SPREAD = 0.82;
+const ROCKET_BURST_SPREAD = 0.55;
 const ROCKET_BURST_DAMAGE = 20;
 const ROCKET_BURST_FIRE = { dps: 10, duration: 4 };
 const CANNONBALL_TYPES = {
@@ -14173,7 +14173,8 @@ function flushPendingShotBatch() {
   shotBatchQueued = false;
   if (!pendingShotBatch.length) return;
   const shots = pendingShotBatch.splice(0);
-  shots.forEach((shot) => sendMultiplayer({ type: "shot", shot }));
+  if (shots.length === 1) sendMultiplayer({ type: "shot", shot: shots[0] });
+  else sendMultiplayer({ type: "shots", shots });
 }
 
 function queueShotPayload(shot) {
