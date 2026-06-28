@@ -6626,7 +6626,11 @@ function launchRocketeerRocket(index = 0) {
   const shotDir = rotateFlatDirection(toAim.normalize(), (Math.random() - 0.5) * ROCKET_BURST_SPREAD).normalize();
   const shotRange = clamp(requestedRange * (0.78 + Math.random() * 0.66), 20, cannonRange() * 2.25);
   const target = origin.clone().add(shotDir.clone().multiplyScalar(shotRange)).setY(0);
+  const shotId = crypto.randomUUID();
   const options = {
+    id: shotId,
+    serverId: shotId,
+    serverAuthoritative: multiplayer.serverWorld,
     target,
     ammoType: "rocketburst",
     targetKind: "any",
@@ -7818,7 +7822,7 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     new THREE.LineBasicMaterial({ color: ammo.trail || 0xd9fbff, transparent: true, opacity: 0.62 })
   );
   scene.add(trail);
-  projectiles.push({
+  const projectile = {
     owner,
     mesh,
     trail,
@@ -7845,7 +7849,9 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     arcHeight,
     createdWallAt,
     maxWallAge: Math.max(2200, (distance / shotSpeed + 1.2) * 1000),
-  });
+  };
+  projectiles.push(projectile);
+  return projectile;
 }
 
 function projectileDamageAtImpact(shot) {
@@ -10683,7 +10689,11 @@ function fireBroadsideVolley({
       const directDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : baseDamage * (ammo.damageScale || 1);
       const target = slot.origin.clone().add(shotDir.clone().multiplyScalar(shotRange));
       target.y = 0;
+      const shotId = publish ? crypto.randomUUID() : null;
       makeProjectile(owner, slot.origin, shotDir, directDamage, shotRange, {
+        id: shotId,
+        serverId: shotId,
+        serverAuthoritative: Boolean(publish && multiplayer.serverWorld),
         target,
         ammoType: ammo.id,
         targetKind,
@@ -10693,6 +10703,7 @@ function fireBroadsideVolley({
         rangeDamage: !ammo.noRangeDamage,
       });
       if (publish) publishShot(slot.origin, shotDir, directDamage, shotRange, target, ammo.id, {
+        id: shotId,
         ballistic: !ammo.airburst,
         startY: slot.origin.y,
         baseDamage: directDamage,
@@ -11347,9 +11358,7 @@ function dropBalloonBomb(balloon) {
   toast("Bomb away.");
 }
 
-function detonateAirburst(shot) {
-  const center = shot.target.clone();
-  center.y = 24;
+function makeAirburstExplosionVisual(center) {
   const group = new THREE.Group();
   group.position.copy(center);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(1.7, 16, 10), new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.86 }));
@@ -11360,6 +11369,12 @@ function detonateAirburst(shot) {
   ring.userData.puff = true;
   group.add(ring);
   addImpactEffect(group, 0.75);
+}
+
+function detonateAirburst(shot) {
+  const center = shot.target.clone();
+  center.y = 24;
+  makeAirburstExplosionVisual(center);
   balloons.forEach((balloon) => {
     if (balloon.destroyed) return;
     const d = balloon.group.position.distanceTo(center);
@@ -13748,6 +13763,7 @@ function syncServerWorld(world) {
   });
   syncServerLeviathan(world.leviathan);
   syncKraken(world.kraken);
+  syncServerProjectiles(transientWorldStale ? [] : (world.projectiles || []));
   syncServerBombs(transientWorldStale ? [] : (world.bombs || []));
   syncServerBotBalloons(world.botBalloons || []);
   syncServerFish(world.fish || []);
@@ -13827,9 +13843,34 @@ function spawnRemoteShot(data) {
     rangeDamage: Boolean(data.rangeDamage),
     gravity: Number.isFinite(Number(data.gravity)) ? Number(data.gravity) : undefined,
     verticalVelocity: Number.isFinite(Number(data.verticalVelocity)) ? Number(data.verticalVelocity) : undefined,
+    initialTraveled: Number.isFinite(Number(data.initialTraveled ?? data.traveled)) ? Number(data.initialTraveled ?? data.traveled) : undefined,
     createdWallAt: Number.isFinite(sentAt) ? sentAt : undefined,
     serverId: data.id || null,
     serverAuthoritative: Boolean(data.serverAuth),
+  });
+}
+
+function syncServerProjectiles(list = []) {
+  const seen = new Set();
+  list.forEach((data) => {
+    if (!data?.id) return;
+    seen.add(data.id);
+    if (projectiles.some((shot) => shot.serverId === data.id)) return;
+    spawnRemoteShot({
+      ...data,
+      x: Number.isFinite(Number(data.startX)) ? Number(data.startX) : data.x,
+      y: Number.isFinite(Number(data.startY)) ? Number(data.startY) : data.y,
+      z: Number.isFinite(Number(data.startZ)) ? Number(data.startZ) : data.z,
+      initialTraveled: Number(data.traveled) || 0,
+      sentAt: Number(data.sentAt) || Number(data.born) || Date.now(),
+      serverAuth: true,
+    });
+  });
+  projectiles.slice().forEach((shot) => {
+    if (!shot.serverId || !shot.serverAuthoritative) return;
+    if (seen.has(shot.serverId)) return;
+    if (Date.now() - (shot.createdWallAt || Date.now()) < 500) return;
+    removeProjectile(shot);
   });
 }
 
@@ -13858,15 +13899,31 @@ function applyServerProjectileImpact(message) {
   const sentAt = Number(message.sentAt);
   if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
   const shot = projectiles.find((item) => item.serverId && item.serverId === message.id);
-  if (!shot) return;
   const impactPosition = new THREE.Vector3(
-    Number.isFinite(Number(message.x)) ? Number(message.x) : shot.mesh.position.x,
-    Number.isFinite(Number(message.y)) ? Number(message.y) : shot.mesh.position.y,
-    Number.isFinite(Number(message.z)) ? Number(message.z) : shot.mesh.position.z
+    Number.isFinite(Number(message.x)) ? Number(message.x) : shot?.mesh.position.x || 0,
+    Number.isFinite(Number(message.y)) ? Number(message.y) : shot?.mesh.position.y || SHIP_WATERLINE_Y,
+    Number.isFinite(Number(message.z)) ? Number(message.z) : shot?.mesh.position.z || 0
   );
+  if (!shot) {
+    if (message.impact === "hit") {
+      const dir = new THREE.Vector3(1, 0, 0);
+      if (message.ammoType === "hotshot" || message.ammoType === "rocketburst") makeFireImpactEffect(impactPosition, dir);
+      else makeSplinterEffect(impactPosition, dir);
+    } else if (message.impact === "airburst") {
+      makeAirburstExplosionVisual(impactPosition.setY(24));
+    } else if (message.impact === "splash") {
+      makeSplashEffect(impactPosition.setY(0));
+    }
+    return;
+  }
   shot.mesh.position.copy(impactPosition);
   shot.target.copy(impactPosition).setY(0);
-  removeProjectile(shot, message.impact === "hit" ? "hit" : message.impact === "splash" ? "splash" : "none");
+  if (message.impact === "airburst") {
+    makeAirburstExplosionVisual(impactPosition.clone().setY(24));
+    removeProjectile(shot);
+  } else {
+    removeProjectile(shot, message.impact === "hit" ? "hit" : message.impact === "splash" ? "splash" : "none");
+  }
 }
 
 function handleMultiplayerMessage(message) {
@@ -14137,8 +14194,9 @@ function queueShotPayload(shot) {
 }
 
 function publishShot(origin, dir, damage, range, target = null, ammoType = "basic", options = {}) {
+  const id = options.id || crypto.randomUUID();
   queueShotPayload({
-    id: crypto.randomUUID(),
+    id,
     owner: playerId,
     sentAt: Date.now(),
     x: origin.x,
@@ -14159,6 +14217,7 @@ function publishShot(origin, dir, damage, range, target = null, ammoType = "basi
     gravity: Number.isFinite(Number(options.gravity)) ? Number(options.gravity) : undefined,
     verticalVelocity: Number.isFinite(Number(options.verticalVelocity)) ? Number(options.verticalVelocity) : undefined,
   });
+  return id;
 }
 
 function publishMultiplayer() {

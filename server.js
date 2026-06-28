@@ -2681,6 +2681,36 @@ function botBalloonSnapshot(balloon) {
   };
 }
 
+function projectileSnapshot(projectile) {
+  return {
+    id: projectile.id,
+    owner: projectile.owner,
+    born: projectile.born,
+    sentAt: projectile.born,
+    x: projectile.x,
+    y: projectile.y,
+    z: projectile.z,
+    startX: projectile.startX,
+    startY: projectile.startY,
+    startZ: projectile.startZ,
+    targetX: projectile.targetX,
+    targetZ: projectile.targetZ,
+    dirX: projectile.dirX,
+    dirZ: projectile.dirZ,
+    range: projectile.distance,
+    traveled: projectile.traveled,
+    damage: projectile.damage,
+    baseDamage: projectile.baseDamage,
+    ammoType: projectile.ammoType,
+    ballistic: projectile.ballistic,
+    gravity: projectile.gravity,
+    verticalVelocity: projectile.verticalVelocity,
+    rangeDamage: projectile.rangeDamage,
+    targetKind: projectile.targetKind,
+    serverAuth: true,
+  };
+}
+
 function worldSnapshot() {
   const now = Date.now();
   return {
@@ -2699,6 +2729,7 @@ function worldSnapshot() {
     whales: whales.map(whaleSnapshot),
     storms: storms.map(stormSnapshot),
     kraken: krakenSnapshot(),
+    projectiles: projectiles.map(projectileSnapshot),
     crates: crates.map((crate) => ({
       id: crate.id,
       kind: crate.kind || "crate",
