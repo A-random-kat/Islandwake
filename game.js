@@ -994,6 +994,7 @@ const bots = [];
 const remotePlayers = new Map();
 const projectiles = [];
 const seenRemoteShots = new Set();
+const seenServerImpacts = new Set();
 const pendingShotBatch = [];
 let shotBatchQueued = false;
 const impactEffects = [];
@@ -12185,6 +12186,13 @@ function updateProjectiles(dt) {
       shot.trail.geometry.attributes.position.needsUpdate = true;
     }
     shot.trail.material.opacity = 0.28 + 0.34 * (1 - progress);
+    if (shot.serverAuthoritative) {
+      const endedInWater = shot.ballistic && shot.mesh.position.y <= 0.02 && shot.traveled > 1.2;
+      if (endedInWater || progress >= 1) {
+        removeProjectile(shot);
+        continue;
+      }
+    }
     if (shot.ballistic && shot.mesh.position.y <= 0.02 && shot.traveled > 1.2) {
       shot.target.copy(shot.mesh.position).setY(0);
       removeProjectile(shot, "splash");
@@ -13855,7 +13863,11 @@ function syncServerProjectiles(list = []) {
   list.forEach((data) => {
     if (!data?.id) return;
     seen.add(data.id);
-    if (projectiles.some((shot) => shot.serverId === data.id)) return;
+    const existing = projectiles.find((shot) => shot.serverId === data.id);
+    if (existing) {
+      existing.serverLastSeenAt = Date.now();
+      return;
+    }
     spawnRemoteShot({
       ...data,
       x: Number.isFinite(Number(data.startX)) ? Number(data.startX) : data.x,
@@ -13865,12 +13877,6 @@ function syncServerProjectiles(list = []) {
       sentAt: Number(data.sentAt) || Number(data.born) || Date.now(),
       serverAuth: true,
     });
-  });
-  projectiles.slice().forEach((shot) => {
-    if (!shot.serverId || !shot.serverAuthoritative) return;
-    if (seen.has(shot.serverId)) return;
-    if (Date.now() - (shot.createdWallAt || Date.now()) < 500) return;
-    removeProjectile(shot);
   });
 }
 
@@ -13898,6 +13904,14 @@ function applyServerShipDamage(message) {
 function applyServerProjectileImpact(message) {
   const sentAt = Number(message.sentAt);
   if (Number.isFinite(sentAt) && Date.now() - sentAt > SHOT_REPLAY_MAX_AGE_MS) return;
+  if (message.id) {
+    if (seenServerImpacts.has(message.id)) return;
+    seenServerImpacts.add(message.id);
+    if (seenServerImpacts.size > 260) {
+      const oldest = seenServerImpacts.values().next().value;
+      seenServerImpacts.delete(oldest);
+    }
+  }
   const shot = projectiles.find((item) => item.serverId && item.serverId === message.id);
   const impactPosition = new THREE.Vector3(
     Number.isFinite(Number(message.x)) ? Number(message.x) : shot?.mesh.position.x || 0,
