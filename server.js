@@ -10,7 +10,6 @@ const fastClients = new Map();
 const bots = [];
 const crates = [];
 const bombs = [];
-const projectiles = [];
 const botBalloons = [];
 const whales = [];
 const fish = [];
@@ -81,7 +80,6 @@ const leviathanCooldownMs = 10200;
 let nextTreasureSpawnAt = Date.now() + 12000 + Math.random() * 18000;
 let nextStormSpawnAt = Date.now() + 35000 + Math.random() * 85000;
 let nextBombId = 1;
-let nextProjectileId = 1;
 let nextBotBalloonId = 1;
 let nextBuildingId = 1;
 let nextFishId = 1;
@@ -2681,36 +2679,6 @@ function botBalloonSnapshot(balloon) {
   };
 }
 
-function projectileSnapshot(projectile) {
-  return {
-    id: projectile.id,
-    owner: projectile.owner,
-    born: projectile.born,
-    sentAt: projectile.born,
-    x: projectile.x,
-    y: projectile.y,
-    z: projectile.z,
-    startX: projectile.startX,
-    startY: projectile.startY,
-    startZ: projectile.startZ,
-    targetX: projectile.targetX,
-    targetZ: projectile.targetZ,
-    dirX: projectile.dirX,
-    dirZ: projectile.dirZ,
-    range: projectile.distance,
-    traveled: projectile.traveled,
-    damage: projectile.damage,
-    baseDamage: projectile.baseDamage,
-    ammoType: projectile.ammoType,
-    ballistic: projectile.ballistic,
-    gravity: projectile.gravity,
-    verticalVelocity: projectile.verticalVelocity,
-    rangeDamage: projectile.rangeDamage,
-    targetKind: projectile.targetKind,
-    serverAuth: true,
-  };
-}
-
 function worldSnapshot() {
   const now = Date.now();
   return {
@@ -2729,7 +2697,6 @@ function worldSnapshot() {
     whales: whales.map(whaleSnapshot),
     storms: storms.map(stormSnapshot),
     kraken: krakenSnapshot(),
-    projectiles: projectiles.map(projectileSnapshot),
     crates: crates.map((crate) => ({
       id: crate.id,
       kind: crate.kind || "crate",
@@ -2792,7 +2759,6 @@ function nearestShipPlayer(bot, maxDistance) {
 function updateWorld() {
   const dt = 0.1;
   const now = Date.now();
-  updateServerProjectiles(dt, now);
   for (const bot of bots) {
     if (updateBotFire(bot, dt)) continue;
     const botTurtleFireActive = updateBotTurtleFire(bot, dt, now);
@@ -3385,228 +3351,7 @@ function normalizedShot(ownerId, shot, sentAt) {
     id: shot?.id || crypto.randomUUID(),
     owner: ownerId,
     sentAt,
-    serverAuth: true,
   };
-}
-
-function finiteNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function projectileAmmoSettings(ammoType) {
-  if (ammoType === "rocketburst") return { speedScale: 1.5, radius: 0.2, fire: { ...rocketBurstFire }, airburst: false };
-  if (ammoType === "hotshot") return { speedScale: 1, radius: 0.36, fire: { dps: 10, duration: 3 }, airburst: false };
-  if (ammoType === "grapeshot") return { speedScale: 1, radius: 0.18, fire: null, airburst: false };
-  if (ammoType === "harpoon") return { speedScale: 1, radius: 0.16, fire: null, airburst: false };
-  if (ammoType === "airburst") return { speedScale: 1, radius: 0.32, fire: null, airburst: true };
-  return { speedScale: 1, radius: 0.35, fire: null, airburst: false };
-}
-
-function sanitizedProjectileFire(shot, settings) {
-  const source = shot?.fire || settings.fire;
-  if (!source) return null;
-  const dps = clamp(finiteNumber(source.dps, settings.fire?.dps || 0), 0, 10);
-  const duration = clamp(finiteNumber(source.duration ?? source.remaining, settings.fire?.duration || 0), 0, 4);
-  return dps > 0 && duration > 0 ? { dps, duration } : null;
-}
-
-function enqueueServerProjectile(ownerId, shot) {
-  if (!ownerId || !shot) return null;
-  const x = finiteNumber(shot.x, NaN);
-  const z = finiteNumber(shot.z, NaN);
-  const dirX = finiteNumber(shot.dirX, NaN);
-  const dirZ = finiteNumber(shot.dirZ, NaN);
-  if (![x, z, dirX, dirZ].every(Number.isFinite)) return null;
-  const dirLength = Math.hypot(dirX, dirZ);
-  if (dirLength < 0.01) return null;
-  const ammoType = String(shot.ammoType || "basic");
-  const settings = projectileAmmoSettings(ammoType);
-  const nx = dirX / dirLength;
-  const nz = dirZ / dirLength;
-  const startY = finiteNumber(shot.startY ?? shot.y, settings.airburst ? 1.4 : 1.15);
-  const speed = cannonballSpeed * settings.speedScale;
-  const targetX = finiteNumber(shot.targetX, NaN);
-  const targetZ = finiteNumber(shot.targetZ, NaN);
-  const hasTarget = Number.isFinite(targetX) && Number.isFinite(targetZ);
-  const range = clamp(finiteNumber(shot.range, botCannonRange), 1, 180);
-  const targetDistance = hasTarget ? Math.hypot(targetX - x, targetZ - z) : range;
-  const distance = clamp(targetDistance || range, 1, 190);
-  const target = hasTarget
-    ? { x: x + nx * distance, z: z + nz * distance }
-    : { x: x + nx * range, z: z + nz * range };
-  const ballistic = Boolean(shot.ballistic) && !settings.airburst;
-  const gravity = clamp(finiteNumber(shot.gravity, 5.2), 1, 18);
-  const flightTime = Math.max(0.1, distance / Math.max(0.001, speed));
-  const verticalVelocity = Number.isFinite(Number(shot.verticalVelocity))
-    ? finiteNumber(shot.verticalVelocity)
-    : ballistic
-      ? (0.5 * gravity * flightTime * flightTime - Math.max(0.35, startY)) / flightTime
-      : 0;
-  const damage = clamp(finiteNumber(shot.damage, 20), 0, 420);
-  const baseDamage = clamp(finiteNumber(shot.baseDamage, damage), 0, 420);
-  const projectile = {
-    id: String(shot.id || `srv-shot-${nextProjectileId++}`),
-    owner: ownerId,
-    born: Date.now(),
-    x,
-    y: startY,
-    z,
-    startX: x,
-    startY,
-    startZ: z,
-    targetX: target.x,
-    targetZ: target.z,
-    dirX: nx,
-    dirZ: nz,
-    speed,
-    traveled: 0,
-    distance,
-    damage,
-    baseDamage,
-    rangeDamage: Boolean(shot.rangeDamage),
-    targetKind: shot.targetKind || "any",
-    ammoType,
-    airburst: settings.airburst,
-    ballistic,
-    gravity,
-    verticalVelocity,
-    radius: settings.radius,
-    fire: sanitizedProjectileFire(shot, settings),
-    maxAge: Math.max(2200, (distance / speed + 1.4) * 1000),
-  };
-  projectiles.push(projectile);
-  return projectile;
-}
-
-function serverProjectileDamageAtImpact(projectile) {
-  const base = finiteNumber(projectile.baseDamage, projectile.damage);
-  if (!projectile.rangeDamage) return finiteNumber(projectile.damage, base);
-  return scaleDamageByRange(base, Math.min(projectile.traveled, projectile.distance), projectile.distance);
-}
-
-function serverProjectileImpact(projectile, impact = "splash") {
-  broadcastRealtime({
-    type: "projectileImpact",
-    id: projectile.id,
-    owner: projectile.owner,
-    ammoType: projectile.ammoType,
-    impact,
-    x: projectile.x,
-    y: projectile.y,
-    z: projectile.z,
-    sentAt: Date.now(),
-  });
-}
-
-function serverShipProjectileRadius(type) {
-  return shipRadius(type) * 0.64;
-}
-
-function serverShipProjectileHeight(type) {
-  return 2.3 + shipTierForDrop(type) * 0.38;
-}
-
-function serverProjectileCanHitShip(projectile, x, z, type) {
-  if (projectile.airburst) return false;
-  if (![projectile.x, projectile.z, x, z].every(Number.isFinite)) return false;
-  if (projectile.y < -0.25 || projectile.y > serverShipProjectileHeight(type)) return false;
-  const radius = serverShipProjectileRadius(type) + projectile.radius + 0.28;
-  return Math.hypot(projectile.x - x, projectile.z - z) <= radius;
-}
-
-function hitPlayerWithProjectile(projectile, socket) {
-  if (!socket?.player || socket.id === projectile.owner) return false;
-  const player = socket.player;
-  if (player.mode === "land") return false;
-  const x = finiteNumber(player.x, NaN);
-  const z = finiteNumber(player.z, NaN);
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
-  if (!serverProjectileCanHitShip(projectile, x, z, player.shipType || "skiff")) return false;
-  send(socket, {
-    type: "shipDamage",
-    id: projectile.id,
-    owner: projectile.owner,
-    damage: serverProjectileDamageAtImpact(projectile),
-    fire: projectile.fire,
-    ammoType: projectile.ammoType,
-    x: projectile.x,
-    y: projectile.y,
-    z: projectile.z,
-    sentAt: Date.now(),
-  });
-  return true;
-}
-
-function hitBotWithProjectile(projectile, bot) {
-  if (!bot || bot.id === projectile.owner || bot.hp <= 0) return false;
-  if (!serverProjectileCanHitShip(projectile, bot.x, bot.z, bot.shipType)) return false;
-  const rewardSocket = clients.get(projectile.owner) || null;
-  if (rewardSocket) {
-    bot.targetPlayer = rewardSocket.id;
-    bot.angerUntil = Date.now() + 12000 + (bot.level || 1) * 500;
-    bot.targetBot = null;
-    bot.botFightUntil = 0;
-  } else {
-    const ownerBot = bots.find((item) => item.id === projectile.owner);
-    if (ownerBot) startBotFeud(bot, ownerBot, 10000 + Math.random() * 7000);
-  }
-  bot.fireCooldown = Math.min(bot.fireCooldown || 1.35, 1.35);
-  damageBot(bot, serverProjectileDamageAtImpact(projectile), rewardSocket, projectile.fire);
-  return true;
-}
-
-function updateServerProjectiles(dt, now) {
-  for (let i = projectiles.length - 1; i >= 0; i--) {
-    const projectile = projectiles[i];
-    if (now - projectile.born > projectile.maxAge) {
-      projectiles.splice(i, 1);
-      continue;
-    }
-    projectile.traveled += projectile.speed * dt;
-    const progress = clamp(projectile.traveled / Math.max(1, projectile.distance), 0, 1);
-    if (projectile.ballistic) {
-      projectile.x = projectile.startX + projectile.dirX * projectile.traveled;
-      projectile.z = projectile.startZ + projectile.dirZ * projectile.traveled;
-      const flightTime = projectile.traveled / Math.max(0.001, projectile.speed);
-      projectile.y = projectile.startY + projectile.verticalVelocity * flightTime - 0.5 * projectile.gravity * flightTime * flightTime;
-    } else {
-      projectile.x = projectile.startX + (projectile.targetX - projectile.startX) * progress;
-      projectile.z = projectile.startZ + (projectile.targetZ - projectile.startZ) * progress;
-      projectile.y = projectile.airburst
-        ? 24 + Math.sin(progress * Math.PI) * 1.8
-        : 1.05 + Math.sin(progress * Math.PI) * clamp(projectile.distance * 0.16, 3.2, 10.5);
-    }
-    if (projectile.ballistic && projectile.y <= 0.02 && projectile.traveled > 1.2) {
-      serverProjectileImpact(projectile, "splash");
-      projectiles.splice(i, 1);
-      continue;
-    }
-    let hit = false;
-    if (!projectile.airburst) {
-      for (const socket of clients.values()) {
-        if (hitPlayerWithProjectile(projectile, socket)) {
-          hit = true;
-          break;
-        }
-      }
-      if (!hit) {
-        for (const bot of bots) {
-          if (hitBotWithProjectile(projectile, bot)) {
-            hit = true;
-            break;
-          }
-        }
-      }
-    }
-    if (hit) {
-      serverProjectileImpact(projectile, "hit");
-      projectiles.splice(i, 1);
-    } else if (progress >= 1) {
-      serverProjectileImpact(projectile, projectile.airburst ? "airburst" : "splash");
-      projectiles.splice(i, 1);
-    }
-  }
 }
 
 function broadcastShotsFrom(ownerId, shots) {
@@ -3616,7 +3361,6 @@ function broadcastShotsFrom(ownerId, shots) {
     .filter(Boolean)
     .map((shot) => normalizedShot(ownerId, shot, now));
   if (!list.length) return;
-  list.forEach((shot) => enqueueServerProjectile(ownerId, shot));
   if (list.length === 1) {
     broadcastRealtime({ type: "shot", shot: list[0] }, ownerId);
   } else {
