@@ -3361,11 +3361,7 @@ function broadcastShotsFrom(ownerId, shots) {
     .filter(Boolean)
     .map((shot) => normalizedShot(ownerId, shot, now));
   if (!list.length) return;
-  if (list.length === 1) {
-    broadcastRealtime({ type: "shot", shot: list[0] }, ownerId);
-  } else {
-    broadcastRealtime({ type: "shots", shots: list }, ownerId);
-  }
+  list.forEach((shot) => broadcastRealtime({ type: "shot", shot }, ownerId));
 }
 
 function broadcastShotFrom(ownerId, shot) {
