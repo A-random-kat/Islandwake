@@ -7,6 +7,8 @@ const root = __dirname;
 const port = Number(process.env.PORT || 4174);
 const clients = new Map();
 const fastClients = new Map();
+const pendingShotBroadcasts = new Map();
+let shotBroadcastFlushQueued = false;
 const bots = [];
 const crates = [];
 const bombs = [];
@@ -3354,6 +3356,36 @@ function normalizedShot(ownerId, shot, sentAt) {
   };
 }
 
+function queueShotBroadcasts(ownerId, shots) {
+  for (const client of clients.values()) {
+    if (client.id === ownerId) continue;
+    let bucket = pendingShotBroadcasts.get(client.id);
+    if (!bucket) {
+      bucket = { client, shots: [] };
+      pendingShotBroadcasts.set(client.id, bucket);
+    }
+    bucket.client = client;
+    bucket.shots.push(...shots);
+  }
+  if (shotBroadcastFlushQueued) return;
+  shotBroadcastFlushQueued = true;
+  if (typeof setImmediate === "function") setImmediate(flushShotBroadcasts);
+  else setTimeout(flushShotBroadcasts, 0);
+}
+
+function flushShotBroadcasts() {
+  shotBroadcastFlushQueued = false;
+  for (const [clientId, bucket] of pendingShotBroadcasts) {
+    const client = clients.get(clientId);
+    if (!client || client.destroyed || !bucket.shots.length) continue;
+    const message = bucket.shots.length === 1
+      ? { type: "shot", shot: bucket.shots[0] }
+      : { type: "shots", shots: bucket.shots };
+    writeFrame(client, encodeFrame(message), true);
+  }
+  pendingShotBroadcasts.clear();
+}
+
 function broadcastShotsFrom(ownerId, shots) {
   if (!ownerId) return;
   const now = Date.now();
@@ -3361,7 +3393,7 @@ function broadcastShotsFrom(ownerId, shots) {
     .filter(Boolean)
     .map((shot) => normalizedShot(ownerId, shot, now));
   if (!list.length) return;
-  list.forEach((shot) => broadcastRealtime({ type: "shot", shot }, ownerId));
+  queueShotBroadcasts(ownerId, list);
 }
 
 function broadcastShotFrom(ownerId, shot) {

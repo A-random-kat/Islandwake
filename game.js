@@ -7803,7 +7803,8 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
       mesh.position.y += Math.sin(initialProgress * Math.PI) * 1.8;
     }
   }
-  mesh.castShadow = true;
+  const remote = Boolean(options.remote);
+  mesh.castShadow = !remote;
   scene.add(mesh);
   const trailPositions = new Float32Array(7 * 3);
   for (let i = 0; i < 7; i++) {
@@ -7835,6 +7836,7 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
     baseDamage: Number(options.baseDamage) || damage,
     rangeDamage: Boolean(options.rangeDamage),
     targetKind: options.targetKind || "any",
+    remote,
     serverId: options.serverId || null,
     serverAuthoritative: Boolean(options.serverAuthoritative),
     ammoType: ammo.id,
@@ -12142,9 +12144,9 @@ function updateProjectiles(dt) {
       shot.mesh.rotation.y += dt * 10;
       shot.sparkTimer = (shot.sparkTimer || 0) - dt;
       if (shot.sparkTimer <= 0) {
-        shot.sparkTimer = 0.045 + Math.random() * 0.035;
+        shot.sparkTimer = shot.remote ? 0.13 + Math.random() * 0.08 : 0.045 + Math.random() * 0.035;
         const sparkGroup = new THREE.Group();
-        const sparkCount = 2 + Math.floor(Math.random() * 3);
+        const sparkCount = shot.remote ? 1 : 2 + Math.floor(Math.random() * 3);
         for (let s = 0; s < sparkCount; s++) {
           const sparkSize = 0.055 + Math.random() * 0.045;
           const sparkColor = Math.random() > 0.45 ? 0xffd35c : 0xff6f2a;
@@ -13838,6 +13840,7 @@ function spawnRemoteShot(data) {
     verticalVelocity: Number.isFinite(Number(data.verticalVelocity)) ? Number(data.verticalVelocity) : undefined,
     initialTraveled: Number.isFinite(Number(data.initialTraveled ?? data.traveled)) ? Number(data.initialTraveled ?? data.traveled) : undefined,
     createdWallAt: Number.isFinite(sentAt) ? sentAt : undefined,
+    remote: true,
     serverId: data.id || null,
     serverAuthoritative: Boolean(data.serverAuth),
   });
