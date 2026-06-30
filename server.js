@@ -3403,11 +3403,15 @@ function flushShotBroadcasts() {
   shotBroadcastFlushQueued = false;
   for (const [clientId, bucket] of pendingShotBroadcasts) {
     const client = clients.get(clientId);
-    if (!client || client.destroyed || !bucket.shots.length) continue;
+    const fast = fastClients.get(clientId);
+    if ((!client || client.destroyed) && (!fast || fast.destroyed)) continue;
+    if (!bucket.shots.length) continue;
     const message = bucket.shots.length === 1
       ? { type: "shot", shot: bucket.shots[0] }
       : { type: "shots", shots: bucket.shots };
-    writeFrame(client, encodeFrame(message), true);
+    const frame = encodeFrame(message);
+    if (fast && !fast.destroyed) writeRealtimeFrame(fast, frame, true);
+    else if (client && !client.destroyed) writeFrame(client, frame, true);
   }
   pendingShotBroadcasts.clear();
 }
@@ -3747,7 +3751,9 @@ function broadcastRealtime(message, exceptId = "") {
   const priority = message?.type !== "motion";
   for (const client of clients.values()) {
     if (client.id === exceptId) continue;
-    writeFrame(client, frame, priority);
+    const fast = fastClients.get(client.id);
+    if (fast && !fast.destroyed) writeRealtimeFrame(fast, frame, priority);
+    else writeFrame(client, frame, priority);
   }
 }
 

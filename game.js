@@ -14333,7 +14333,8 @@ function flushPendingShotBatch() {
   shotBatchQueued = false;
   if (!pendingShotBatch.length) return;
   const shots = pendingShotBatch.splice(0);
-  shots.forEach((shot) => sendMultiplayer({ type: "shot", shot }));
+  const message = shots.length === 1 ? { type: "shot", shot: shots[0] } : { type: "shots", shots };
+  if (!sendRealtimeMultiplayer(message, true)) sendMultiplayer(message);
 }
 
 function queueShotPayload(shot) {
@@ -14375,10 +14376,11 @@ function publishMultiplayer() {
   if (!state.joined) return;
   if (multiplayerSocketOpen() && clock.elapsedTime - multiplayer.motionLastSent >= MULTIPLAYER_MOTION_INTERVAL) {
     multiplayer.motionLastSent = clock.elapsedTime;
-    sendMultiplayer({
+    const motionMessage = {
       type: "motion",
       player: { ...multiplayerMotionPayload(), id: playerId },
-    });
+    };
+    if (!sendRealtimeMultiplayer(motionMessage)) sendMultiplayer(motionMessage);
   }
   if (clock.elapsedTime - multiplayer.lastSent >= MULTIPLAYER_STATE_INTERVAL) {
     multiplayer.lastSent = clock.elapsedTime;
