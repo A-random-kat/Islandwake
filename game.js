@@ -1,8 +1,9 @@
 import * as THREE from "./three.module.js";
 
 const canvas = document.querySelector("#game");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MAX_RENDER_PIXEL_RATIO = 1.5;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_RENDER_PIXEL_RATIO));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1088,6 +1089,10 @@ const waterfallMistObjects = [];
 const shipNightLights = [];
 const HUD_PANEL_REFRESH_INTERVAL = 0.12;
 const MINIMAP_RENDER_INTERVAL = 0.1;
+const SERVER_FISH_VISUAL_INTERVAL = 0.016;
+const FISH_RENDER_DISTANCE = 340;
+const FISH_RENDER_DISTANCE_SQ = FISH_RENDER_DISTANCE * FISH_RENDER_DISTANCE;
+let serverFishVisualAccumulator = 0;
 const environment = {
   hemi: null,
   sun: null,
@@ -1125,6 +1130,12 @@ function dist2(a, b) {
   const dx = a.x - b.x;
   const dz = a.z - b.z;
   return Math.hypot(dx, dz);
+}
+
+function distSq2(a, b) {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return dx * dx + dz * dz;
 }
 
 function setTextIfChanged(node, value) {
@@ -6511,6 +6522,8 @@ function addWhalerNetRig(group, side, scale) {
   addRope(frame, new THREE.Vector3(0, 0.12 * scale, -2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, -2.35 * scale), scale, 0.016);
   addRope(frame, new THREE.Vector3(0, 0.12 * scale, 2.35 * scale), new THREE.Vector3(side * 3.45 * scale, -0.38 * scale, 2.35 * scale), scale, 0.016);
   group.add(rig);
+  group.userData.whalerNetRigs = group.userData.whalerNetRigs || [];
+  group.userData.whalerNetRigs.push(rig);
   updateWhalerNetRig(rig, 0);
 }
 
@@ -6530,11 +6543,13 @@ function updateWhalerNetRig(rig, progress) {
 function updateWhalerNetVisuals(ship, extended, dt = 0.1) {
   if (!ship) return;
   const target = extended ? 1 : 0;
-  ship.traverse((obj) => {
-    if (!obj.userData?.whalerNetRig) return;
-    const current = obj.userData.progress || 0;
+  const rigs = ship.userData?.whalerNetRigs;
+  if (!Array.isArray(rigs) || !rigs.length) return;
+  rigs.forEach((rig) => {
+    const current = rig.userData.progress || 0;
+    if (current === target) return;
     const next = current + (target - current) * clamp(dt * 4.8, 0, 1);
-    updateWhalerNetRig(obj, Math.abs(target - next) < 0.015 ? target : next);
+    updateWhalerNetRig(rig, Math.abs(target - next) < 0.015 ? target : next);
   });
 }
 
@@ -9996,6 +10011,16 @@ function damageAnimal(animal, shot) {
   return true;
 }
 
+function setWhaleSubmergedVisual(animal, submerged) {
+  if (!animal?.group || animal.visualSubmerged === submerged) return;
+  animal.visualSubmerged = submerged;
+  animal.group.traverse((child) => {
+    if (!child.material) return;
+    child.material.opacity = submerged ? 0.34 : 1;
+    child.material.transparent = submerged;
+  });
+}
+
 function updateAnimals(dt) {
   animals.slice().forEach((animal) => {
     if (animal.kind !== "whale") return;
@@ -10008,10 +10033,7 @@ function updateAnimals(dt) {
       const submerged = animal.submergedUntil > clock.elapsedTime || animal.serverSubmerged;
       const targetY = submerged ? -1.15 : 0.05 + Math.sin(clock.elapsedTime * 1.3) * 0.12;
       animal.group.position.y += (targetY - animal.group.position.y) * clamp(dt * 2, 0, 0.12);
-      animal.group.traverse((child) => {
-        if (child.material) child.material.opacity = submerged ? 0.34 : 1;
-        if (child.material) child.material.transparent = submerged;
-      });
+      setWhaleSubmergedVisual(animal, submerged);
       return;
     }
     if (!pointInWhaleNorthZone(animal.group.position, 80)) {
@@ -10076,10 +10098,7 @@ function updateAnimals(dt) {
     } else {
       animal.group.position.copy(next);
     }
-    animal.group.traverse((child) => {
-      if (child.material) child.material.opacity = submerged ? 0.34 : 1;
-      if (child.material) child.material.transparent = submerged;
-    });
+    setWhaleSubmergedVisual(animal, submerged);
     animal.ramCooldown = Math.max(0, animal.ramCooldown - dt);
     if (!submerged && state.mode === "ship" && animal.ramCooldown <= 0 && dist2(animal.group.position, playerShip.position) < animalHitRadius(animal) + shipHitRadius(state.shipType) * 0.5) {
       const away = playerShip.position.clone().sub(animal.group.position);
@@ -11970,8 +11989,12 @@ function updateBots(dt) {
   if (multiplayer.serverWorld) {
     bots.forEach((bot, i) => {
       if (bot.serverPosition) {
-        bot.velocity.copy(bot.serverPosition).sub(bot.group.position).multiplyScalar(1 / Math.max(dt, 0.001));
-        bot.group.position.lerp(bot.serverPosition, clamp(dt * 8, 0, 0.35));
+        const predicted = bot.predictedPosition || (bot.predictedPosition = new THREE.Vector3());
+        predicted.copy(bot.serverPosition);
+        const age = clamp(clock.elapsedTime - (bot.serverUpdatedAt || clock.elapsedTime), 0, 0.24);
+        if (bot.serverVelocity) predicted.addScaledVector(bot.serverVelocity, age);
+        bot.velocity.copy(predicted).sub(bot.group.position).multiplyScalar(1 / Math.max(dt, 0.001));
+        bot.group.position.lerp(predicted, clamp(dt * 10, 0, 0.42));
       }
       if (Number.isFinite(bot.serverRotation)) {
         bot.group.rotation.y = lerpAngle(bot.group.rotation.y, bot.serverRotation, clamp(dt * 7, 0, 0.32));
@@ -12488,31 +12511,62 @@ function setupTransientResumeCleanup() {
 }
 
 function updateFish(dt) {
-  fish.forEach((item, i) => {
-    item.userData.phase += dt;
-    const bait = state.fishing?.phase === "waiting" ? fishingBobber?.position : null;
+  const bait = state.fishing?.phase === "waiting" ? fishingBobber?.position : null;
+  const fishFocus = lightingFocusPosition();
+  let serverFishVisualDt = dt;
+  let updateServerFishVisuals = true;
+  if (multiplayer.serverWorld) {
+    serverFishVisualAccumulator += dt;
+    updateServerFishVisuals = Boolean(bait) || serverFishVisualAccumulator >= SERVER_FISH_VISUAL_INTERVAL;
+    if (updateServerFishVisuals) {
+      serverFishVisualDt = Math.min(0.18, Math.max(dt, serverFishVisualAccumulator));
+      serverFishVisualAccumulator = 0;
+    }
+  }
+  fish.forEach((item) => {
+    const fishPoint = item.userData.serverPosition || item.position;
+    const fishVisible = !fishFocus || distSq2(fishPoint, fishFocus) <= FISH_RENDER_DISTANCE_SQ || (bait && distSq2(fishPoint, bait) < 55 * 55);
+    if (item.visible !== fishVisible) item.visible = fishVisible;
     if (item.userData.serverId && multiplayer.serverWorld) {
-      if (item.userData.serverPosition) {
-        item.position.lerp(item.userData.serverPosition, clamp(dt * 8, 0, 1));
+      if (!fishVisible && !bait) {
+        if (item.userData.serverPosition) item.position.copy(item.userData.serverPosition);
+        return;
       }
+      if (!updateServerFishVisuals) return;
+      item.userData.phase += serverFishVisualDt;
       const direction = Number.isFinite(Number(item.userData.serverDirection)) ? Number(item.userData.serverDirection) : item.userData.direction || 0;
       item.userData.direction = direction;
-      if (bait && !item.userData.pending && dist2(item.position, bait) < fishHitRadius(item) + 0.72 && state.fishing) {
-        state.fishing.target = item;
-        state.fishing.phase = "reeling";
-        state.fishing.timer = 0;
-        toast(`${item.userData.kind === "squid" ? "Squid" : "Fish"} on the line!`);
+      if (item.userData.serverPosition) {
+        const visualTarget = item.userData.visualTarget || (item.userData.visualTarget = item.position.clone());
+        const age = clamp(clock.elapsedTime - (item.userData.serverUpdatedAt || clock.elapsedTime), 0, 0.32);
+        const speed = item.userData.speed || 8;
+        visualTarget.copy(item.userData.serverPosition);
+        visualTarget.x += Math.sin(direction) * speed * age;
+        visualTarget.z += Math.cos(direction) * speed * age;
+        item.position.lerp(visualTarget, clamp(serverFishVisualDt * 10, 0, 0.42));
+      }
+      if (bait && !item.userData.pending && state.fishing) {
+        const catchRadius = fishHitRadius(item) + 0.72;
+        if (distSq2(item.position, bait) < catchRadius * catchRadius) {
+          state.fishing.target = item;
+          state.fishing.phase = "reeling";
+          state.fishing.timer = 0;
+          toast(`${item.userData.kind === "squid" ? "Squid" : "Fish"} on the line!`);
+        }
       }
       item.rotation.y = direction;
       const pulse = 1 + Math.sin(item.userData.phase * 5) * 0.12;
       item.scale.set(pulse, 1, pulse);
       return;
     }
+    if (!fishVisible && !bait) return;
+    item.userData.phase += dt;
     let direction = item.userData.direction || 0;
     if (bait && dist2(item.position, bait) < (item.userData.kind === "squid" ? 45 : 30)) {
       direction = Math.atan2(bait.x - item.position.x, bait.z - item.position.z);
       item.userData.direction = lerpAngle(item.userData.direction || direction, direction, clamp(dt * 2.2, 0, 0.18));
-      if (dist2(item.position, bait) < fishHitRadius(item) + 0.72 && state.fishing) {
+      const catchRadius = fishHitRadius(item) + 0.72;
+      if (distSq2(item.position, bait) < catchRadius * catchRadius && state.fishing) {
         state.fishing.target = item;
         state.fishing.phase = "reeling";
         state.fishing.timer = 0;
@@ -13655,6 +13709,8 @@ function syncServerFish(items = []) {
     item.userData.serverPosition = item.userData.serverPosition || item.position.clone();
     item.userData.serverPosition.set(Number(data.x) || 0, item.userData.kind === "squid" ? 0.12 : 0.15, Number(data.z) || 0);
     item.userData.serverDirection = Number.isFinite(Number(data.direction)) ? Number(data.direction) : item.userData.direction || 0;
+    item.userData.serverUpdatedAt = clock.elapsedTime;
+    item.userData.visualTarget = item.userData.visualTarget || item.position.clone();
     item.userData.radius = item.userData.kind === "squid" ? 1.05 : 0.75;
   });
   fish.slice().forEach((item) => {
@@ -13771,6 +13827,8 @@ function syncServerWorld(world) {
         localId: data.id,
         group,
         velocity: new THREE.Vector3(),
+        serverVelocity: new THREE.Vector3(),
+        predictedPosition: new THREE.Vector3(),
         turn: 0,
         fireCooldown: 0,
         courageous: Boolean(data.courageous),
@@ -13799,6 +13857,10 @@ function syncServerWorld(world) {
     bot.serverMaxHp = Number(data.maxHp) || spec.hp;
     bot.serverPosition = bot.serverPosition || new THREE.Vector3();
     bot.serverPosition.set(Number(data.x) || 0, SHIP_WATERLINE_Y, Number(data.z) || 0);
+    bot.serverVelocity = bot.serverVelocity || new THREE.Vector3();
+    bot.serverVelocity.set(Number(data.vx) || 0, 0, Number(data.vz) || 0);
+    bot.serverUpdatedAt = clock.elapsedTime;
+    bot.predictedPosition = bot.predictedPosition || new THREE.Vector3();
     bot.serverRotation = serverRotation;
     if (data.fire) {
       const fireDps = Number(data.fire.dps);
@@ -13856,9 +13918,9 @@ function syncServerWorld(world) {
   syncKraken(world.kraken);
   syncServerBombs(transientWorldStale ? [] : (world.bombs || []));
   syncServerBotBalloons(world.botBalloons || []);
-  syncServerFish(world.fish || []);
-  syncServerWhales(world.whales || []);
-  syncServerStorms(world.storms || []);
+  if (Array.isArray(world.fish)) syncServerFish(world.fish);
+  if (Array.isArray(world.whales)) syncServerWhales(world.whales);
+  if (Array.isArray(world.storms)) syncServerStorms(world.storms);
   syncIslandClaims([]);
   syncBuildingPieces([]);
 }

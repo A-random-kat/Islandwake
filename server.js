@@ -28,7 +28,9 @@ const cannonballSpeed = 29.3;
 const botCannonRange = 34;
 const worldBackpressureSkipBytes = 240000;
 const realtimeMotionBackpressureSkipBytes = 160000;
-const worldBroadcastIntervalMs = 180;
+const worldBroadcastIntervalMs = 100;
+const slowEntityBroadcastIntervalMs = 250;
+const fishSimulationIntervalSeconds = 0.1;
 const centerBotClearRadius = 88;
 const crateLifetimeMs = 120000;
 const whaleBitLifetimeMs = 300000;
@@ -86,6 +88,8 @@ let nextBotBalloonId = 1;
 let nextBuildingId = 1;
 let nextFishId = 1;
 let lastWorldBroadcastAt = 0;
+let lastSlowEntityBroadcastAt = 0;
+let fishSimulationAccumulator = 0;
 let kraken = null;
 let leviathan = null;
 const leviathanCooldowns = new Map();
@@ -383,8 +387,15 @@ function dist(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
+function isInsideIslandCoords(x, z, margin = 0) {
+  for (const island of islandCenters) {
+    if (Math.hypot(x - island.x, z - island.z) < island.radius + margin) return true;
+  }
+  return false;
+}
+
 function isInsideIsland(point, margin = 0) {
-  return islandCenters.some((island) => Math.hypot(point.x - island.x, point.z - island.z) < island.radius + margin);
+  return isInsideIslandCoords(point.x, point.z, margin);
 }
 
 function isNearStarterIsland(point, margin = centerBotClearRadius) {
@@ -484,21 +495,19 @@ function updateServerFish(dt, now) {
     } else if (Math.random() < dt * 0.28) {
       item.direction += (Math.random() - 0.5) * 0.9;
     }
-    const next = {
-      x: item.x + Math.sin(item.direction) * item.speed * dt,
-      z: item.z + Math.cos(item.direction) * item.speed * dt,
-    };
+    const nextX = item.x + Math.sin(item.direction) * item.speed * dt;
+    const nextZ = item.z + Math.cos(item.direction) * item.speed * dt;
     if (
-      Math.abs(next.x) > worldBounds * 0.95
-      || Math.abs(next.z) > worldBounds * 0.95
-      || isInsideIsland(next, item.radius + 5)
+      Math.abs(nextX) > worldBounds * 0.95
+      || Math.abs(nextZ) > worldBounds * 0.95
+      || isInsideIslandCoords(nextX, nextZ, item.radius + 5)
     ) {
       item.direction += Math.PI * (0.85 + Math.random() * 0.3);
       item.x = clamp(item.x, -worldBounds * 0.94, worldBounds * 0.94);
       item.z = clamp(item.z, -worldBounds * 0.94, worldBounds * 0.94);
     } else {
-      item.x = next.x;
-      item.z = next.z;
+      item.x = nextX;
+      item.z = nextZ;
     }
   }
 }
@@ -2654,6 +2663,8 @@ function botSnapshot(bot) {
     turtleFire: Boolean(bot.shipType === "turtle" && Number(bot.turtleFireActiveUntil || 0) > Date.now()),
     x: bot.x,
     z: bot.z,
+    vx: bot.vx || 0,
+    vz: bot.vz || 0,
     rotation: bot.rotation,
     fire: bot.fire ? {
       dps: bot.fire.dps,
@@ -2681,23 +2692,22 @@ function botBalloonSnapshot(balloon) {
   };
 }
 
-function worldSnapshot() {
+function worldSnapshot(options = {}) {
   const now = Date.now();
-  return {
+  const includeSlowEntities = Boolean(options.includeSlowEntities);
+  const snapshot = {
     type: "world",
     serverTime: now,
     dayCycleTime: ((now - worldStartedAt) / 1000) % dayCycleSeconds,
     dayLengthSeconds,
     nightLengthSeconds,
     dayCycleSeconds,
+    slowEntities: includeSlowEntities,
     islandClaims: [],
     buildings: [],
     leviathan: leviathanSnapshot(),
     bots: bots.map(botSnapshot),
     botBalloons: botBalloons.map(botBalloonSnapshot),
-    fish: fish.map(fishSnapshot),
-    whales: whales.map(whaleSnapshot),
-    storms: storms.map(stormSnapshot),
     kraken: krakenSnapshot(),
     crates: crates.map((crate) => ({
       id: crate.id,
@@ -2721,6 +2731,18 @@ function worldSnapshot() {
       vz: bomb.vz,
     })),
   };
+  if (includeSlowEntities) {
+    snapshot.fish = fish.map(fishSnapshot);
+    snapshot.whales = whales.map(whaleSnapshot);
+    snapshot.storms = storms.map(stormSnapshot);
+  }
+  return snapshot;
+}
+
+function periodicWorldSnapshot(now = Date.now()) {
+  const includeSlowEntities = now - lastSlowEntityBroadcastAt >= slowEntityBroadcastIntervalMs;
+  if (includeSlowEntities) lastSlowEntityBroadcastAt = now;
+  return worldSnapshot({ includeSlowEntities });
 }
 
 function resetBot(bot) {
@@ -3184,7 +3206,11 @@ function updateWorld() {
   resolveBotContacts();
   botCollectCrates();
   updateCrateLifecycle(now);
-  updateServerFish(dt, now);
+  fishSimulationAccumulator += dt;
+  if (fishSimulationAccumulator >= fishSimulationIntervalSeconds) {
+    updateServerFish(fishSimulationAccumulator, now);
+    fishSimulationAccumulator = 0;
+  }
   updateWhales(now, dt);
   updateStorms(now, dt);
   updateKraken(now, dt);
@@ -3193,7 +3219,7 @@ function updateWorld() {
   updateBalloonBombs(now);
   if (now - lastWorldBroadcastAt >= worldBroadcastIntervalMs) {
     lastWorldBroadcastAt = now;
-    broadcast(worldSnapshot());
+    broadcast(periodicWorldSnapshot(now));
   }
 }
 
@@ -3271,7 +3297,7 @@ server.on("upgrade", (req, socket) => {
   socket.pending = Buffer.alloc(0);
   clients.set(socket.id, socket);
   send(socket, { type: "welcome", id: socket.id });
-  send(socket, worldSnapshot());
+  send(socket, worldSnapshot({ includeSlowEntities: true }));
   socket.on("data", (buffer) => readFrames(socket, buffer));
   socket.on("close", () => leave(socket));
   socket.on("error", () => leave(socket));
@@ -3493,7 +3519,7 @@ function handleMessage(socket, text) {
       for (const other of clients.values()) {
         if (other !== socket && other.player) send(socket, { type: "state", player: other.player });
       }
-      send(socket, worldSnapshot());
+      send(socket, worldSnapshot({ includeSlowEntities: true }));
     }
   }
   if (message.type === "motion") {
