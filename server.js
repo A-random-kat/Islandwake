@@ -76,6 +76,15 @@ const nightLengthSeconds = 600;
 const dayCycleSeconds = dayLengthSeconds + nightLengthSeconds;
 const worldStartedAt = Date.now();
 const waterfallBounds = visibleBounds + 720;
+const cursedCompassPrice = 30000;
+const forgePreSpread = { x: 96, z: 606 };
+const forgeWorld = {
+  x: islandSpacingAnchor.x + (forgePreSpread.x - islandSpacingAnchor.x) * islandSpacingScale,
+  z: islandSpacingAnchor.z + (forgePreSpread.z - islandSpacingAnchor.z) * islandSpacingScale,
+};
+const forgeWaterfall = { x: forgeWorld.x - 18, z: forgeWorld.z - 50 };
+const compassTrailSafeRadius = 640;
+const tortugaBonusShips = new Set(["corsairsloop", "privateerbrig", "raiderxebec"]);
 const leviathanLeapMs = 3150;
 const leviathanTrackMs = 2750;
 const leviathanDamageDelayMs = 480;
@@ -92,6 +101,7 @@ let lastSlowEntityBroadcastAt = 0;
 let fishSimulationAccumulator = 0;
 let kraken = null;
 let leviathan = null;
+let cursedCompassOwner = null;
 const leviathanCooldowns = new Map();
 
 function spreadIslandCenter(island) {
@@ -119,6 +129,8 @@ const islandCenters = [
   { x: 164, z: -22, radius: 21 },
   { x: -96, z: 216, radius: 20 },
   { x: 246, z: -222, radius: 21 },
+  { x: -328, z: 126, radius: 20 },
+  { name: "Forge", x: forgePreSpread.x, z: forgePreSpread.z, radius: 17 },
   { x: -308, z: 14, radius: 7 },
   { x: 298, z: 88, radius: 8 },
   { x: 6, z: -326, radius: 6 },
@@ -159,6 +171,9 @@ const shipStats = [
   { id: "schooner", hp: 900, speed: 26, tier: 2 },
   { id: "modernschooner", hp: 500, speed: 40, tier: 1 },
   { id: "xebec", hp: 960, speed: 29, tier: 2 },
+  { id: "corsairsloop", hp: 1120, speed: 32, tier: 3 },
+  { id: "privateerbrig", hp: 1750, speed: 27, tier: 4 },
+  { id: "raiderxebec", hp: 2150, speed: 34, tier: 5 },
   { id: "brigantine", hp: 1080, speed: 22, tier: 3 },
   { id: "caravel", hp: 1170, speed: 16, tier: 3 },
   { id: "snow", hp: 1290, speed: 19, tier: 3 },
@@ -181,6 +196,7 @@ const shipStats = [
   { id: "ballooner", hp: 1350, speed: 16, tier: 4 },
   { id: "turtle", hp: 3200, speed: 8, tier: 5 },
   { id: "grandfrigate", hp: 3150, speed: 18, tier: 6 },
+  { id: "superfrigate", hp: 3500, speed: 15, tier: 6 },
   { id: "windrunner", hp: 3000, speed: 28, tier: 6 },
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
@@ -190,12 +206,12 @@ const shipStatsById = new Map(shipStats.map((ship) => [ship.id, ship]));
 const SHIP_SIDE_CANNONS = {
   skiff: 1, shallop: 1, pinnace: 1, yawl: 1, felucca: 1, cat: 1, dart: 1, sloop: 1, longship: 1,
   hoy: 2, balinger: 2, bilander: 2, cog: 2, dogger: 2, dhow: 2, knarr: 2, lugger: 2, tartane: 2,
-  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2,
+  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2, corsairsloop: 3,
   brigantine: 3, caravel: 3, snow: 3, packet: 3, chassemaree: 3, barquentine: 3, clipper: 3,
-  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, barque: 3, storm: 3, corvette: 3, whaler: 3,
+  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, privateerbrig: 4, raiderxebec: 4, barque: 3, storm: 3, corvette: 3, whaler: 3,
   ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
   eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
-  grandfrigate: 7, windrunner: 6, firstrate: 8, manowar: 7,
+  grandfrigate: 7, superfrigate: 9, windrunner: 6, firstrate: 8, manowar: 7,
 };
 
 const buildItemTypes = new Set(["flag", "floor", "wall", "cornerWall", "door", "roof", "table"]);
@@ -265,11 +281,12 @@ const shipRegen = {
   skiff: 1, shallop: 1, pinnace: 1, hoy: 2, yawl: 1, balinger: 2, felucca: 1, bilander: 2,
   cog: 2, longship: 1, dogger: 2, dhow: 2, sloop: 1, knarr: 2, lugger: 2, tartane: 2,
   pink: 2, cat: 1, dart: 1, junk: 3, ketch: 2, schooner: 2, modernschooner: 2, galley: 2, xebec: 2,
+  corsairsloop: 2, privateerbrig: 3, raiderxebec: 3,
   brigantine: 2, caravel: 3, snow: 3, packet: 2, chassemaree: 2, barquentine: 2, clipper: 2,
   fluyt: 3, polacre: 2, brig: 3, storm: 2, bombketch: 3, barque: 3, corvette: 3,
   sixthrate: 3, frigate: 3, postship: 3, merchantman: 4, carrack: 4,
   galleon: 5, rocketeer: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
-  turtle: 4, fourthrate: 5, grandfrigate: 6, manowar: 6, windrunner: 5, firstrate: 8,
+  turtle: 4, fourthrate: 5, grandfrigate: 6, superfrigate: 7, manowar: 6, windrunner: 5, firstrate: 8,
 };
 
 const playerShipTiers = {
@@ -292,6 +309,9 @@ const playerShipTiers = {
   chassemaree: 3,
   barquentine: 3,
   clipper: 3,
+  corsairsloop: 3,
+  privateerbrig: 4,
+  raiderxebec: 5,
   polacre: 3,
   brig: 3,
   bombketch: 3,
@@ -306,6 +326,7 @@ const playerShipTiers = {
   rocketeer: 5,
   turtle: 5,
   grandfrigate: 6,
+  superfrigate: 6,
   windrunner: 6,
 };
 
@@ -335,6 +356,9 @@ const shipPhysics = {
   modernschooner: { radius: 2.55, weight: 58 },
   galley: { radius: 3.5, weight: 107 },
   xebec: { radius: 3.4, weight: 101 },
+  corsairsloop: { radius: 3.4, weight: 105 },
+  privateerbrig: { radius: 4.0, weight: 152 },
+  raiderxebec: { radius: 4.2, weight: 148 },
   brigantine: { radius: 3.8, weight: 117 },
   caravel: { radius: 3.5, weight: 114 },
   snow: { radius: 3.7, weight: 126 },
@@ -363,6 +387,7 @@ const shipPhysics = {
   ballooner: { radius: 4.1, weight: 160 },
   turtle: { radius: 4.9, weight: 255 },
   grandfrigate: { radius: 5, weight: 255 },
+  superfrigate: { radius: 5.5, weight: 292 },
   windrunner: { radius: 4.8, weight: 210 },
   fourthrate: { radius: 4.9, weight: 222 },
   manowar: { radius: 5.2, weight: 250 },
@@ -761,6 +786,7 @@ function botIslandBlocker(point, type, extra = 0) {
   let blocker = null;
   let bestDistance = Infinity;
   for (const island of islandCenters) {
+    if (island.name === "Forge") continue;
     const distance = Math.hypot(point.x - island.x, point.z - island.z) - botIslandKeepoutRadius(island, type, extra);
     if (distance < bestDistance) {
       blocker = island;
@@ -778,6 +804,7 @@ function botRouteIslandBlocker(bot, target, extra = 0) {
   let blocker = null;
   let bestIntrusion = 0;
   for (const island of islandCenters) {
+    if (island.name === "Forge") continue;
     const toIslandX = island.x - bot.x;
     const toIslandZ = island.z - bot.z;
     const along = clamp((toIslandX * dx + toIslandZ * dz) / lengthSq, 0, 1);
@@ -817,9 +844,28 @@ function pushBotOutsideIsland(bot, island, extra = 0) {
   return { nx, nz };
 }
 
+function forgeCompassPathActive(player) {
+  if (!player || cursedCompassOwner !== player.id) return false;
+  const x = Number(player.x) || 0;
+  const z = Number(player.z) || 0;
+  const distanceToWaterfall = Math.hypot(x - forgeWaterfall.x, z - forgeWaterfall.z);
+  if (distanceToWaterfall <= compassTrailSafeRadius) return true;
+  const startX = 0;
+  const startZ = visibleBounds * 0.72;
+  const routeX = forgeWaterfall.x - startX;
+  const routeZ = forgeWaterfall.z - startZ;
+  const lenSq = Math.max(1, routeX * routeX + routeZ * routeZ);
+  const t = clamp(((x - startX) * routeX + (z - startZ) * routeZ) / lenSq, 0, 1);
+  const closestX = startX + routeX * t;
+  const closestZ = startZ + routeZ * t;
+  return Math.hypot(x - closestX, z - closestZ) <= 78
+    && Math.hypot(x - forgeWaterfall.x, z - forgeWaterfall.z) <= compassTrailSafeRadius + 260;
+}
+
 function leviathanTargetZone(player) {
   const x = Math.abs(Number(player?.x) || 0);
   const z = Math.abs(Number(player?.z) || 0);
+  if (forgeCompassPathActive(player)) return false;
   return (x > visibleBounds || z > visibleBounds) && x <= waterfallBounds && z <= waterfallBounds;
 }
 
@@ -1069,7 +1115,7 @@ function scaleDamageByRange(baseDamage, distance, range) {
 function shipSideCannons(type = "skiff") {
   type = normalizeShipType(type);
   if (SHIP_SIDE_CANNONS[type]) return SHIP_SIDE_CANNONS[type];
-  return clamp(1 + Math.floor((shipSpec(type).tier + 1) / 2), 1, 8);
+  return clamp(1 + Math.floor((shipSpec(type).tier + 1) / 2), 1, 9);
 }
 
 function shipUsesCenterlineGun(type = "skiff") {
@@ -1136,6 +1182,30 @@ function botBroadsideOrigins(bot, side) {
     });
   }
   return origins;
+}
+
+function firstBotHitByBotShot(shooter, origin, range) {
+  let best = null;
+  let bestDistance = Infinity;
+  const dirX = Number(origin.dirX) || 0;
+  const dirZ = Number(origin.dirZ) || 0;
+  if (Math.hypot(dirX, dirZ) < 0.001) return null;
+  for (const candidate of bots) {
+    if (!candidate || candidate === shooter || candidate.id === shooter.id || candidate.hp <= 0) continue;
+    const toX = candidate.x - origin.x;
+    const toZ = candidate.z - origin.z;
+    const along = toX * dirX + toZ * dirZ;
+    if (along <= 0.35 || along > range) continue;
+    const perpX = toX - dirX * along;
+    const perpZ = toZ - dirZ * along;
+    const radius = shipRadius(candidate.shipType) * 0.58;
+    if (perpX * perpX + perpZ * perpZ > radius * radius) continue;
+    if (along < bestDistance) {
+      best = candidate;
+      bestDistance = along;
+    }
+  }
+  return best ? { bot: best, distance: bestDistance } : null;
 }
 
 function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
@@ -2002,6 +2072,10 @@ function crateDropCount(bot) {
   return Math.max(1, Math.min(15, Math.ceil(base * crateDropMultiplier)));
 }
 
+function tortugaBonusCrateCount(shipType = "") {
+  return tortugaBonusShips.has(String(shipType || "")) ? 1 : 0;
+}
+
 function nearestBotOpponent(bot, maxDistance = 54) {
   let best = null;
   let bestDistance = maxDistance;
@@ -2071,7 +2145,7 @@ function damageBot(bot, amount, rewardSocket = null, fire = null) {
   }
   const level = bot.level || 1;
   const tier = bot.tier || 0;
-  spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
+  spawnCrates(bot.x, bot.z, crateDropCount(bot) + tortugaBonusCrateCount(rewardSocket?.player?.shipType), level, tier);
   if (rewardSocket) {
     send(rewardSocket, {
       type: "botReward",
@@ -2089,7 +2163,7 @@ function damageBotIgnoringArmor(bot, amount, rewardSocket = null) {
   if (bot.hp > 0) return false;
   const level = bot.level || 1;
   const tier = bot.tier || 0;
-  spawnCrates(bot.x, bot.z, crateDropCount(bot), level, tier);
+  spawnCrates(bot.x, bot.z, crateDropCount(bot) + tortugaBonusCrateCount(rewardSocket?.player?.shipType), level, tier);
   if (rewardSocket) {
     send(rewardSocket, {
       type: "botReward",
@@ -2703,6 +2777,7 @@ function worldSnapshot(options = {}) {
     nightLengthSeconds,
     dayCycleSeconds,
     slowEntities: includeSlowEntities,
+    cursedCompassOwner,
     islandClaims: [],
     buildings: [],
     leviathan: leviathanSnapshot(),
@@ -3167,6 +3242,7 @@ function updateWorld() {
         const damage = scaleDamageByRange(baseDamage, shotDistance, shotRange);
         const origins = botBroadsideOrigins(bot, broadside.side);
         const shots = [];
+        let krakenDamage = 0;
         for (const origin of origins) {
           const targetX = origin.x + origin.dirX * shotRange;
           const targetZ = origin.z + origin.dirZ * shotRange;
@@ -3189,15 +3265,22 @@ function updateWorld() {
             startY: 1.15,
             range: shotRange,
           });
+          const botHit = firstBotHitByBotShot(bot, origin, shotRange);
+          if (botHit?.bot) {
+            const hitDamage = scaleDamageByRange(baseDamage, botHit.distance, shotRange);
+            damageBot(botHit.bot, hitDamage);
+            botHit.bot.targetBot = bot.id;
+            botHit.bot.botFightUntil = now + 9000;
+          } else if (shotTarget.bot) {
+            damageBot(shotTarget.bot, damage);
+            shotTarget.bot.targetBot = bot.id;
+            shotTarget.bot.botFightUntil = now + 9000;
+          } else if (shotTarget.kraken) {
+            krakenDamage += damage * 0.45;
+          }
         }
         broadcastShotsFrom(bot.id, shots);
-        if (shotTarget.bot) {
-          damageBot(shotTarget.bot, damage * origins.length);
-          shotTarget.bot.targetBot = bot.id;
-          shotTarget.bot.botFightUntil = now + 9000;
-        } else if (shotTarget.kraken) {
-          damageKraken(damage * origins.length * 0.45);
-        }
+        if (krakenDamage > 0) damageKraken(krakenDamage);
         bot.fireCooldown = botCannonReload(bot);
       }
     }
@@ -3313,6 +3396,10 @@ function leave(socket) {
   }
   for (const bot of bots) {
     if (bot.targetPlayer === socket.id) bot.targetPlayer = null;
+  }
+  if (cursedCompassOwner === socket.id) {
+    cursedCompassOwner = null;
+    broadcast({ type: "cursedCompassOwner", owner: null }, socket);
   }
   broadcast({ type: "leave", id: socket.id }, socket);
 }
@@ -3505,6 +3592,7 @@ function handleMessage(socket, text) {
       next.vz = Number(next.vz) || 0;
     }
     next.whalerNets = Boolean(next.shipType === "whaler" && next.whalerNets);
+    next.hasCursedCompass = cursedCompassOwner === socket.id;
     const wantsTurtleFire = Boolean(next.shipType === "turtle" && next.mode === "ship" && (next.viewMode || "ship") === "ship" && next.turtleFire);
     const turtleStillActive = Number(socket.turtleFireActiveUntil || 0) > now;
     if (next.shipType !== "turtle") {
@@ -3541,6 +3629,35 @@ function handleMessage(socket, text) {
   }
   if (message.type === "shot") broadcastShotFrom(socket.id, message.shot);
   if (message.type === "shots") broadcastShotsFrom(socket.id, message.shots);
+  if (message.type === "buyItem") {
+    const item = String(message.item || "");
+    if (item !== "cursedCompass") return;
+    if (message.island !== "Tortuga") {
+      send(socket, { type: "itemError", reason: "The Cursed Compass is only sold at Tortuga." });
+      return;
+    }
+    if (cursedCompassOwner && cursedCompassOwner !== socket.id) {
+      send(socket, { type: "itemError", reason: "Another captain has the Cursed Compass." });
+      return;
+    }
+    const currentGold = Number(socket.player?.gold);
+    if (!Number.isFinite(currentGold) || currentGold < cursedCompassPrice) {
+      send(socket, { type: "itemError", reason: "Not enough gold." });
+      return;
+    }
+    socket.player.gold = Math.max(0, currentGold - cursedCompassPrice);
+    cursedCompassOwner = socket.id;
+    socket.player.hasCursedCompass = true;
+    send(socket, {
+      type: "itemInventory",
+      items: { cursedCompass: true },
+      owner: cursedCompassOwner,
+      gold: socket.player.gold,
+    });
+    broadcast({ type: "cursedCompassOwner", owner: cursedCompassOwner }, socket);
+    broadcast(worldSnapshot());
+    return;
+  }
   if (
     message.type === "buyBuild"
     || message.type === "clearBuildInventory"

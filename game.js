@@ -1,9 +1,9 @@
 import * as THREE from "./three.module.js";
 
 const canvas = document.querySelector("#game");
-const MAX_RENDER_PIXEL_RATIO = 1.5;
+const MAX_RENDER_PIXEL_RATIO = 1.6;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_RENDER_PIXEL_RATIO));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MAX_RENDER_PIXEL_RATIO));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -54,7 +54,9 @@ const ui = {
   inventoryPanel: document.querySelector("#inventoryPanel"),
   inventoryBody: document.querySelector("#inventoryBody"),
   closeInventory: document.querySelector("#closeInventory"),
-  snapBuild: document.querySelector("#snapBuild"),
+  forgePanel: document.querySelector("#forgePanel"),
+  forgeBody: document.querySelector("#forgeBody"),
+  closeForge: document.querySelector("#closeForge"),
   nameGate: document.querySelector("#nameGate"),
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
@@ -92,6 +94,17 @@ const WATERFALL_LIMIT = MINIMAP_VISIBLE_LIMIT + 720;
 const ISLAND_RADIUS_SCALE = 4;
 const ISLAND_SPACING_SCALE = 2.45;
 const ISLAND_SPACING_ANCHOR = { x: -34, z: -24 };
+const FORGE_ELEVATION = 118;
+const FORGE_PRESPREAD = { x: 96, z: 606 };
+const FORGE_WORLD = {
+  x: ISLAND_SPACING_ANCHOR.x + (FORGE_PRESPREAD.x - ISLAND_SPACING_ANCHOR.x) * ISLAND_SPACING_SCALE,
+  z: ISLAND_SPACING_ANCHOR.z + (FORGE_PRESPREAD.z - ISLAND_SPACING_ANCHOR.z) * ISLAND_SPACING_SCALE,
+};
+const FORGE_WATERFALL = { x: FORGE_WORLD.x - 18, z: FORGE_WORLD.z - 50 };
+const COMPASS_TRAIL_SAFE_RADIUS = 640;
+const COMPASS_TRAIL_SEGMENTS = 34;
+const CURSED_COMPASS_PRICE = 30000;
+const TORTUGA_BONUS_SHIPS = new Set(["corsairsloop", "privateerbrig", "raiderxebec"]);
 const CHARACTER_SCALE = 0.187;
 const CHARACTER_EYE_HEIGHT = 0.7;
 const CHARACTER_MAX_HP = 1;
@@ -155,6 +168,14 @@ const BUILD_ITEMS = {
   table: { id: "table", name: "Table", price: 20, short: "Table", description: "A small table with a solid collision hitbox." },
 };
 const BUILD_ITEM_ORDER = Object.keys(BUILD_ITEMS);
+const SHOP_ITEMS = {
+  cursedCompass: {
+    id: "cursedCompass",
+    name: "Cursed Compass",
+    price: CURSED_COMPASS_PRICE,
+    description: "A black compass that points to a hidden waterfall beyond the charted sea. Only one captain can carry it.",
+  },
+};
 const LANGUAGE_OPTIONS = {
   en: "English",
   zh: "中文",
@@ -350,6 +371,8 @@ const islandData = [
   { name: "Crown Harbor", culture: "Crown Colony", x: 164, z: -22, radius: 21, color: 0x82bd72, accent: 0xd99928, theme: "fort", shipMarket: ["dart", "storm", "brig", "bombketch", "sixthrate", "frigate", "rocketeer"], goods: { Silk: 58, Spice: 92, Iron: 61, Tea: 28, Pearls: 121 } },
   { name: "Blackreef", culture: "Privateer", x: -96, z: 216, radius: 20, color: 0x5fa66a, accent: 0x3f87a6, theme: "rocky", shipMarket: ["dart", "lugger", "brigantine", "xebec"], goods: { Silk: 78, Spice: 52, Iron: 101, Tea: 55, Pearls: 86 } },
   { name: "New Albion", culture: "Merchant", x: 246, z: -222, radius: 21, color: 0x70bf61, accent: 0xb5773c, theme: "trade", shipMarket: ["sloop", "packet", "chassemaree", "barque", "postship", "merchantman", "whaler", "eastindiaman", "grandfrigate"], goods: { Silk: 46, Spice: 80, Iron: 66, Tea: 98, Pearls: 142 } },
+  { name: "Tortuga", culture: "Privateer", x: -328, z: 126, radius: 20, color: 0x5e9f6d, accent: 0x2b2f39, theme: "privateer", shipMarket: ["corsairsloop", "privateerbrig", "raiderxebec"], goods: { Silk: 86, Spice: 58, Iron: 88, Tea: 52, Pearls: 118 } },
+  { name: "Forge", culture: "Ancient", x: FORGE_PRESPREAD.x, z: FORGE_PRESPREAD.z, radius: 17, color: 0xa9cf7a, accent: 0xe7c55a, theme: "forge", forge: true, noMinimap: true, hiddenLabel: true, shipMarket: [], goods: {} },
   { name: "Gull Keys", culture: "Uncharted", x: -308, z: 14, radius: 7, color: 0x6aa86a, accent: 0xd7b44a, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Twin Shoals", culture: "Uncharted", x: 298, z: 88, radius: 8, color: 0x82bd72, accent: 0xefc27c, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
   { name: "Mistfall Cay", culture: "Uncharted", x: 6, z: -326, radius: 6, color: 0x75caa5, accent: 0x58c6f2, theme: "islet", exploreOnly: true, shipMarket: [], goods: {} },
@@ -408,6 +431,9 @@ const shipCatalog = [
   { id: "modernschooner", name: "Modern Schooner", price: 100, hp: 500, armor: 0, speed: 40, regen: 2.0, color: 0xf8f8f2, model: "modernschooner" },
   { id: "galley", name: "Galley", price: 3150, hp: 310, armor: 0.04, speed: 23, regen: 2.2, color: 0xd7b44a, model: "galley" },
   { id: "xebec", name: "Xebec", price: 3380, hp: 320, armor: 0.05, speed: 29, regen: 2.1, color: 0xd45f3f, model: "xebec" },
+  { id: "corsairsloop", name: "Corsair Sloop", price: 7800, hp: 1120, armor: 0.02, speed: 32, regen: 2.0, color: 0x253447, model: "storm" },
+  { id: "privateerbrig", name: "Privateer Brig", price: 12800, hp: 1750, armor: 0.04, speed: 27, regen: 3.0, color: 0x354f58, model: "brig" },
+  { id: "raiderxebec", name: "Raider Xebec", price: 18200, hp: 2150, armor: 0.02, speed: 34, regen: 3.0, color: 0x4f2d36, model: "xebec" },
   { id: "brigantine", name: "Brigantine", price: 3650, hp: 360, armor: 0.07, speed: 22, regen: 2.3, color: 0x3f87a6, model: "brig" },
   { id: "caravel", name: "Caravel", price: 3920, hp: 390, armor: 0.08, speed: 16, regen: 2.6, color: 0xd2a94b, model: "caravel" },
   { id: "snow", name: "Snow", price: 4250, hp: 430, armor: 0.09, speed: 19, regen: 2.5, color: 0xa4c9e8, model: "snow" },
@@ -437,6 +463,7 @@ const shipCatalog = [
   { id: "turtle", name: "Turtle Ship", price: 24000, hp: 3200, armor: 0.25, speed: 8, regen: 4.0, color: 0x4f7a55, model: "turtle" },
   { id: "fourthrate", name: "Fourth Rate", price: 14600, hp: 980, armor: 0.18, speed: 12, regen: 3.4, color: 0x8e5a3f, model: "manowar" },
   { id: "grandfrigate", name: "Grand Frigate", price: 28500, hp: 1060, armor: 0.12, speed: 18, regen: 5.2, color: 0x4f78b5, model: "frigate" },
+  { id: "superfrigate", name: "Super Frigate", price: 50000, hp: 3500, armor: 0.2, speed: 15, regen: 7.0, color: 0x6f86c9, model: "frigate" },
   { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
   { id: "windrunner", name: "Windrunner", price: 31500, hp: 1040, armor: 0.04, speed: 28, regen: 4.2, color: 0xe0b24a, model: "clipper" },
   { id: "firstrate", name: "First Rate", price: 20500, hp: 1320, armor: 0.2, speed: 9, regen: 4.0, color: 0xc9b05a, model: "manowar" },
@@ -468,6 +495,9 @@ const shipBalance = {
   modernschooner: { name: "Modern Schooner", price: 100, fixedPrice: true, hp: 500, armor: 0, speed: 40, regen: 2, capacity: 3, hitbox: 2.55, weight: 58 },
   galley: { name: "Galley", price: 3900, hp: 930, armor: 0.02, speed: 23, regen: 2, capacity: 7, hitbox: 3.5 },
   xebec: { name: "Xebec", price: 4300, hp: 960, armor: 0.03, speed: 29, regen: 2, capacity: 8, hitbox: 3.4 },
+  corsairsloop: { name: "Corsair Sloop", price: 7800, fixedPrice: true, hp: 1120, armor: 0, speed: 32, regen: 2, capacity: 10, hitbox: 3.4, weight: 105, tortugaBonusCrate: true },
+  privateerbrig: { name: "Privateer Brig", price: 12800, fixedPrice: true, hp: 1750, armor: 0.03, speed: 27, regen: 3, capacity: 16, hitbox: 4.0, weight: 152, tortugaBonusCrate: true },
+  raiderxebec: { name: "Raider Xebec", price: 18200, fixedPrice: true, hp: 2150, armor: 0, speed: 34, regen: 3, capacity: 14, hitbox: 4.2, weight: 148, tortugaBonusCrate: true },
   brigantine: { name: "Brigantine", price: 4850, hp: 1080, armor: 0.06, speed: 22, regen: 2, capacity: 14, hitbox: 3.8 },
   caravel: { name: "Caravel", price: 5200, hp: 1170, armor: 0.06, speed: 16, regen: 3, capacity: 18, hitbox: 3.5 },
   snow: { name: "Snow", price: 5750, hp: 1290, armor: 0.07, speed: 19, regen: 3, capacity: 18, hitbox: 3.7 },
@@ -497,6 +527,7 @@ const shipBalance = {
   turtle: { name: "Turtle Ship", price: 24000, fixedPrice: true, hp: 3200, armor: 0.25, speed: 8, regen: 4, capacity: 18, hitbox: 4.9, weight: 255 },
   fourthrate: { name: "Fourth Rate", price: 22000, hp: 2940, armor: 0.17, speed: 12, regen: 5, capacity: 22, hitbox: 4.9 },
   grandfrigate: { name: "Grand Frigate", price: 28500, fixedPrice: true, hp: 3150, armor: 0.12, speed: 18, regen: 6, capacity: 24, hitbox: 5.0, weight: 255 },
+  superfrigate: { name: "Super Frigate", price: 50000, fixedPrice: true, hp: 3500, armor: 0.2, speed: 15, regen: 7, capacity: 25, hitbox: 5.5, weight: 292 },
   manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
   windrunner: { name: "Windrunner", price: 31500, fixedPrice: true, hp: 3000, armor: 0, speed: 28, regen: 5, capacity: 18, hitbox: 4.8, weight: 210 },
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
@@ -505,21 +536,21 @@ const shipBalance = {
 const SHIP_SIDE_CANNONS = {
   skiff: 1, shallop: 1, pinnace: 1, yawl: 1, felucca: 1, cat: 1, dart: 1, sloop: 1, longship: 1,
   hoy: 2, balinger: 2, bilander: 2, cog: 2, dogger: 2, dhow: 2, knarr: 2, lugger: 2, tartane: 2,
-  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2,
+  pink: 2, junk: 2, ketch: 2, schooner: 2, modernschooner: 1, galley: 2, xebec: 2, corsairsloop: 3,
   brigantine: 3, caravel: 3, snow: 3, packet: 3, chassemaree: 3, barquentine: 3, clipper: 3,
-  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, barque: 3, storm: 3, corvette: 3, whaler: 3,
+  fluyt: 3, polacre: 3, bombketch: 3, brig: 3, privateerbrig: 4, raiderxebec: 4, barque: 3, storm: 3, corvette: 3, whaler: 3,
   ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
   eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
-  grandfrigate: 7, windrunner: 6, firstrate: 8, manowar: 7,
+  grandfrigate: 7, superfrigate: 9, windrunner: 6, firstrate: 8, manowar: 7,
 };
 
 const SHIP_VISUAL_BASE_SCALE = {
   skiff: 0.72, shallop: 0.78, pinnace: 0.8, yawl: 0.82, balinger: 0.88, felucca: 0.88,
   bilander: 0.92, dart: 0.82, cat: 0.86, longship: 0.86, cog: 0.86, knarr: 0.88,
   dhow: 0.88, dogger: 0.88, sloop: 0.9, modernschooner: 0.86, lugger: 0.9, tartane: 0.9,
-  storm: 0.92, brig: 1.12, brigantine: 1.18, packet: 1.05, barquentine: 1.12,
+  storm: 0.92, corsairsloop: 1.02, brig: 1.12, privateerbrig: 1.18, raiderxebec: 1.2, brigantine: 1.18, packet: 1.05, barquentine: 1.12,
   barque: 1.15, bombketch: 1.22, turtle: 1.22, corvette: 1.16, frigate: 1.22,
-  whaler: 1.36, ballooner: 1.18, razee: 1.28, grandfrigate: 1.38, windrunner: 1.34,
+  whaler: 1.36, ballooner: 1.18, razee: 1.28, grandfrigate: 1.38, superfrigate: 1.46, windrunner: 1.34,
   galleon: 1.28, rocketeer: 1.28, merchantman: 1.28, eastindiaman: 1.34, carrack: 1.34,
   treasure: 1.52, fourthrate: 1.38, manowar: 1.42, firstrate: 1.5, ironclad: 1.48,
 };
@@ -529,12 +560,13 @@ const SHIP_HULL_DIMENSIONS = {
   shallop: [5.6, 1.85], pinnace: [6.5, 1.75], yawl: [6.0, 1.85], balinger: [6.4, 2.7],
   felucca: [7.4, 1.95], bilander: [6.8, 2.55], dart: [7.7, 1.75], clipper: [7.4, 2.35],
   galleon: [7.2, 3.25], rocketeer: [7.2, 3.25], modernschooner: [6.4, 1.85],
+  corsairsloop: [8.2, 2.2], privateerbrig: [8.0, 2.8], raiderxebec: [9.0, 2.45],
   brig: [7.8, 2.72], brigantine: [7.2, 2.75], cat: [5.8, 1.45], turtle: [6.2, 3.55],
   bombketch: [6.4, 3.4], storm: [8.1, 2.25], sloop: [7.4, 2.0], dhow: [7.1, 2.25],
   cog: [6.2, 3.05], hoy: [5.9, 2.85], dogger: [6.6, 2.2], xebec: [8.3, 2.4],
   tartane: [7.2, 2.15], caravel: [6.9, 2.65], pink: [6.6, 2.55], ketch: [6.9, 2.5],
   frigate: [8.2, 2.9], whaler: [8.3, 3.05], ballooner: [8.0, 3.05], corvette: [7.8, 2.65],
-  razee: [8.5, 3.0], grandfrigate: [8.9, 3.18], windrunner: [9.4, 2.55], carrack: [7.4, 3.5],
+  razee: [8.5, 3.0], grandfrigate: [8.9, 3.18], superfrigate: [9.6, 3.55], windrunner: [9.4, 2.55], carrack: [7.4, 3.5],
   manowar: [8.4, 3.8], fourthrate: [8.3, 3.65], firstrate: [9.0, 4.0], longship: [8.7, 1.7],
   knarr: [6.5, 2.6], lugger: [7.0, 2.15], galley: [8.8, 2.2], snow: [7.5, 2.8],
   packet: [7.8, 2.45], chassemaree: [7.6, 2.25], barquentine: [7.7, 2.55],
@@ -608,7 +640,7 @@ function deriveShipWeight(ship) {
 
 function broadsidePriceFloor(ship) {
   const cannons = shipSideCannons(ship.id);
-  const floors = [0, 0, 2800, 7600, 11200, 16500, 22000, 28000, 35200];
+  const floors = [0, 0, 2800, 7600, 11200, 16500, 22000, 28000, 35200, 44500];
   return floors[cannons] || 0;
 }
 
@@ -631,7 +663,7 @@ function deriveFairShipPrice(ship) {
 }
 
 function keepExactShipPrice(shipId) {
-  return ["whaler", "ballooner", "windrunner", "turtle", "rocketeer", "modernschooner"].includes(shipId);
+  return ["whaler", "ballooner", "windrunner", "turtle", "rocketeer", "superfrigate", "modernschooner", "corsairsloop", "privateerbrig", "raiderxebec"].includes(shipId);
 }
 
 for (const ship of shipCatalog) {
@@ -711,8 +743,12 @@ const state = {
   selectedAmmoSlot: 0,
   pendingAmmoAssign: null,
   inventory: Object.fromEntries(BUILD_ITEM_ORDER.map((id) => [id, 0])),
+  items: { cursedCompass: false },
+  cursedCompassOwner: null,
   selectedBuildItem: null,
   inventoryOpen: false,
+  forgeOpen: false,
+  forgeWaterfallTransit: null,
   buildSnap: true,
   buildRotationOffset: 0,
   docking: null,
@@ -804,6 +840,8 @@ const TOAST_EXACT_KEYS = {
   "Multiplayer disconnected. Reconnecting...": "toastDisconnected",
 };
 
+function playSound() {}
+
 function formatText(template, values = {}) {
   return String(template).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }
@@ -837,6 +875,7 @@ function shouldShowIslandLabel(islandOrName) {
     : typeof islandData !== "undefined"
       ? islandData.find((item) => item.name === name)
       : null;
+  if (island?.hiddenLabel || island?.noMinimap) return false;
   return !island?.unnamed || islandClaimNames.has(name);
 }
 
@@ -1014,6 +1053,8 @@ const activeKrakenAttacks = [];
 const windCurrents = [];
 const balloons = [];
 const ownedShips = [];
+const compassTrailSegments = [];
+let compassTrailGroup = null;
 const serverBotBalloons = [];
 const balloonBombs = [];
 const crates = [];
@@ -1029,6 +1070,8 @@ let buildPreviewType = null;
 let lastBuildPreviewAt = 0;
 let lastShopPointerHandledAt = 0;
 let lastInventoryPointerHandledAt = 0;
+let lastForgePointerHandledAt = 0;
+let lastCanvasToolUseAt = 0;
 let nextOwnedShipId = 1;
 const labels = [];
 const ramCooldowns = new Map();
@@ -1060,6 +1103,7 @@ let hudXpWidth = "";
 let hudStatsText = "";
 let hudCargoHtml = "";
 let hudDockPromptHtml = "";
+let nextHudUpdateAt = 0;
 let nextHudPanelRefreshAt = 0;
 let nextMinimapRenderAt = 0;
 let leaderboardSignature = "";
@@ -1086,13 +1130,23 @@ const cloudObjects = [];
 const waterfallObjects = [];
 const waterfallFoamObjects = [];
 const waterfallMistObjects = [];
+const hiddenForgeWaterfallObjects = [];
+const forgeAnimatedObjects = [];
 const shipNightLights = [];
 const HUD_PANEL_REFRESH_INTERVAL = 0.12;
+const HUD_UPDATE_INTERVAL = 0.08;
 const MINIMAP_RENDER_INTERVAL = 0.1;
-const SERVER_FISH_VISUAL_INTERVAL = 0.016;
-const FISH_RENDER_DISTANCE = 340;
+const SERVER_FISH_VISUAL_INTERVAL = 0.033;
+const FISH_RENDER_DISTANCE = 260;
 const FISH_RENDER_DISTANCE_SQ = FISH_RENDER_DISTANCE * FISH_RENDER_DISTANCE;
+const ISLAND_RENDER_DISTANCE = 760;
+const SHIP_RENDER_DISTANCE = 640;
+const ENTITY_RENDER_DISTANCE = 560;
+const LABEL_RENDER_DISTANCE = 620;
+const RENDER_CULL_INTERVAL = 0.18;
 let serverFishVisualAccumulator = 0;
+let nextRenderCullAt = 0;
+const lastRenderCullFocus = new THREE.Vector3(Infinity, 0, Infinity);
 const environment = {
   hemi: null,
   sun: null,
@@ -1252,7 +1306,7 @@ function shipTier(type) {
 function shipSideCannons(type = state.shipType) {
   type = normalizeShipType(type);
   if (SHIP_SIDE_CANNONS[type]) return SHIP_SIDE_CANNONS[type];
-  return clamp(1 + Math.floor((shipTier(type) + 1) / 2), 1, 8);
+  return clamp(1 + Math.floor((shipTier(type) + 1) / 2), 1, 9);
 }
 
 function shipUsesCenterlineGun(type = state.shipType) {
@@ -1426,8 +1480,8 @@ function shipStructureBoxes(type = state.shipType) {
   const addRawBox = (id, z, w, d, roofY) => {
     boxes.push({ id, z, w, d, floorY: deckY, roofY });
   };
-  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "treasure"]);
-  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "treasure", "windrunner"]);
+  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "superfrigate", "treasure"]);
+  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "superfrigate", "treasure", "windrunner"]);
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner", "turtle"].includes(type);
   if (hasLargeArchitecture) {
     const sternRoofY = type === "postship" ? 2.48 * scale : type === "treasure" ? 2.72 * scale : 2.08 * scale;
@@ -1660,7 +1714,7 @@ function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
   const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const generousCabinDoor = ["grandfrigate", "postship", "whaler", "windrunner"].includes(type);
+  const generousCabinDoor = ["grandfrigate", "postship", "superfrigate", "whaler", "windrunner"].includes(type);
   const doorHalfWidth = generousCabinDoor ? 0.62 * scale : 0.48 * scale;
   const doorDepth = generousCabinDoor ? 0.58 * scale : 0.44 * scale;
   const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
@@ -1817,6 +1871,10 @@ function enterDeckMode() {
 
 function returnCharacterToShipDeck() {
   if (!playerShip || state.mode !== "ship") return;
+  if (state.dockedAt === "Forge") {
+    toast("Use the waterfall to leave the Forge.");
+    return;
+  }
   state.viewMode = "deck";
   resetCharacterHealth();
   character.position.copy(deckWorldPosition(0, 0));
@@ -2238,6 +2296,9 @@ function replacePlayerShip(type, spawnPosition = null, options = {}) {
     state.rocketBurst = null;
     state.rocketCooldown = 0;
   }
+  state.cooldown = 0;
+  state.rodCooldown = 0;
+  setTool("cannon");
   playerShip = makeShip(ship.id);
   updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
   updateTurtleFireVisual(playerShip, state.turtleFire, 1);
@@ -2248,6 +2309,7 @@ function replacePlayerShip(type, spawnPosition = null, options = {}) {
   scene.add(playerShip);
   state.position.copy(playerShip.position);
   state.rotation = playerShip.rotation.y;
+  updateAmmoHotbar(true);
 }
 
 function setSize() {
@@ -2349,6 +2411,61 @@ function lightingFocusPosition() {
   if ((state.viewMode === "deck" || state.viewMode === "swim" || state.mode === "land") && character) return character.position;
   if (playerShip) return playerShip.position;
   return state.position;
+}
+
+function renderDistanceVisible(position, distance, radius = 0, focus = lightingFocusPosition()) {
+  if (!position || !focus) return true;
+  const limit = distance + Math.max(0, radius || 0);
+  const dx = (position.x || 0) - (focus.x || 0);
+  const dz = (position.z || 0) - (focus.z || 0);
+  return dx * dx + dz * dz <= limit * limit;
+}
+
+function setRenderableVisible(object, visible) {
+  if (!object) return;
+  object.visible = Boolean(visible);
+  object.userData.renderCulled = !visible;
+}
+
+function updateRenderDistanceCulling(force = false) {
+  if (!state.joined) return;
+  const focus = lightingFocusPosition();
+  const movedEnough = !Number.isFinite(lastRenderCullFocus.x) || distSq2(focus, lastRenderCullFocus) > 18 * 18;
+  if (!force && clock.elapsedTime < nextRenderCullAt && !movedEnough) return;
+  nextRenderCullAt = clock.elapsedTime + RENDER_CULL_INTERVAL;
+  lastRenderCullFocus.copy(focus);
+  islands.forEach((island) => {
+    const near = state.dockedAt === island.name
+      || renderDistanceVisible(island.group.position, ISLAND_RENDER_DISTANCE, island.radius, focus);
+    setRenderableVisible(island.group, near);
+    if (island.label) {
+      const labelVisible = near
+        && !island.hiddenLabel
+        && renderDistanceVisible(island.group.position, LABEL_RENDER_DISTANCE, island.radius, focus);
+      setRenderableVisible(island.label, labelVisible);
+    }
+  });
+  bots.forEach((bot) => setRenderableVisible(bot.group, renderDistanceVisible(bot.group.position, SHIP_RENDER_DISTANCE, shipHitRadius(bot.shipType), focus)));
+  ownedShips.forEach((ship) => setRenderableVisible(ship.group, renderDistanceVisible(ship.group.position, SHIP_RENDER_DISTANCE, shipHitRadius(ship.type), focus)));
+  remotePlayers.forEach((remote) => {
+    setRenderableVisible(remote.group, renderDistanceVisible(remote.group.position, SHIP_RENDER_DISTANCE, shipHitRadius(remote.shipType), focus));
+    remote.fleetShips?.forEach?.((ship) => setRenderableVisible(ship.group, renderDistanceVisible(ship.group.position, SHIP_RENDER_DISTANCE, shipHitRadius(ship.type), focus)));
+    remote.balloons?.forEach?.((balloon) => setRenderableVisible(balloon.group, renderDistanceVisible(balloon.group.position, ENTITY_RENDER_DISTANCE, 12, focus)));
+  });
+  animals.forEach((animal) => setRenderableVisible(animal.group, renderDistanceVisible(animal.group.position, ENTITY_RENDER_DISTANCE, animal.kind === "whale" ? 18 : 8, focus)));
+  crates.forEach((crate) => setRenderableVisible(crate.mesh, renderDistanceVisible(crate.mesh.position, ENTITY_RENDER_DISTANCE, 6, focus)));
+  balloons.forEach((balloon) => {
+    if (balloon.destroyed) return;
+    const active = activeBalloon() === balloon;
+    setRenderableVisible(balloon.group, active || renderDistanceVisible(balloon.group.position, ENTITY_RENDER_DISTANCE, 12, focus));
+  });
+  serverBotBalloons.forEach((balloon) => setRenderableVisible(balloon.group, renderDistanceVisible(balloon.group.position, ENTITY_RENDER_DISTANCE, 12, focus)));
+  projectiles.forEach((shot) => {
+    const visible = renderDistanceVisible(shot.mesh.position, ENTITY_RENDER_DISTANCE, 12, focus);
+    setRenderableVisible(shot.mesh, visible);
+    setRenderableVisible(shot.trail, visible);
+  });
+  balloonBombs.forEach((bomb) => setRenderableVisible(bomb.mesh, renderDistanceVisible(bomb.mesh.position, ENTITY_RENDER_DISTANCE, 14, focus)));
 }
 
 function aimDirectionalLightFromCelestial(light, celestialPosition, focusPosition, distance = 760) {
@@ -2497,6 +2614,81 @@ function addWorldWaterfall() {
   makeEdge(0, -WATERFALL_LIMIT, WATERFALL_LIMIT * 2, Math.PI, 0, -1);
   makeEdge(WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, Math.PI / 2, 1, 0);
   makeEdge(-WATERFALL_LIMIT, 0, WATERFALL_LIMIT * 2, -Math.PI / 2, -1, 0);
+  addHiddenForgeWaterfall();
+}
+
+function addHiddenForgeWaterfall() {
+  const group = new THREE.Group();
+  group.position.set(FORGE_WATERFALL.x, 0, FORGE_WATERFALL.z);
+  group.visible = false;
+  group.rotation.y = Math.atan2(FORGE_WATERFALL.x - FORGE_WORLD.x, FORGE_WATERFALL.z - FORGE_WORLD.z);
+  const fallTopY = FORGE_ELEVATION + 3.0;
+  const fallBottomY = 0.15;
+  const fallHeight = fallTopY - fallBottomY;
+  group.userData.forgeFallTopY = fallTopY;
+  group.userData.forgeFallHeight = fallHeight;
+  const sheetMat = new THREE.MeshBasicMaterial({ color: 0xc9fbff, transparent: true, opacity: 0.68, side: THREE.DoubleSide, depthWrite: false });
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(20, fallHeight, 12, 16), sheetMat);
+  sheet.position.y = fallBottomY + fallHeight * 0.5;
+  group.add(sheet);
+  const brightRibbonMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false });
+  for (const x of [-6.4, -2.2, 3.4, 7.1]) {
+    const ribbon = new THREE.Mesh(new THREE.PlaneGeometry(1.4, fallHeight - 1.4, 2, 10), brightRibbonMat.clone());
+    ribbon.position.set(x, fallBottomY + fallHeight * 0.5, 0.04);
+    ribbon.userData.forgeRibbon = Math.random() * 10;
+    ribbon.userData.baseX = x;
+    ribbon.userData.baseY = fallBottomY + fallHeight * 0.5;
+    group.add(ribbon);
+  }
+  const topLip = new THREE.Mesh(new THREE.BoxGeometry(22, 0.12, 3.2), new THREE.MeshBasicMaterial({ color: 0xe8fdff, transparent: true, opacity: 0.76, depthWrite: false }));
+  topLip.position.y = fallTopY - 0.04;
+  topLip.position.z = -0.7;
+  group.add(topLip);
+  const foam = new THREE.Mesh(new THREE.RingGeometry(6.5, 13.5, 48), new THREE.MeshBasicMaterial({ color: 0xf1fdff, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false }));
+  foam.rotation.x = -Math.PI / 2;
+  foam.position.y = 0.12;
+  group.add(foam);
+  for (let i = 0; i < 10; i++) {
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(5 + Math.random() * 8, 4 + Math.random() * 7), new THREE.MeshBasicMaterial({ color: 0xe7fbff, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    mist.position.set((Math.random() - 0.5) * 20, 2 + Math.random() * (fallTopY - 2), (Math.random() - 0.5) * 3.5);
+    mist.rotation.y = Math.random() * Math.PI;
+    mist.userData.forgeMist = Math.random() * 100;
+    group.add(mist);
+  }
+  scene.add(group);
+  hiddenForgeWaterfallObjects.push(group);
+}
+
+function initCompassTrail() {
+  if (compassTrailGroup) return;
+  compassTrailGroup = new THREE.Group();
+  compassTrailGroup.visible = false;
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xf7fbff,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  for (let i = 0; i < COMPASS_TRAIL_SEGMENTS; i++) {
+    const segment = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material.clone());
+    segment.rotation.x = -Math.PI / 2;
+    segment.renderOrder = 4;
+    segment.userData.phase = i / COMPASS_TRAIL_SEGMENTS;
+    compassTrailGroup.add(segment);
+    compassTrailSegments.push(segment);
+  }
+  const endRing = new THREE.Mesh(
+    new THREE.RingGeometry(4.2, 6.4, 42),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.58, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+  );
+  endRing.rotation.x = -Math.PI / 2;
+  endRing.position.set(FORGE_WATERFALL.x, 0.055, FORGE_WATERFALL.z);
+  endRing.renderOrder = 5;
+  endRing.userData.compassTrailEnd = true;
+  compassTrailGroup.add(endRing);
+  scene.add(compassTrailGroup);
 }
 
 function makeCloud() {
@@ -2601,11 +2793,464 @@ function makeIslandTree(theme) {
   return Math.random() < 0.45 ? makePalm() : makeBroadleafTree();
 }
 
+function makeForgeIsland(data, group, radius, accent) {
+  const elevation = FORGE_ELEVATION;
+  group.position.set(data.x, elevation, data.z);
+  const landY = elevation + 2.9;
+  const obstacles = [];
+  const collisionBoxes = [];
+  const terrainFeatures = [];
+  const walkPlatforms = [];
+  const surfaceLobes = [
+    { x: 0, z: 0, rx: radius * 0.72, rz: radius * 0.58, rot: 0.06 },
+    { x: -radius * 0.22, z: radius * 0.1, rx: radius * 0.36, rz: radius * 0.34, rot: -0.34 },
+    { x: radius * 0.2, z: -radius * 0.12, rx: radius * 0.34, rz: radius * 0.32, rot: 0.42 },
+    { x: -radius * 0.18, z: -radius * 0.5, rx: radius * 0.24, rz: radius * 0.18, rot: 0.08 },
+    { x: -radius * 0.22, z: -radius * 0.64, rx: radius * 0.24, rz: radius * 0.16, rot: 0.1 },
+  ];
+  const addCollisionBox = (x, z, w, d, pad = 0.08, rot = 0, options = {}) => {
+    collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot, ...options });
+  };
+  const addWalkPlatform = (x, z, w, d, y, rot = 0, options = {}) => {
+    walkPlatforms.push({ x: data.x + x, z: data.z + z, w, d, y, rot, ...options });
+  };
+  const addForgePiece = (mesh, x, y, z, parent = group) => {
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
+
+  const undersideGeo = new THREE.ConeGeometry(radius * 0.72, elevation * 0.72, 11, 6);
+  const undersidePos = undersideGeo.attributes.position;
+  for (let i = 0; i < undersidePos.count; i++) {
+    const x = undersidePos.getX(i);
+    const y = undersidePos.getY(i);
+    const z = undersidePos.getZ(i);
+    const angle = Math.atan2(z, x);
+    const vertical = clamp((y + elevation * 0.36) / (elevation * 0.72), 0, 1);
+    const ridge = 1 + Math.sin(angle * 5.1 + vertical * 1.7) * 0.11 + Math.cos(angle * 8.4 - vertical * 2.3) * 0.07;
+    const taperNoise = 1 + (1 - vertical) * Math.sin(angle * 13.2) * 0.045;
+    undersidePos.setX(i, x * ridge * taperNoise);
+    undersidePos.setZ(i, z * (1 + Math.cos(angle * 4.2 + vertical * 3.6) * 0.09));
+  }
+  undersideGeo.computeVertexNormals();
+  const underside = new THREE.Mesh(undersideGeo, mat(0x6e6b58));
+  underside.position.y = -elevation * 0.34;
+  underside.rotation.x = Math.PI;
+  underside.rotation.y = 0.2;
+  underside.scale.z = 0.78;
+  underside.castShadow = true;
+  group.add(underside);
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.72, radius * 0.78, 1.0, 20), mats.sand);
+  sand.position.y = 1.55;
+  sand.scale.z = 0.78;
+  sand.castShadow = true;
+  sand.receiveShadow = true;
+  group.add(sand);
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.5, radius * 0.64, 0.88, 18), mat(data.color));
+  grass.position.y = 2.45;
+  grass.scale.z = 0.82;
+  grass.castShadow = true;
+  grass.receiveShadow = true;
+  group.add(grass);
+  const glowGold = new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0xffb000, emissiveIntensity: 1.25, roughness: 0.45, metalness: 0.05 });
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffcf43, emissiveIntensity: 2.2, roughness: 0.25, metalness: 0 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0xf8f8ee, roughness: 0.82, metalness: 0.01 });
+  const leafGlowMat = new THREE.MeshStandardMaterial({ color: 0xffde7a, emissive: 0xffb000, emissiveIntensity: 1.05, roughness: 0.58, metalness: 0.02 });
+  const runeMat = new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0xffb000, emissiveIntensity: 1.35, roughness: 0.54, metalness: 0.02, side: THREE.DoubleSide });
+  const forgeWaterMat = new THREE.MeshStandardMaterial({ color: 0x79e8f2, roughness: 0.22, metalness: 0.02, transparent: true, opacity: 0.82 });
+  const waterfallLocal = { x: FORGE_WATERFALL.x - data.x, z: FORGE_WATERFALL.z - data.z };
+  const pond = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.22, 34), forgeWaterMat);
+  pond.scale.set(radius * 0.09, 1, radius * 0.065);
+  pond.position.set(waterfallLocal.x * 0.72, 3.03, waterfallLocal.z * 0.7);
+  pond.receiveShadow = true;
+  group.add(pond);
+  const streamStart = new THREE.Vector3(pond.position.x, 3.085, pond.position.z);
+  const streamEnd = new THREE.Vector3(waterfallLocal.x, 3.09, waterfallLocal.z + 6);
+  const streamMid = streamStart.clone().add(streamEnd).multiplyScalar(0.5);
+  const streamLength = streamStart.distanceTo(streamEnd);
+  const stream = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.2, streamLength), forgeWaterMat.clone());
+  stream.position.copy(streamMid);
+  stream.rotation.y = Math.atan2(streamEnd.x - streamStart.x, streamEnd.z - streamStart.z);
+  group.add(stream);
+  const waterfallLip = new THREE.Mesh(new THREE.BoxGeometry(12, 0.18, 4), forgeWaterMat.clone());
+  waterfallLip.position.set(waterfallLocal.x, 3.1, waterfallLocal.z + 2.5);
+  waterfallLip.rotation.y = stream.rotation.y;
+  group.add(waterfallLip);
+  const waterfallInward = new THREE.Vector3(-waterfallLocal.x, 0, -waterfallLocal.z);
+  if (waterfallInward.lengthSq() < 0.01) waterfallInward.set(0, 0, 1);
+  waterfallInward.normalize();
+  const landingLocal = new THREE.Vector3(waterfallLocal.x, 0, waterfallLocal.z).add(waterfallInward.clone().multiplyScalar(6));
+  const landingRot = Math.atan2(-waterfallLocal.x, -waterfallLocal.z) + Math.PI / 2;
+  surfaceLobes.push({ x: landingLocal.x, z: landingLocal.z, rx: 12.2, rz: 8.6, rot: landingRot });
+  const landingSand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.7, 17), mats.sand);
+  landingSand.scale.set(12.5, 1, 8.8);
+  landingSand.position.set(landingLocal.x, 2.1, landingLocal.z);
+  landingSand.rotation.y = landingRot;
+  landingSand.castShadow = true;
+  landingSand.receiveShadow = true;
+  group.add(landingSand);
+  const landingGrass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.76, 15), mat(data.color));
+  landingGrass.scale.set(10.9, 1, 7.5);
+  landingGrass.position.set(landingLocal.x + waterfallInward.x * 0.55, 2.5, landingLocal.z + waterfallInward.z * 0.55);
+  landingGrass.rotation.y = landingRot + 0.04;
+  landingGrass.castShadow = true;
+  landingGrass.receiveShadow = true;
+  group.add(landingGrass);
+  addWalkPlatform(landingLocal.x, landingLocal.z, 18.5, 12.5, landY + 0.08, landingRot, { maxRise: 1.15 });
+
+  function forgeSurfaceLocalY(x, z) {
+    let y = null;
+    surfaceLobes.forEach((lobe, index) => {
+      const dx = x - lobe.x;
+      const dz = z - lobe.z;
+      const rot = lobe.rot || 0;
+      const cos = Math.cos(-rot);
+      const sin = Math.sin(-rot);
+      const localX = dx * cos - dz * sin;
+      const localZ = dx * sin + dz * cos;
+      const normalized = (localX * localX) / (lobe.rx * lobe.rx) + (localZ * localZ) / (lobe.rz * lobe.rz);
+      if (normalized > 1) return;
+      const lobeEdge = Math.sqrt(normalized);
+      const edgeSlope = clamp((lobeEdge - 0.76) / 0.22, 0, 1);
+      const lobeY = 2.9 + index * 0.035 - edgeSlope * 0.48;
+      y = y === null ? lobeY : Math.max(y, lobeY);
+    });
+    return y ?? 2.9;
+  }
+
+  function makeForgeOak() {
+    const tree = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.58, 4.6, 7), mat(0x7b5733));
+    trunk.position.y = 2.3;
+    trunk.castShadow = true;
+    tree.add(trunk);
+    for (let i = 0; i < 5; i++) {
+      const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.19, 2.4, 6), mat(0x6b482a));
+      branch.position.set(Math.cos(i * 1.26) * 0.55, 3.35 + (i % 2) * 0.22, Math.sin(i * 1.26) * 0.55);
+      branch.rotation.z = Math.PI / 2.6;
+      branch.rotation.y = i * 1.26;
+      branch.castShadow = true;
+      tree.add(branch);
+    }
+    for (let i = 0; i < 7; i++) {
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(1.35 - (i % 3) * 0.08, 10, 7), i % 3 === 0 ? leafGlowMat : leafMat);
+      crown.position.set(Math.cos(i * 0.9) * (0.6 + (i % 2) * 0.6), 4.45 + Math.sin(i) * 0.28, Math.sin(i * 1.12) * (0.55 + (i % 3) * 0.35));
+      crown.scale.set(1.1, 0.7, 1);
+      crown.castShadow = true;
+      tree.add(crown);
+    }
+    return tree;
+  }
+
+  function makeGoldTableFurniture(kind) {
+    const piece = new THREE.Group();
+    const darkGold = new THREE.MeshStandardMaterial({ color: 0x9e6a20, emissive: 0x5d3600, emissiveIntensity: 0.28, roughness: 0.5, metalness: 0.2 });
+    if (kind === "throne") {
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.18, 0.72), glowGold);
+      seat.position.y = 0.09;
+      piece.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.9, 0.16), glowGold);
+      back.position.set(0, 0.54, 0.31);
+      piece.add(back);
+      for (const x of [-0.34, 0.34]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.72), darkGold);
+        arm.position.set(x, 0.31, 0);
+        piece.add(arm);
+      }
+    } else if (kind === "chest") {
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.42, 0.72), darkGold);
+      base.position.y = 0.21;
+      piece.add(base);
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 1.12, 12, 1, false, 0, Math.PI), glowGold);
+      lid.rotation.z = Math.PI / 2;
+      lid.position.y = 0.46;
+      piece.add(lid);
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.54, 0.78), glowGold);
+      band.position.y = 0.25;
+      piece.add(band);
+    } else if (kind === "candelabra") {
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, 0.78, 8), glowGold);
+      stem.position.y = 0.39;
+      piece.add(stem);
+      const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.86, 8), glowGold);
+      cross.rotation.z = Math.PI / 2;
+      cross.position.y = 0.72;
+      piece.add(cross);
+      for (const x of [-0.38, 0, 0.38]) {
+        const flame = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), crystalMat);
+        flame.position.set(x, 0.92, 0);
+        piece.add(flame);
+      }
+    } else {
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.36, 0.22, 18), glowGold);
+      bowl.position.y = 0.12;
+      piece.add(bowl);
+      const gems = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0), crystalMat);
+      gems.position.y = 0.34;
+      piece.add(gems);
+    }
+    piece.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    return piece;
+  }
+
+  const castle = new THREE.Group();
+  const castleW = 34;
+  const castleD = 26;
+  const castleZ = radius * 0.11;
+  const baseY = 2.94;
+  const wallH = 7.2;
+  const paleStone = mat(0xf4ecd4);
+  const paleGold = mat(0xf3df9a);
+  const warmWhite = mat(0xfff6df);
+  const dark = mat(0x4b3926);
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0xf6fdff, emissive: 0xffd36a, emissiveIntensity: 0.7, roughness: 0.38, metalness: 0.03 });
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, 0.26, castleD), paleGold), 0, baseY, 0, castle);
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW, wallH, 0.55), warmWhite), 0, baseY + wallH * 0.5, castleD * 0.5, castle);
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.55, wallH, castleD), warmWhite), -castleW * 0.5, baseY + wallH * 0.5, 0, castle);
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.55, wallH, castleD), warmWhite), castleW * 0.5, baseY + wallH * 0.5, 0, castle);
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.55), warmWhite), -castleW * 0.34, baseY + wallH * 0.5, -castleD * 0.5, castle);
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW * 0.36, wallH, 0.55), warmWhite), castleW * 0.34, baseY + wallH * 0.5, -castleD * 0.5, castle);
+  const gateZ = -castleD * 0.5 - 0.36;
+  for (const side of [-1, 1]) {
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(1.25, wallH * 0.92, 1.05), warmWhite), side * 3.35, baseY + wallH * 0.46, gateZ, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(2.7, wallH * 0.94, 1.05), warmWhite), side * 4.85, baseY + wallH * 0.47, gateZ, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(2.3, wallH, 0.66), warmWhite), side * 4.75, baseY + wallH * 0.5, -castleD * 0.5, castle);
+    const openDoor = new THREE.Mesh(new THREE.BoxGeometry(1.75, 3.55, 0.18), glowGold);
+    openDoor.rotation.y = side * 0.72;
+    addForgePiece(openDoor, side * 1.8, baseY + 1.86, gateZ - 0.25, castle);
+    for (const y of [baseY + 1.1, baseY + 1.88, baseY + 2.66]) {
+      addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.24), dark), side * 2.43, y, gateZ - 0.52, castle);
+    }
+  }
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(8.1, 3.55, 1.05), warmWhite), 0, baseY + 5.55, gateZ, castle);
+  const gateArch = new THREE.Mesh(new THREE.TorusGeometry(3.35, 0.18, 8, 24, Math.PI), glowGold);
+  gateArch.rotation.x = Math.PI / 2;
+  gateArch.rotation.z = Math.PI;
+  addForgePiece(gateArch, 0, baseY + 3.75, gateZ - 0.58, castle);
+  for (const x of [-castleW * 0.32, -castleW * 0.17, castleW * 0.17, castleW * 0.32]) {
+    const backWindow = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.55, 0.08), windowMat);
+    addForgePiece(backWindow, x, baseY + 4.3, castleD * 0.5 + 0.31, castle);
+  }
+  const addSquareSideWindow = (side, z, y = baseY + 4.2) => {
+    const x = side * (castleW * 0.5 + 0.315);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.15, 1.15), dark), x, y, z, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.35, 0.08), glowGold), x + side * 0.012, y, z - 0.66, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.35, 0.08), glowGold), x + side * 0.012, y, z + 0.66, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 1.35), glowGold), x + side * 0.012, y - 0.66, z, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 1.35), glowGold), x + side * 0.012, y + 0.66, z, castle);
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.82, 0.82), windowMat);
+    addForgePiece(glow, x + side * 0.02, y, z, castle);
+  };
+  for (const side of [-1, 1]) {
+    for (const z of [-castleD * 0.3, -castleD * 0.08, castleD * 0.16, castleD * 0.34]) addSquareSideWindow(side, z);
+  }
+  for (const z of [-castleD * 0.42, castleD * 0.42]) {
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 1.2, 0.16, 0.24), glowGold), 0, baseY + 1.15, z, castle);
+  }
+  for (const x of [-castleW * 0.52, castleW * 0.52]) {
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, castleD + 1.0), glowGold), x, baseY + 1.15, 0, castle);
+  }
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 2.4, 0.42, castleD + 2.4), paleStone), 0, baseY + wallH + 0.28, 0, castle);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(castleW * 0.43, 4.2, 4), paleGold);
+  roof.rotation.y = Math.PI / 4;
+  addForgePiece(roof, 0, baseY + wallH + 2.35, 0, castle);
+  const roofCap = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 4.3, 1.0, 28), glowGold);
+  addForgePiece(roofCap, 0, baseY + wallH + 4.55, 0, castle);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(3.35, 24, 12), glowGold);
+  dome.scale.y = 0.62;
+  addForgePiece(dome, 0, baseY + wallH + 5.15, 0, castle);
+  addForgePiece(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 2.2, 10), dark), 0, baseY + wallH + 6.5, 0, castle);
+  addForgePiece(new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), glowGold), 0, baseY + wallH + 7.68, 0, castle);
+
+  for (const x of [-castleW * 0.32, -castleW * 0.12, castleW * 0.12, castleW * 0.32]) {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, wallH * 0.88, 10), paleStone);
+    addForgePiece(pillar, x, baseY + wallH * 0.44, -castleD * 0.5 - 0.28, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.22, wallH * 0.82, 0.12), glowGold), x, baseY + wallH * 0.45, -castleD * 0.5 - 0.84, castle);
+  }
+  for (const x of [-castleW * 0.46, castleW * 0.46]) {
+    for (const z of [-castleD * 0.25, castleD * 0.25]) {
+      addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.18, wallH * 0.72, 0.16), glowGold), x, baseY + wallH * 0.44, z, castle);
+    }
+  }
+  const carpet = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.05, castleD * 0.72), mat(0x59302d));
+  addForgePiece(carpet, 0, baseY + 0.18, -castleD * 0.05, castle);
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.55, 1.3, 14), glowGold);
+  addForgePiece(pedestal, 0, baseY + 0.84, castleD * 0.18, castle);
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.92, 0), crystalMat);
+  addForgePiece(crystal, 0, baseY + 3.06, castleD * 0.18, castle);
+  crystal.userData.forgeCrystalBase = crystal.position.y;
+  crystal.userData.forgeCrystalPhase = Math.random() * Math.PI * 2;
+  forgeAnimatedObjects.push(crystal);
+  for (let i = 0; i < 14; i++) {
+    const particle = new THREE.Mesh(new THREE.OctahedronGeometry(0.075 + (i % 3) * 0.015, 0), glowGold);
+    particle.userData.forgeParticle = true;
+    particle.userData.phase = i / 14;
+    particle.userData.radius = 0.26 + (i % 4) * 0.08;
+    particle.userData.topY = baseY + 2.94;
+    particle.userData.drop = 1.85;
+    particle.userData.centerZ = castleD * 0.18;
+    castle.add(particle);
+    forgeAnimatedObjects.push(particle);
+  }
+  const pedestalLight = new THREE.PointLight(0xffd36a, 1.6, 48);
+  pedestalLight.position.set(0, baseY + 3.18, castleD * 0.18);
+  castle.add(pedestalLight);
+  for (const z of [-castleD * 0.33, 0, castleD * 0.34]) {
+    for (const x of [-castleW * 0.43, castleW * 0.43]) {
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), glowGold);
+      addForgePiece(lamp, x, baseY + 4.7, z, castle);
+    }
+  }
+  for (const z of [-castleD * 0.18, castleD * 0.03, castleD * 0.26]) {
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 3.4), glowGold), -castleW * 0.22, baseY + 0.38, z, castle);
+    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 3.4), glowGold), castleW * 0.22, baseY + 0.38, z, castle);
+  }
+  const tableX = castleW * 0.28;
+  const tableZ = castleD * 0.08;
+  const tableTop = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.36, 5.4), glowGold);
+  addForgePiece(tableTop, tableX, baseY + 0.62, tableZ, castle);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      addForgePiece(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.82, 8), glowGold), tableX + sx * 3.62, baseY + 0.24, tableZ + sz * 2.15, castle);
+    }
+  }
+  const tableFurniturePlacements = [
+    ["throne", -2.35, -1.2, -0.38],
+    ["candelabra", 2.05, -1.2, 0.12],
+    ["chest", -2.05, 1.22, 0.22],
+    ["bowl", 2.35, 1.18, -0.2],
+  ];
+  tableFurniturePlacements.forEach(([kind, x, z, rot]) => {
+    const piece = makeGoldTableFurniture(kind);
+    piece.position.set(tableX + x, baseY + 0.81, tableZ + z);
+    piece.rotation.y = rot;
+    piece.scale.setScalar(kind === "candelabra" ? 1.15 : 1.05);
+    castle.add(piece);
+  });
+  castle.position.set(0, 0, castleZ);
+  castle.traverse((obj) => {
+    if (obj.isMesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+  group.add(castle);
+
+  for (const x of [-castleW * 0.5 - 2.5, castleW * 0.5 + 2.5]) {
+    for (const z of [castleZ - castleD * 0.5 - 2.5, castleZ + castleD * 0.5 + 2.5]) {
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.85, wallH + 3.2, 16), paleStone);
+      addForgePiece(tower, x, baseY + (wallH + 3.2) * 0.5, z);
+      const towerRoof = new THREE.Mesh(new THREE.ConeGeometry(2.25, 3.2, 16), glowGold);
+      addForgePiece(towerRoof, x, baseY + wallH + 4.8, z);
+      obstacles.push({ x: data.x + x, z: data.z + z, r: 2.2 });
+      addCollisionBox(x, z, 4.4, 4.4, 0.04, 0, { maxY: landY + wallH + 5.2, solidWall: true });
+    }
+  }
+
+  const wallMaxY = landY + wallH + 1.1;
+  addWalkPlatform(0, castleZ, castleW - 0.15, castleD - 0.15, landY + 0.08, 0, { maxRise: 1.1 });
+  addCollisionBox(0, castleZ + castleD * 0.5, castleW, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(-castleW * 0.5, castleZ, 0.9, castleD, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(castleW * 0.5, castleZ, 0.9, castleD, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(-castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.36, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.36, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  for (const side of [-1, 1]) {
+    addCollisionBox(side * 3.35, castleZ + gateZ, 1.25, 1.1, 0.12, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 4.85, castleZ + gateZ, 2.7, 1.12, 0.12, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 4.75, castleZ - castleD * 0.5, 2.3, 0.92, 0.12, 0, { maxY: wallMaxY, solidWall: true });
+  }
+  addCollisionBox(0, castleZ + castleD * 0.18, 3.1, 3.1, 0.06, 0, { minY: landY, maxY: landY + 2.0 });
+  addCollisionBox(tableX, castleZ + tableZ, 8.7, 5.5, 0.08, 0, { minY: landY, maxY: landY + 1.85, solidWall: true });
+
+  for (let i = 0; i < 8; i++) {
+    const angle = i * (Math.PI * 2 / 8) + 0.28;
+    const x = Math.cos(angle) * radius * 0.53;
+    const z = Math.sin(angle) * radius * 0.42;
+    if (Math.abs(x) < castleW * 0.75 && Math.abs(z - castleZ) < castleD * 0.9) continue;
+    const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(1.7 + (i % 3) * 0.35, 0), mats.rock);
+    boulder.position.set(x, 3.24, z);
+    boulder.rotation.set(0.2 + i * 0.17, i * 0.8, -0.12);
+    boulder.scale.set(1.25, 0.9, 0.82);
+    boulder.castShadow = true;
+    group.add(boulder);
+    const runeNormal = new THREE.Vector3(x, 0, z);
+    if (runeNormal.lengthSq() < 0.01) runeNormal.set(0, 0, 1);
+    runeNormal.normalize();
+    const runeGroup = new THREE.Group();
+    runeGroup.position.set(x + runeNormal.x * 1.62, 4.38, z + runeNormal.z * 1.62);
+    runeGroup.rotation.y = Math.atan2(runeNormal.x, runeNormal.z);
+    runeGroup.rotation.x = -0.12 + (i % 2) * 0.08;
+    for (let r = 0; r < 3; r++) {
+      const rune = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.68 - r * 0.1), runeMat);
+      rune.position.set((r - 1) * 0.25, -r * 0.15, 0.025);
+      rune.rotation.z = (r - 1) * 0.45;
+      runeGroup.add(rune);
+      if (r !== 1) {
+        const notch = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.32), runeMat);
+        notch.position.set((r - 1) * 0.25 + 0.1, -0.08 - r * 0.14, 0.03);
+        notch.rotation.z = -0.75;
+        runeGroup.add(notch);
+      }
+    }
+    group.add(runeGroup);
+    obstacles.push({ x: data.x + x, z: data.z + z, r: 2.1 });
+    addCollisionBox(x, z, 3.5, 3.0, 0.08, angle, { maxY: landY + 2.8, solidWall: true });
+  }
+
+  const treeSpots = 22;
+  for (let i = 0; i < treeSpots; i++) {
+    const angle = (i / treeSpots) * Math.PI * 2 + Math.random() * 0.12;
+    const distance = radius * (0.4 + Math.random() * 0.18);
+    const x = Math.cos(angle) * distance;
+    const z = Math.sin(angle) * distance * 0.82;
+    if (Math.abs(x) < castleW * 0.72 && Math.abs(z - castleZ) < castleD * 0.82) continue;
+    if (Math.hypot(x - waterfallLocal.x, z - waterfallLocal.z) < 11) continue;
+    const tree = makeForgeOak();
+    tree.position.set(x, forgeSurfaceLocalY(x, z) + 0.01, z);
+    tree.rotation.y = Math.random() * Math.PI * 2;
+    tree.rotation.z = (Math.random() - 0.5) * 0.045;
+    tree.scale.setScalar(0.88 + Math.random() * 0.38);
+    group.add(tree);
+    obstacles.push({ x: data.x + x, z: data.z + z, r: 1.45 * tree.scale.x });
+  }
+
+  const label = makeLabel(islandName(data.name));
+  label.position.set(data.x, landY + 15, data.z);
+  label.visible = !data.hiddenLabel;
+  scene.add(label);
+  labels.push(label);
+  scene.add(group);
+  return {
+    ...data,
+    group,
+    radius,
+    landY,
+    obstacles,
+    collisionBoxes,
+    terrainFeatures,
+    walkPlatforms,
+    surfaceLobes,
+    label,
+    dock: forgeBaseWaterfallPoint(),
+    shop: new THREE.Vector3(data.x, landY, data.z + castleZ + castleD * 0.18),
+    forgePedestal: new THREE.Vector3(data.x, landY, data.z + castleZ + castleD * 0.18),
+  };
+}
+
 function makeIsland(data) {
   const group = new THREE.Group();
   group.position.set(data.x, 0, data.z);
   const radius = (data.radius || 20) * ISLAND_RADIUS_SCALE;
   const accent = data.accent || 0xd64f45;
+  if (data.forge) return makeForgeIsland(data, group, radius, accent);
   if (data.exploreOnly) {
     const obstacles = [];
     const collisionBoxes = [];
@@ -4892,23 +5537,220 @@ function rotateSelectedBuildItem() {
   toast("Building rotated.");
 }
 
+function itemInventoryCount(id) {
+  if (id === "cursedCompass") return hasCursedCompass() ? 1 : 0;
+  return Math.max(0, Math.floor(Number(state.items?.[id]) || 0));
+}
+
+function hasCursedCompass() {
+  return Boolean(state.items?.cursedCompass);
+}
+
+function setCursedCompassOwned(owned, owner = null) {
+  state.items.cursedCompass = Boolean(owned);
+  if (owned) state.cursedCompassOwner = owner || multiplayer.networkId || playerId || captainId;
+  else if (!owner || [state.cursedCompassOwner, multiplayer.networkId, playerId, captainId].includes(owner)) state.cursedCompassOwner = null;
+  renderInventory();
+  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+}
+
+function tortugaBonusCrateCount(shipType = state.shipType) {
+  const spec = getShipStats(shipType);
+  return spec?.tortugaBonusCrate || TORTUGA_BONUS_SHIPS.has(spec?.id || shipType) ? 1 : 0;
+}
+
 function renderInventory() {
   if (!ui.inventoryBody) return;
   ui.inventoryPanel?.classList.toggle("hidden", !state.inventoryOpen);
-  if (ui.snapBuild) ui.snapBuild.checked = state.buildSnap;
-  const rows = BUILD_ITEM_ORDER.map((id) => {
-    const item = BUILD_ITEMS[id];
-    const count = buildInventoryCount(id);
-    const selected = state.selectedBuildItem === id;
-    return `<div class="inventory-item${selected ? " selected" : ""}"><div><h3>${item.name} <span class="price">x${count}</span></h3><p>${item.description}</p></div><button data-build-select="${id}" ${count <= 0 ? "disabled" : ""}>${selected ? t("selected") : t("select")}</button></div>`;
-  }).join("");
-  const selected = state.selectedBuildItem ? `${buildItemName(state.selectedBuildItem)} selected.` : t("noneSelected");
-  ui.inventoryBody.innerHTML = `<p class="stats">${selected} ${t("placeHint")}</p>${rows}`;
+  const itemRows = Object.values(SHOP_ITEMS).map((item) => {
+    const count = itemInventoryCount(item.id);
+    return `<div class="inventory-item"><div><h3>${escapeMarkup(item.name)} <span class="price">x${count}</span></h3><p>${escapeMarkup(item.description)}</p></div></div>`;
+  }).join("") || `<p class="stats">No special items.</p>`;
+  ui.inventoryBody.innerHTML = `<div class="inventory-section-title">Items</div>${itemRows}`;
 }
 
 function setInventoryOpen(open) {
   state.inventoryOpen = Boolean(open);
   renderInventory();
+}
+
+function forgeCompassPathActive(position = playerShip?.position || state.position) {
+  if (!hasCursedCompass() || !position) return false;
+  const x = Number(position.x) || 0;
+  const z = Number(position.z) || 0;
+  const distanceToWaterfall = Math.hypot(x - FORGE_WATERFALL.x, z - FORGE_WATERFALL.z);
+  if (distanceToWaterfall <= COMPASS_TRAIL_SAFE_RADIUS) return true;
+  const startX = 0;
+  const startZ = MINIMAP_VISIBLE_LIMIT * 0.72;
+  const routeX = FORGE_WATERFALL.x - startX;
+  const routeZ = FORGE_WATERFALL.z - startZ;
+  const lenSq = Math.max(1, routeX * routeX + routeZ * routeZ);
+  const t = clamp(((x - startX) * routeX + (z - startZ) * routeZ) / lenSq, 0, 1);
+  const closestX = startX + routeX * t;
+  const closestZ = startZ + routeZ * t;
+  return Math.hypot(x - closestX, z - closestZ) <= 78
+    && Math.hypot(x - FORGE_WATERFALL.x, z - FORGE_WATERFALL.z) <= COMPASS_TRAIL_SAFE_RADIUS + 260;
+}
+
+function forgeTopWaterfallPoint() {
+  const forge = islands.find((item) => item.name === "Forge");
+  if (!forge) return new THREE.Vector3(FORGE_WORLD.x, FORGE_ELEVATION + 3, FORGE_WORLD.z);
+  const inward = forge.group.position.clone().sub(new THREE.Vector3(FORGE_WATERFALL.x, forge.landY, FORGE_WATERFALL.z));
+  inward.y = 0;
+  if (inward.lengthSq() < 0.01) inward.set(0, 0, -1);
+  inward.normalize();
+  return new THREE.Vector3(FORGE_WATERFALL.x, forge.landY + 0.18, FORGE_WATERFALL.z).add(inward.multiplyScalar(6));
+}
+
+function forgeBaseWaterfallPoint() {
+  const away = new THREE.Vector3(FORGE_WATERFALL.x - FORGE_WORLD.x, 0, FORGE_WATERFALL.z - FORGE_WORLD.z);
+  if (away.lengthSq() < 0.01) away.set(0, 0, 1);
+  away.normalize();
+  return new THREE.Vector3(FORGE_WATERFALL.x, 0.1, FORGE_WATERFALL.z).add(away.multiplyScalar(7));
+}
+
+function startForgeWaterfallTransit(direction) {
+  if (!hasCursedCompass()) return toast("The Cursed Compass is needed to find this waterfall.");
+  if (state.forgeWaterfallTransit) return;
+  const forge = islands.find((item) => item.name === "Forge");
+  if (!forge) return;
+  const top = forgeTopWaterfallPoint();
+  const base = forgeBaseWaterfallPoint();
+  if (direction === "up") {
+    if (state.viewMode !== "swim") return;
+    if (Math.hypot(character.position.x - FORGE_WATERFALL.x, character.position.z - FORGE_WATERFALL.z) > 16) return toast("Swim closer to the Forge waterfall.");
+    state.forgeWaterfallTransit = {
+      direction: "up",
+      elapsed: 0,
+      duration: 5.2,
+      start: character.position.clone(),
+      end: top,
+    };
+    toast("Swimming up the Forge waterfall...");
+    return;
+  }
+  if (direction === "down") {
+    if (state.mode !== "land" || state.dockedAt !== "Forge") return;
+    if (Math.hypot(character.position.x - top.x, character.position.z - top.z) > 18) return toast("Walk closer to the waterfall.");
+    closeForgePanel();
+    state.forgeWaterfallTransit = {
+      direction: "down",
+      elapsed: 0,
+      duration: 4.2,
+      start: character.position.clone(),
+      end: base,
+    };
+    toast("Swimming down the Forge waterfall...");
+  }
+}
+
+function finishForgeWaterfallTransit(transit) {
+  const forge = islands.find((item) => item.name === "Forge");
+  state.forgeWaterfallTransit = null;
+  if (transit.direction === "up" && forge) {
+    state.mode = "land";
+    state.viewMode = "ship";
+    state.dockedAt = "Forge";
+    state.docking = null;
+    state.velocity.set(0, 0, 0);
+    closeShop();
+    closeForgePanel();
+    resetCharacterHealth();
+    const top = forgeTopWaterfallPoint();
+    character.position.copy(top);
+    character.rotation.y = Math.atan2(forge.group.position.x - top.x, forge.group.position.z - top.z);
+    character.visible = true;
+    state.walkingPos.copy(character.position);
+    state.walkHeight = 0;
+    state.walkVelocityY = 0;
+    state.grounded = true;
+    toast("You reached the Forge.");
+    updateHud();
+    return;
+  }
+  if (transit.direction === "down") {
+    state.mode = "ship";
+    state.viewMode = "ship";
+    state.dockedAt = null;
+    state.walkHeight = 0;
+    state.walkVelocityY = 0;
+    state.grounded = false;
+    resetCharacterHealth();
+    character.position.copy(forgeBaseWaterfallPoint());
+    character.visible = false;
+    playerShip.visible = true;
+    state.position.copy(playerShip.position);
+    toast("You slid down the Forge waterfall.");
+    updateHud();
+  }
+}
+
+function updateForgeWaterfallTransit(dt) {
+  const transit = state.forgeWaterfallTransit;
+  if (!transit) return false;
+  keys.clear();
+  transit.elapsed += dt;
+  const t = clamp(transit.elapsed / transit.duration, 0, 1);
+  const eased = t * t * (3 - 2 * t);
+  if (transit.direction === "up") {
+    const xzT = smoothStep((t - 0.84) / 0.16);
+    character.position.set(
+      transit.start.x + (transit.end.x - transit.start.x) * xzT,
+      transit.start.y + (transit.end.y - transit.start.y) * eased,
+      transit.start.z + (transit.end.z - transit.start.z) * xzT,
+    );
+  } else {
+    character.position.lerpVectors(transit.start, transit.end, eased);
+  }
+  const bob = Math.sin(t * Math.PI * 8) * 0.28;
+  character.position.y += bob;
+  character.visible = true;
+  state.velocity.set(0, 0, 0);
+  state.walkVelocityY = 0;
+  state.walkHeight = 0;
+  state.grounded = false;
+  if (t >= 1) finishForgeWaterfallTransit(transit);
+  return true;
+}
+
+function ascendForgeWaterfall() {
+  startForgeWaterfallTransit("up");
+  return Boolean(state.forgeWaterfallTransit);
+}
+
+function updateCursedCompassTrail() {
+  if (!compassTrailGroup) return;
+  const show = state.joined && hasCursedCompass();
+  compassTrailGroup.visible = show;
+  if (!show) return;
+  const origin = (state.mode === "land" || state.viewMode === "deck" || state.viewMode === "swim") ? character.position : playerShip.position;
+  const target = new THREE.Vector3(FORGE_WATERFALL.x, 0.06, FORGE_WATERFALL.z);
+  if (Math.hypot(origin.x - FORGE_WATERFALL.x, origin.z - FORGE_WATERFALL.z) < 38) target.set(FORGE_WORLD.x, 0.06, FORGE_WORLD.z);
+  const dx = target.x - origin.x;
+  const dz = target.z - origin.z;
+  const distance = Math.hypot(dx, dz);
+  const dirX = distance > 0.001 ? dx / distance : 0;
+  const dirZ = distance > 0.001 ? dz / distance : 1;
+  const angle = Math.atan2(dirX, dirZ);
+  const visibleLength = clamp(distance - 10, 18, 280);
+  const spacing = visibleLength / COMPASS_TRAIL_SEGMENTS;
+  compassTrailSegments.forEach((segment, index) => {
+    const t = (index + 0.5) / COMPASS_TRAIL_SEGMENTS;
+    const offset = 8 + t * visibleLength;
+    segment.visible = offset < distance - 5;
+    segment.position.set(origin.x + dirX * offset, 0.055, origin.z + dirZ * offset);
+    segment.rotation.set(-Math.PI / 2, 0, -angle);
+    const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 3.2 - index * 0.42);
+    segment.scale.set(4.8 + pulse * 1.35, Math.max(4.5, spacing * 0.72), 1);
+    segment.material.opacity = 0.22 + pulse * 0.28;
+  });
+  compassTrailGroup.children.forEach((child) => {
+    if (!child.userData.compassTrailEnd) return;
+    child.position.set(target.x, 0.07, target.z);
+    const scale = 0.88 + Math.sin(clock.elapsedTime * 2.6) * 0.08;
+    child.scale.setScalar(scale);
+    child.visible = distance > 18;
+  });
 }
 
 function worldFaceNormal(hit) {
@@ -5255,7 +6097,7 @@ function walkableGroundY(island, point) {
 }
 
 function pointInAnyIsland(point, margin = 0) {
-  return islands.some((island) => islandFootprintContains(island, point, margin));
+  return islands.some((island) => !island.forge && islandFootprintContains(island, point, margin));
 }
 
 function botIslandClearance(type) {
@@ -5267,6 +6109,7 @@ function botIslandBlocker(point, type, extra = 0) {
   let bestDistance = Infinity;
   const margin = botIslandClearance(type) + extra;
   islands.forEach((island) => {
+    if (island.forge) return;
     if (!islandFootprintContains(island, point, margin)) return;
     const distance = dist2(point, island.group.position) - island.radius - margin;
     if (distance < bestDistance) {
@@ -5286,6 +6129,7 @@ function botRouteIslandBlocker(position, target, type, extra = 0) {
   let bestIntrusion = 0;
   const margin = botIslandClearance(type) + extra;
   islands.forEach((island) => {
+    if (island.forge) return;
     const toIslandX = island.group.position.x - position.x;
     const toIslandZ = island.group.position.z - position.z;
     const along = clamp((toIslandX * dx + toIslandZ * dz) / lengthSq, 0, 1);
@@ -5334,7 +6178,7 @@ function localBotIslandDetour(bot, island) {
 }
 
 function islandSwimBlockAt(point, margin = 0) {
-  return islands.find((island) => islandFootprintContains(island, point, Math.max(0, margin - 0.8))) || null;
+  return islands.find((island) => !island.forge && islandFootprintContains(island, point, Math.max(0, margin - 0.8))) || null;
 }
 
 function pushSwimmerAwayFromIsland(island, dt) {
@@ -6412,6 +7256,7 @@ function mastPlan(type, length) {
   if (["skiff", "shallop", "dhow", "cat", "cog", "hoy", "longship", "knarr"].includes(type)) return [0];
   if (type === "whaler") return [-length * 0.22, length * 0.03];
   if (type === "ballooner") return [-length * 0.27, -length * 0.02];
+  if (type === "superfrigate") return [-length * 0.4, -length * 0.18, length * 0.1, length * 0.34];
   if (type === "grandfrigate") return [-length * 0.38, -length * 0.16, length * 0.12, length * 0.35];
   if (type === "windrunner") return [-length * 0.38, -length * 0.15, length * 0.13, length * 0.36];
   if (type === "manowar" || type === "firstrate") return [-length * 0.37, -length * 0.14, length * 0.13, length * 0.36];
@@ -6810,7 +7655,7 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const sternZ = actualLength * 0.34;
   const bowZ = -actualLength * 0.34;
   const castleColor = ["galleon", "rocketeer", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
-  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "treasure", "windrunner"]);
+  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "superfrigate", "treasure", "windrunner"]);
   const hasInterior = interiorTypes.has(type);
   const postShipCabin = type === "postship";
   const treasureCabin = type === "treasure";
@@ -6840,7 +7685,7 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   else if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
   if (hasInterior) {
     const doorZ = sternZ - actualLength * 0.087;
-    const generousCabinDoor = ["grandfrigate", "postship", "treasure", "windrunner"].includes(type);
+    const generousCabinDoor = ["grandfrigate", "postship", "superfrigate", "treasure", "windrunner"].includes(type);
     const doorWidth = treasureCabin ? 1.12 : generousCabinDoor ? 0.96 : 0.76;
     const doorHeight = treasureCabin ? 1.05 : postShipCabin ? 0.96 : 0.68;
     const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, doorHeight * scale, 0.055 * scale), mats.dark);
@@ -7134,7 +7979,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   const customCabinTypes = new Set([
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
     "galley", "galleon", "rocketeer", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
-    "packet", "pink", "pinnace", "razee", "schooner", "modernschooner", "sloop", "storm", "treasure",
+    "packet", "pink", "pinnace", "razee", "schooner", "modernschooner", "sloop", "storm", "superfrigate", "treasure",
     "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner", "chassemaree",
     "polacre", "sixthrate", "postship", "turtle",
   ]);
@@ -7145,7 +7990,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
   const gunDeckTypes = new Set([
     "bombketch", "brig", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "rocketeer", "manowar", "merchantman", "eastindiaman", "razee", "storm", "treasure",
+    "galleon", "rocketeer", "manowar", "merchantman", "eastindiaman", "razee", "storm", "superfrigate", "treasure",
     "firstrate", "snow", "sixthrate", "postship",
   ]);
   addHullDetailLines(group, hullLength, hullWidth, scale, tier, profile);
@@ -7155,7 +8000,7 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
   addAttachedPennant(group, hullLength, scale, spec.color, tier);
   addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "rocketeer", "carrack", "eastindiaman", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
+  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "rocketeer", "carrack", "eastindiaman", "superfrigate", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
   if (type === "treasure") addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile);
@@ -7220,6 +8065,7 @@ function makeShip(type = "skiff", remote = false) {
     sixthrate: [8.0, 2.72],
     postship: [8.3, 2.85],
     grandfrigate: [8.9, 3.18],
+    superfrigate: [9.6, 3.55],
     windrunner: [9.4, 2.55],
     carrack: [7.4, 3.5],
     manowar: [8.4, 3.8],
@@ -7240,7 +8086,7 @@ function makeShip(type = "skiff", remote = false) {
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
-  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "galleon", "rocketeer", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
+  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "superfrigate", "galleon", "rocketeer", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
   const hullMaterial = type === "modernschooner"
     ? mat(0xf2f4ef)
     : type === "treasure"
@@ -7305,7 +8151,26 @@ function makeShip(type = "skiff", remote = false) {
   keelLine.rotation.x = Math.PI / 2;
   keelLine.position.set(0, 0.16 * scale, -0.05 * scale);
   group.add(keelLine);
-  if (type === "grandfrigate") {
+  if (type === "superfrigate") {
+    addSquareSail(group, -0.98, -3.72, 1.34, 0xf6ead0, 3);
+    addSquareSail(group, -0.34, -1.62, 1.42, 0xfff0c4, 3);
+    addSquareSail(group, 0.34, 0.94, 1.3, 0xf6ead0, 3);
+    addSquareSail(group, 1.02, 3.32, 1.08, 0xfff0c4, 2);
+    const commandDeck = new THREE.Mesh(new THREE.BoxGeometry(2.7 * scale, 0.42 * scale, 1.2 * scale), mat(0x3b3440));
+    commandDeck.position.set(0, 2.18 * scale, 2.8 * scale);
+    commandDeck.castShadow = true;
+    group.add(commandDeck);
+    const commandRoof = new THREE.Mesh(new THREE.BoxGeometry(3.0 * scale, 0.16 * scale, 1.38 * scale), mats.gold);
+    commandRoof.position.set(0, 2.48 * scale, 2.8 * scale);
+    commandRoof.castShadow = true;
+    group.add(commandRoof);
+    [-1, 1].forEach((side) => {
+      const armorBand = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.16 * scale, 5.9 * scale), mats.gold);
+      armorBand.position.set(side * 1.76 * scale, 1.32 * scale, -0.18 * scale);
+      armorBand.castShadow = true;
+      group.add(armorBand);
+    });
+  } else if (type === "grandfrigate") {
     addSquareSail(group, -0.85, -3.42, 1.2, 0xf2ead5, 2);
     addSquareSail(group, -0.25, -1.42, 1.28, 0xf8efd8, 3);
     addSquareSail(group, 0.42, 1.04, 1.16, 0xf2ead5, 2);
@@ -7911,6 +8776,7 @@ function makeProjectile(owner, pos, dir, damage, range, options = {}) {
   const remote = Boolean(options.remote);
   mesh.castShadow = !remote;
   scene.add(mesh);
+  playSound("cannon", start, remote ? 0.68 : 1);
   const trailPositions = new Float32Array(7 * 3);
   for (let i = 0; i < 7; i++) {
     trailPositions[i * 3] = mesh.position.x;
@@ -7999,6 +8865,7 @@ function addImpactEffect(group, life = 0.7, options = {}) {
 function makeSplashEffect(position) {
   const group = new THREE.Group();
   group.position.set(position.x, 0.08, position.z);
+  playSound("splash", position);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.78, 24), ringMat);
   ring.rotation.x = -Math.PI / 2;
@@ -8071,6 +8938,7 @@ function updateWaveHazards(dt) {
 function makeSplinterEffect(position, dir) {
   const group = new THREE.Group();
   group.position.copy(position);
+  playSound("splinter", position);
   const forward = dir.clone().normalize();
   const side = new THREE.Vector3(forward.z, 0, -forward.x);
   for (let i = 0; i < 13; i++) {
@@ -8098,6 +8966,7 @@ function makeSplinterEffect(position, dir) {
 function makeFireImpactEffect(position, dir) {
   const group = new THREE.Group();
   group.position.copy(position);
+  playSound("fire", position);
   const forward = dir.clone().normalize();
   const side = new THREE.Vector3(forward.z, 0, -forward.x);
   const ring = new THREE.Mesh(
@@ -9937,6 +10806,7 @@ function whaleIslandSteer(position, forward, radius, submerged = false, extra = 
   const steer = new THREE.Vector3();
   let active = false;
   islands.forEach((island) => {
+    if (island.forge) return;
     const away = position.clone().sub(island.group.position);
     away.y = 0;
     const distance = away.length();
@@ -10077,7 +10947,7 @@ function updateAnimals(dt) {
       next.add(animal.bombImpulse.clone().multiplyScalar(dt));
       animal.bombImpulse.multiplyScalar(Math.pow(0.14, dt));
     }
-    const blockedIsland = islands.find((island) => dist2(next, island.group.position) < island.radius + animalHitRadius(animal) * 0.85);
+    const blockedIsland = islands.find((island) => !island.forge && dist2(next, island.group.position) < island.radius + animalHitRadius(animal) * 0.85);
     if (!pointInWhaleNorthZone(next)) {
       animal.direction = lerpAngle(animal.direction, whaleZoneReturnDirection(animal.group.position), 0.62);
       animal.group.position.z = clamp(animal.group.position.z, WHALE_NORTH_MIN_Z + 2, WHALE_NORTH_MAX_Z - 2);
@@ -10276,7 +11146,7 @@ function damageTarget(target, amount, options = {}) {
     if (target.isBot) {
       clearBurnVisual(target);
       target.fire = null;
-      dropCrates(deathPos, crateDropCount(target));
+      dropCrates(deathPos, crateDropCount(target) + tortugaBonusCrateCount(state.shipType));
       target.hp = getShipStats(target.shipType).hp;
       target.group.position.copy(randomWaterPoint(MAP_LIMIT * 0.9, 82));
       target.level = Math.max(1, target.level + (Math.random() > 0.55 ? 1 : 0));
@@ -10339,6 +11209,7 @@ function damageTarget(target, amount, options = {}) {
 function initWorld() {
   addLights();
   addSea();
+  initCompassTrail();
   initWindCurrents();
   for (let i = 0; i < 20; i++) makeCloud();
   islandData.forEach((data) => islands.push(makeIsland(data)));
@@ -10412,12 +11283,20 @@ ui.ammoHotbar?.addEventListener("mousedown", (event) => {
 ui.closeShop.addEventListener("click", () => closeShop());
 ui.dockPrompt.addEventListener("click", () => {
   if (nameGateOpen()) return;
+  if (state.viewMode === "swim") {
+    startForgeWaterfallTransit("up");
+    return;
+  }
+  if (state.mode === "land" && state.dockedAt === "Forge") {
+    startForgeWaterfallTransit("down");
+    return;
+  }
   if (state.mode === "land") {
     setSail();
     return;
   }
   const island = currentIsland();
-  if (island) dockAtIsland(island);
+  if (island) startDocking(island);
 });
 ui.closeMinimap.addEventListener("click", () => {
   ui.minimapPanel.classList.add("hidden");
@@ -10447,6 +11326,9 @@ ui.openLeaderboard?.addEventListener("click", () => {
   renderLeaderboard();
 });
 ui.closeInventory?.addEventListener("click", () => setInventoryOpen(false));
+ui.closeForge?.addEventListener("click", () => closeForgePanel());
+ui.forgeBody?.addEventListener("pointerdown", handleForgeBodyAction);
+ui.forgeBody?.addEventListener("click", handleForgeBodyAction);
 function handleInventoryBodyAction(event) {
   const button = event.target.closest("[data-build-select]");
   if (!button) return;
@@ -10463,9 +11345,6 @@ function handleInventoryBodyAction(event) {
 }
 ui.inventoryBody?.addEventListener("pointerdown", handleInventoryBodyAction);
 ui.inventoryBody?.addEventListener("click", handleInventoryBodyAction);
-ui.snapBuild?.addEventListener("change", () => {
-  state.buildSnap = Boolean(ui.snapBuild.checked);
-});
 ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
   state.shopTab = tab.dataset.tab;
   ui.tabs.forEach((item) => item.classList.toggle("active", item === tab));
@@ -10544,6 +11423,16 @@ addEventListener("keydown", (event) => {
   if (nameGateOpen()) return;
   const key = event.key.toLowerCase();
   const code = event.code?.toLowerCase?.() || "";
+  if ((key === "t" || code === "keyt") && state.viewMode === "swim") {
+    event.preventDefault();
+    startForgeWaterfallTransit("up");
+    return;
+  }
+  if ((key === "t" || code === "keyt") && state.mode === "land" && state.dockedAt === "Forge") {
+    event.preventDefault();
+    startForgeWaterfallTransit("down");
+    return;
+  }
   if ((key === "t" || code === "keyt") && state.mode === "ship") {
     const island = currentIsland();
     if (island) {
@@ -10556,6 +11445,10 @@ addEventListener("keydown", (event) => {
   }
   if ((key === "c" || code === "keyc") && state.mode === "land") {
     event.preventDefault();
+    if (state.dockedAt === "Forge") {
+      toast("Use the waterfall to leave the Forge.");
+      return;
+    }
     setSail();
     return;
   }
@@ -10566,12 +11459,26 @@ addEventListener("keydown", (event) => {
   }
   if (key === "f") {
     event.preventDefault();
+    if (state.dockedAt === "Forge" && state.mode === "land") {
+      toast("Use the waterfall to leave the Forge.");
+      return;
+    }
     if (state.viewMode === "deck" || state.viewMode === "swim") returnCharacterToShipDeck();
     else enterDeckMode();
     return;
   }
+  if (key === "i" || code === "keyi") {
+    event.preventDefault();
+    setInventoryOpen(!state.inventoryOpen);
+    return;
+  }
   if ((key === "r" || code === "keyr") && state.mode === "land") {
     event.preventDefault();
+    if (state.dockedAt === "Forge") {
+      openForgePanel();
+      return;
+    }
+    if (openForgePanel()) return;
     openIslandShop();
     return;
   }
@@ -10668,9 +11575,16 @@ addEventListener("mousemove", (event) => {
   mouse.x = (event.clientX / innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / innerHeight) * 2 + 1;
 });
-addEventListener("mousedown", (event) => {
-  if (event.target === canvas) useTool();
-});
+function handleCanvasToolPointer(event) {
+  if (event.target !== canvas || event.button > 0) return;
+  const now = performance.now();
+  if (now - lastCanvasToolUseAt < 80) return;
+  lastCanvasToolUseAt = now;
+  event.preventDefault();
+  useTool();
+}
+canvas.addEventListener("pointerdown", handleCanvasToolPointer);
+addEventListener("mousedown", handleCanvasToolPointer);
 
 function currentIsland() {
   const pos = state.mode === "ship" ? playerShip.position : character.position;
@@ -10678,6 +11592,7 @@ function currentIsland() {
     return islands.find((island) => island.name === state.dockedAt);
   }
   return islands.find((island) => {
+    if (state.mode === "ship" && island.forge) return false;
     const dockDistance = dist2(pos, island.dock);
     const islandDistance = dist2(pos, island.group.position);
     return state.mode === "ship"
@@ -10688,6 +11603,8 @@ function currentIsland() {
 
 function startDocking(island) {
   if (!island || state.mode !== "ship") return;
+  if (island.forge) return toast("The Forge has no dock. Swim into its waterfall in first person.");
+  if (state.docking?.island === island.name) return;
   state.docking = { island: island.name, remaining: 5 };
   state.velocity.multiplyScalar(0.25);
   toast(`Docking at ${islandName(island)}: 5 seconds.`);
@@ -10727,12 +11644,14 @@ function dockAtIsland(island) {
   playerShip.position.y = SHIP_WATERLINE_Y;
   state.velocity.set(0, 0, 0);
   closeShop();
+  playSound("dock", playerShip.position);
   toast(`Docked at ${islandName(island)}. Press R for the market or C to set sail.`);
   updateHud();
 }
 
 function setSail() {
   if (state.mode !== "land") return;
+  if (state.dockedAt === "Forge") return toast("Use the waterfall to leave the Forge.");
   const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
   closeShop();
   ["w", "a", "s", "d", "c"].forEach((key) => keys.delete(key));
@@ -10763,6 +11682,7 @@ function setSail() {
   state.position.y = SHIP_WATERLINE_Y;
   playerShip.position.y = SHIP_WATERLINE_Y;
   multiplayer.lastSent = 0;
+  playSound("sail", playerShip.position);
   toast("Sails raised.");
   updateHud();
 }
@@ -10771,6 +11691,7 @@ function openIslandShop() {
   if (state.mode !== "land") return toast("Dock at an island before shopping.");
   const island = islands.find((item) => item.name === state.dockedAt) || currentIsland();
   if (!island) return toast("Dock at an island before shopping.");
+  if (island.forge) return toast("Stand near the pedestal and press R to open the forge.");
   openShop(island);
 }
 
@@ -10829,7 +11750,8 @@ function useTool() {
   if (state.viewMode === "deck" || state.viewMode === "swim") return;
   if (state.mode !== "ship") return;
   raycaster.setFromCamera(mouse, camera);
-  raycaster.ray.intersectPlane(aimPlane, aimPoint);
+  const aimed = raycaster.ray.intersectPlane(aimPlane, aimPoint);
+  if (!aimed) aimPoint.copy(playerShip.position).add(new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation)).multiplyScalar(cannonRange()));
   const dir = aimPoint.clone().sub(playerShip.position);
   dir.y = 0;
   const aimDistance = dir.length();
@@ -10839,10 +11761,11 @@ function useTool() {
     const fireDelay = cannonReload();
     if (state.cooldown > 0) return;
     const ammo = currentAmmoType();
+    const slots = broadsideGunSlots(playerShip, state.shipType, [-1, 1]);
+    if (!slots.length) return toast("No cannons are ready on this ship.");
     if (!consumeAmmo(ammo)) return;
-    state.cooldown = fireDelay;
     const range = clamp(aimDistance, 4, cannonRange());
-    fireBroadsideVolley({
+    const fired = fireBroadsideVolley({
       owner: playerId,
       ship: playerShip,
       shipType: state.shipType,
@@ -10853,6 +11776,7 @@ function useTool() {
       targetKind: "any",
       publish: true,
     });
+    if (fired > 0) state.cooldown = fireDelay;
   } else if (state.tool === "rod") {
     if (state.rodCooldown > 0) return;
     state.rodCooldown = 1.1;
@@ -10892,6 +11816,7 @@ function collectCrate(crate) {
     if (!canAddBlubber(amount)) return toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
     state.cargo["Whale Blubber"] = blubberCount() + amount;
     removeCrate(crate);
+    playSound("pickup", crate.mesh?.position || playerShip.position);
     toast("Recovered whale blubber.");
     return;
   }
@@ -10900,6 +11825,7 @@ function collectCrate(crate) {
   state.gold += crate.gold ?? (10 + Math.floor(Math.random() * 26));
   const kind = crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate";
   removeCrate(crate);
+  playSound("pickup", playerShip.position);
   toast(`${kind} recovered: repairs, gold, and XP.`);
 }
 
@@ -10987,6 +11913,7 @@ function inspectWithSpyglass(dir = null, requireShipHit = false) {
 }
 
 function openShop(island) {
+  closeForgePanel();
   state.dockedAt = island.name;
   ui.shopIsland.textContent = islandName(island);
   ui.shop.classList.remove("hidden");
@@ -10995,6 +11922,77 @@ function openShop(island) {
 
 function closeShop() {
   ui.shop.classList.add("hidden");
+}
+
+function closeForgePanel() {
+  state.forgeOpen = false;
+  ui.forgePanel?.classList.add("hidden");
+}
+
+function nearForgePedestal() {
+  const island = islands.find((item) => item.name === "Forge");
+  if (!island?.forgePedestal || state.mode !== "land" || state.dockedAt !== "Forge") return false;
+  return dist2(character.position, island.forgePedestal) < 5.2;
+}
+
+function renderForgePanel() {
+  if (!ui.forgeBody) return;
+  const ship = getShipStats("superfrigate");
+  const eligible = state.shipType === "grandfrigate";
+  if (!eligible) {
+    ui.forgeBody.innerHTML = `<p class="stats">The crystal hums over the pedestal. Sail here with a Grand Frigate to unlock the Forge reforge.</p>`;
+    return;
+  }
+  const preview = shipPreviewImage(ship.id);
+  const previewMarkup = preview
+    ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
+    : `<div class="ship-preview empty" aria-hidden="true"></div>`;
+  ui.forgeBody.innerHTML = `<p class="stats">The pedestal can reforge your Grand Frigate into this ship.</p><div class="row ship-row forge-ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-forge-ship="${ship.id}">${t("buy")}</button></div><p>A reinforced grand frigate refit with heavier broadsides, stronger armor, and a larger hold.</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })} / Cannons ${shipSideCannons(ship.id)}/side</p>${shipCompareMarkup(ship)}</div></div>`;
+}
+
+function buyForgeShip(id) {
+  if (id !== "superfrigate") return;
+  if (!nearForgePedestal()) return toast("Stand near the Forge pedestal.");
+  const ship = getShipStats(id);
+  if (state.shipType !== "grandfrigate") return toast("The Forge only reforges a Grand Frigate into a Super Frigate.");
+  if (state.gold < ship.price) return toast("Not enough gold.");
+  if (totalCargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
+  const shipPosition = playerShip?.position?.clone() || state.position.clone();
+  const shipRotation = playerShip?.rotation?.y ?? state.rotation;
+  state.gold -= ship.price;
+  replacePlayerShip(ship.id, shipPosition, { hp: ship.hp, rotation: shipRotation });
+  state.mode = "land";
+  state.viewMode = "ship";
+  state.dockedAt = "Forge";
+  closeForgePanel();
+  character.visible = true;
+  state.walkingPos.copy(character.position);
+  multiplayer.lastSent = 0;
+  playSound("forge", character.position);
+  toast("The Forge reforged your Grand Frigate into a Super Frigate.");
+  updateHud();
+}
+
+function handleForgeBodyAction(event) {
+  const button = event.target.closest("button[data-forge-ship]");
+  if (!button) return;
+  const now = performance.now();
+  if (event.type === "click" && now - lastForgePointerHandledAt < 450) return;
+  if (event.type === "pointerdown") lastForgePointerHandledAt = now;
+  event.preventDefault();
+  event.stopPropagation();
+  if (button.disabled) return;
+  buyForgeShip(button.dataset.forgeShip);
+}
+
+function openForgePanel() {
+  if (!nearForgePedestal()) return false;
+  closeShop();
+  state.forgeOpen = true;
+  renderForgePanel();
+  ui.forgePanel?.classList.remove("hidden");
+  playSound("forge", character.position);
+  return true;
 }
 
 function ensureShipPreviewRenderer() {
@@ -11067,7 +12065,8 @@ function shipRoleDescription(ship) {
   const hold = ship.capacity >= 38 ? t("hugeHold") : ship.capacity >= 22 ? t("largeHold") : ship.capacity <= 7 ? t("smallHold") : t("usefulHold");
   const durability = ship.hp >= 2400 ? t("massiveHp") : ship.hp >= 1500 ? t("highHp") : ship.hp <= 750 ? t("lightHp") : t("goodHp");
   const handling = ship.speed > 22 && ship.armor <= 0 ? t("speedBuild") : ship.speed <= 12 ? t("heavyBuild") : t("balancedBuild");
-  return t("shipRole", { speed, durability, defense, hold, handling });
+  const base = t("shipRole", { speed, durability, defense, hold, handling });
+  return ship.tortugaBonusCrate ? `${base} Tortuga trait: enemies drop +1 crate when sunk.` : base;
 }
 
 function ammoDescription(ammo) {
@@ -11154,6 +12153,20 @@ function renderShop() {
         : `<button data-buy-ammo="${id}" data-amount="1">${t("buy")}</button><button data-buy-ammo="${id}" data-amount="5">${t("buyFive")}</button><button data-buy-ammo="${id}" data-amount="10">${t("buy")} 10</button><button data-buy-ammo="${id}" data-amount="25">${t("buy")} 25</button>`;
       return `<div class="row"><div><h3>${ammoName(ammo)} <span class="price">${t("each", { price: ammo.price })}</span></h3><p>${t("owned", { count: owned })} ${description}</p></div><div class="actions">${amountButtons}</div></div>`;
     }).join("") + balloonRow;
+  } else if (state.shopTab === "items") {
+    if (island.name !== "Tortuga") {
+      ui.shopBody.innerHTML = `<p class="stats">This island has no special items for sale.</p>`;
+    } else {
+      const compass = SHOP_ITEMS.cursedCompass;
+      const owned = hasCursedCompass();
+      const heldByOther = Boolean(state.cursedCompassOwner && !owned && ![playerId, multiplayer.networkId, captainId].includes(state.cursedCompassOwner));
+      const status = owned
+        ? "You carry it."
+        : heldByOther
+          ? "Another captain has it right now."
+          : "Available at Tortuga.";
+      ui.shopBody.innerHTML = `<p class="stats">Tortuga sells rare contraband items.</p><div class="row"><div><h3>${compass.name} <span class="price">${t("price", { price: compass.price })}</span></h3><p>${status} ${compass.description}</p></div><div class="actions"><button data-buy-item="${compass.id}" ${owned || heldByOther ? "disabled" : ""}>${owned ? "Owned" : heldByOther ? "Taken" : t("buy")}</button></div></div>`;
+    }
   } else {
     const ups = [
       ["damage", t("cannonDamage"), upgradeDescription("damage")],
@@ -11183,6 +12196,7 @@ function handleShopBodyAction(event) {
     if (cargoCount() >= cargoCapacity()) return toast("Your hold is full. Upgrade ship capacity or sell cargo.");
     state.gold -= price;
     state.cargo[name] = (state.cargo[name] || 0) + 1;
+    playSound("coins");
     toast(`Bought ${name}.`);
   }
   if (button.dataset.sell) {
@@ -11191,6 +12205,7 @@ function handleShopBodyAction(event) {
     state.cargo[name]--;
     state.gold += marketSellPrice(island, name);
     addXP(4);
+    playSound("coins");
     toast(`Sold ${name}.`);
   }
   if (button.dataset.ship) {
@@ -11215,7 +12230,26 @@ function handleShopBodyAction(event) {
     }
     if (ship.id === "ballooner") state.balloonStock = Math.max(state.balloonStock, 3);
     multiplayer.lastSent = 0;
+    playSound("coins");
     toast(`${ship.name} launched. Your old ship is docked here.`);
+  }
+  if (button.dataset.buyItem) {
+    const item = SHOP_ITEMS[button.dataset.buyItem];
+    if (!item) return;
+    if (!island || island.name !== "Tortuga") return toast("That item is only sold at Tortuga.");
+    if (item.id === "cursedCompass") {
+      if (hasCursedCompass()) return toast("You already carry the Cursed Compass.");
+      if (state.cursedCompassOwner && ![playerId, multiplayer.networkId, captainId].includes(state.cursedCompassOwner)) return toast("Another captain has the Cursed Compass.");
+      if (state.gold < item.price) return toast("Not enough gold.");
+      if (multiplayer.serverWorld) {
+        sendMultiplayer({ type: "buyItem", item: item.id, island: island.name, clientId: captainId });
+        return;
+      }
+      state.gold -= item.price;
+      setCursedCompassOwned(true, playerId);
+      playSound("compass");
+      toast("The Cursed Compass points beyond the map.");
+    }
   }
   if (button.dataset.buyAmmo) {
     const ammo = CANNONBALL_TYPES[button.dataset.buyAmmo];
@@ -11227,6 +12261,7 @@ function handleShopBodyAction(event) {
     state.gold -= cost;
     state.ammo[ammo.id] = ammoCount(ammo.id) + amount;
     const placed = ammo.abilityOnly ? true : placeAmmoOnHotbar(ammo.id);
+    playSound("coins");
     toast(placed ? `Bought ${amount} ${ammo.name}.` : `Bought ${amount} ${ammo.name}. Replace a hotbar slot.`);
   }
   if (button.dataset.replaceAmmo) {
@@ -11240,6 +12275,7 @@ function handleShopBodyAction(event) {
     if (state.gold < BALLOON_COST) return toast("Not enough gold.");
     state.gold -= BALLOON_COST;
     state.balloonStock++;
+    playSound("coins");
     toast("Hot air balloon purchased.");
   }
   if (button.dataset.upgrade) {
@@ -11247,6 +12283,7 @@ function handleShopBodyAction(event) {
     if (button.dataset.upgrade === "fireRate" && state.upgrades.fireRate >= MAX_RELOAD_UPGRADES) return toast("Reload upgrade is maxed.");
     state.points--;
     state.upgrades[button.dataset.upgrade]++;
+    playSound("coins");
     toast("Upgrade installed.");
   }
   renderShop();
@@ -11773,7 +12810,7 @@ function updateShip(dt) {
   state.velocity.multiplyScalar(Math.pow(0.86, dt * 9));
   const next = playerShip.position.clone().add(state.velocity.clone().multiplyScalar(dt));
   const hullRadius = shipHitRadius(state.shipType);
-  const blockedIsland = islands.some((island) => islandFootprintContains(island, next, hullRadius * 0.28));
+  const blockedIsland = islands.some((island) => !island.forge && islandFootprintContains(island, next, hullRadius * 0.28));
   if (!blockedIsland) {
     playerShip.position.copy(next);
   } else {
@@ -11793,7 +12830,7 @@ function updateShip(dt) {
     state.fallDrift.copy(state.velocity);
     if (state.fallDrift.length() < 12) state.fallDrift.add(outward.multiplyScalar(12));
     makeSplashEffect(playerShip.position.clone().setY(0));
-  } else if (!multiplayer.serverWorld && (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT)) summonLeviathan();
+  } else if (!multiplayer.serverWorld && (Math.abs(playerShip.position.x) > MINIMAP_VISIBLE_LIMIT || Math.abs(playerShip.position.z) > MINIMAP_VISIBLE_LIMIT) && !forgeCompassPathActive(playerShip.position)) summonLeviathan();
   crates.slice().forEach((crate) => {
     if (dist2(playerShip.position, crate.mesh.position) < hullRadius + 1.1) collectCrate(crate);
   });
@@ -11801,8 +12838,18 @@ function updateShip(dt) {
 }
 
 function updateWalker(dt) {
+  if (updateForgeWaterfallTransit(dt)) return;
   const island = islands.find((item) => item.name === state.dockedAt);
   if (!island) return;
+  if (state.forgeOpen) {
+    keys.clear();
+    const groundY = islandGroundY(island, character.position) ?? island.landY;
+    state.walkHeight = 0;
+    state.walkVelocityY = 0;
+    state.grounded = true;
+    character.position.y = groundY;
+    return;
+  }
   const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
   character.rotation.y += turn * dt * 2.45;
   state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.18);
@@ -11845,6 +12892,7 @@ function updateWalker(dt) {
 
 function updateSeaWalker(dt) {
   if (state.viewMode !== "deck" && state.viewMode !== "swim") return;
+  if (updateForgeWaterfallTransit(dt)) return;
   const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
   character.rotation.y += turn * dt * 2.35;
   state.cameraYaw = lerpAngle(state.cameraYaw, character.rotation.y, 0.22);
@@ -11857,7 +12905,8 @@ function updateSeaWalker(dt) {
     }
     if (throttle) {
       const next = character.position.clone().add(forward.multiplyScalar(throttle * dt * 4.2));
-      if (Math.abs(next.x) < MAP_LIMIT * 0.98 && Math.abs(next.z) < MAP_LIMIT * 0.98) {
+      const swimLimit = hasCursedCompass() ? WATERFALL_LIMIT * 0.98 : MAP_LIMIT * 0.98;
+      if (Math.abs(next.x) < swimLimit && Math.abs(next.z) < swimLimit) {
         const block = shipSwimBlockAt(next);
         const islandBlock = islandSwimBlockAt(next, 0.4);
         if (!block && !islandBlock) {
@@ -12090,6 +13139,7 @@ function updateBots(dt) {
     if (targetDistance > 5) {
       const avoidance = new THREE.Vector3();
       islands.forEach((island) => {
+        if (island.forge) return;
         const away = bot.group.position.clone().sub(island.group.position);
         away.y = 0;
         const distance = away.length();
@@ -12356,10 +13406,14 @@ function updateProjectiles(dt) {
           }
         });
       }
-      if (!hit && !multiplayer.serverWorld && shot.targetKind !== "player") {
+      if (!hit && shot.targetKind !== "player") {
         bots.forEach((bot) => {
           if (!hit && bot.localId !== shot.owner && projectileHitsShip(shot, bot.group, bot.shipType)) {
-            damageTarget(bot, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+            if (!multiplayer.serverWorld) {
+              damageTarget(bot, projectileDamageAtImpact(shot), { fire: shot.fire, hitPosition: shot.mesh.position.clone() });
+            } else if (shot.fire) {
+              igniteTarget(bot, shot.fire, shot.mesh.position.clone(), true);
+            }
             hit = true;
           }
         });
@@ -12917,11 +13971,20 @@ function updateHud() {
   const landIsland = state.mode === "land"
     ? islands.find((item) => item.name === state.dockedAt) || island
     : island;
-  const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land");
+  const nearForgeWaterfall = hasCursedCompass()
+    && (state.viewMode === "swim" || state.dockedAt === "Forge")
+    && Math.hypot(character.position.x - FORGE_WATERFALL.x, character.position.z - FORGE_WATERFALL.z) < 24;
+  const showPrompt = ui.shop.classList.contains("hidden") && (island || state.mode === "land" || nearForgeWaterfall);
   ui.dockPrompt.classList.toggle("hidden", !showPrompt);
   if (showPrompt) {
     const dockPromptHtml = state.docking
       ? t("dockingPrompt", { island: islandName(state.docking.island), seconds: Math.ceil(state.docking.remaining) })
+      : state.dockedAt === "Forge" && nearForgeWaterfall
+        ? "Press <b>T</b> to descend the waterfall"
+      : state.dockedAt === "Forge"
+        ? "Press <b>R</b> near the pedestal for the forge"
+      : state.viewMode === "swim" && nearForgeWaterfall
+        ? "Press <b>T</b> to swim up the Forge waterfall"
       : state.mode === "ship"
       ? t("pressDock", { island: islandName(island) })
       : t("pressSailShop");
@@ -13121,7 +14184,7 @@ function drawKrakenMapMarker(ctx, x, z, ratio, hp, maxHp) {
 }
 
 function minimapStaticSignature(size, expanded) {
-  const islandSignature = islands.map((island) => `${island.name}:${islandName(island)}:${island.radius}`).join("|");
+  const islandSignature = islands.filter((island) => !island.noMinimap).map((island) => `${island.name}:${islandName(island)}:${island.radius}`).join("|");
   return `${size}:${state.language}:${expanded ? 1 : 0}:${islandSignature}`;
 }
 
@@ -13148,6 +14211,7 @@ function renderMinimapSeaLayer(ctx, size) {
 function renderMinimapIslandLayer(ctx, size) {
   ctx.clearRect(0, 0, size, size);
   islands.forEach((island) => {
+    if (island.noMinimap) return;
     const pos = drawMapDot(ctx, island.group.position.x, island.group.position.z, Math.max(3, island.radius * size / (MAP_LIMIT * 2.45)), "#72bf61", "#f3df9b");
     if (shouldShowIslandLabel(island)) {
       ctx.fillStyle = "#17313c";
@@ -13247,15 +14311,15 @@ function updateMinimap(force = false) {
   });
   bots.forEach((bot) => drawMapDot(ctx, bot.group.position.x, bot.group.position.z, expanded ? 4 : 3, "#cf493f", "#341918"));
   serverBotBalloons.forEach((balloon) => {
-    if (balloon.group.visible) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.3 : 2.4, "#d36b3d", "#fff1a6");
+    if (balloon.group.visible || balloon.group.userData.renderCulled) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.3 : 2.4, "#d36b3d", "#fff1a6");
   });
   remotePlayers.forEach((remote) => {
-    if (remote.group.visible) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
+    if (remote.group.visible || remote.group.userData.renderCulled) drawMapDot(ctx, remote.group.position.x, remote.group.position.z, expanded ? 4 : 3, "#7e55c7", "#f7ecff");
     (remote.fleetShips || []).forEach((ship) => {
-      if (ship.group.visible) drawMapDot(ctx, ship.group.position.x, ship.group.position.z, expanded ? 3.2 : 2.4, "#8f79d6", "#f7ecff");
+      if (ship.group.visible || ship.group.userData.renderCulled) drawMapDot(ctx, ship.group.position.x, ship.group.position.z, expanded ? 3.2 : 2.4, "#8f79d6", "#f7ecff");
     });
     (remote.balloons || []).forEach((balloon) => {
-      if (balloon.group.visible) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.5 : 2.6, "#c565db", "#f7ecff");
+      if (balloon.group.visible || balloon.group.userData.renderCulled) drawMapDot(ctx, balloon.group.position.x, balloon.group.position.z, expanded ? 3.5 : 2.6, "#c565db", "#f7ecff");
     });
   });
   ownedShips.forEach((ship) => {
@@ -13296,6 +14360,8 @@ function multiplayerMotionPayload() {
     shipType: state.shipType,
     mode: state.mode,
     viewMode: state.viewMode,
+    hasCursedCompass: hasCursedCompass(),
+    dockedAt: state.dockedAt,
     whalerNets: Boolean(state.shipType === "whaler" && state.whalerNets),
     turtleFire: Boolean(turtleFireActiveForState()),
     x: playerShip.position.x,
@@ -13810,6 +14876,10 @@ function syncServerWorld(world) {
     environment.serverCycleTime = Number(world.dayCycleTime) % (environment.serverDayLength + environment.serverNightLength);
     environment.serverCycleUpdatedAt = clock.elapsedTime;
   }
+  if (world.cursedCompassOwner !== undefined) {
+    state.cursedCompassOwner = world.cursedCompassOwner || null;
+    if (state.cursedCompassOwner && ![multiplayer.networkId, playerId, captainId].includes(state.cursedCompassOwner)) state.items.cursedCompass = false;
+  }
 
   const seenBots = new Set();
   (world.bots || []).forEach((data) => {
@@ -13944,6 +15014,7 @@ function applyCrateReward(crate) {
     const amount = Math.max(1, Math.floor(Number(crate.blubber) || 1));
     if (canAddBlubber(amount)) {
       state.cargo["Whale Blubber"] = blubberCount() + amount;
+      playSound("pickup", playerShip.position);
       toast("Recovered whale blubber.");
     } else {
       toast(state.shipType === "whaler" ? "Your blubber hold is full." : "Your hold is full.");
@@ -13953,6 +15024,7 @@ function applyCrateReward(crate) {
   state.hp = clamp(state.hp + (Number(crate.heal) || 0), 0, maxHp());
   addXP(Number(crate.xp) || 0);
   state.gold += Number(crate.gold) || 0;
+  playSound("pickup", playerShip.position);
   toast(`${crate.kind === "kraken" ? "Kraken tentacle" : crate.kind === "treasure" ? "Treasure" : "Crate"} recovered: repairs, gold, and XP.`);
 }
 
@@ -14105,6 +15177,28 @@ function handleMultiplayerMessage(message) {
     syncServerWorld(message);
   } else if (message.type === "crateReward") {
     applyCrateReward(message.crate);
+  } else if (message.type === "itemInventory") {
+    if (message.items && typeof message.items === "object") {
+      state.items.cursedCompass = Boolean(message.items.cursedCompass);
+    }
+    if (message.owner !== undefined) state.cursedCompassOwner = message.owner || null;
+    if (!state.infiniteGold && Number.isFinite(Number(message.gold))) state.gold = Math.max(0, Number(message.gold));
+    if (hasCursedCompass()) {
+      playSound("compass");
+      toast("The Cursed Compass points beyond the map.");
+    }
+    renderInventory();
+    if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+    updateHud();
+  } else if (message.type === "itemError") {
+    toast(message.reason || "That item is unavailable.");
+    if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+  } else if (message.type === "cursedCompassOwner") {
+    state.cursedCompassOwner = message.owner || null;
+    if (!state.cursedCompassOwner && multiplayer.serverWorld) state.items.cursedCompass = false;
+    if (state.cursedCompassOwner && ![multiplayer.networkId, playerId, captainId].includes(state.cursedCompassOwner)) state.items.cursedCompass = false;
+    renderInventory();
+    if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
   } else if (message.type === "crateRemove") {
     removeCrate(crates.find((crate) => crate.serverId === message.id));
   } else if (message.type === "fishReward") {
@@ -14419,6 +15513,46 @@ function animateSea() {
     obj.material.opacity = 0.1 + Math.sin(t + obj.userData.waterfallMist) * 0.05;
     if (obj.position.y < -44) obj.position.y = -6;
   });
+  const showForgeWaterfall = hasCursedCompass();
+  hiddenForgeWaterfallObjects.forEach((group) => {
+    group.visible = showForgeWaterfall;
+    if (!showForgeWaterfall) return;
+    const fallTopY = group.userData.forgeFallTopY || FORGE_ELEVATION + 3;
+    const fallHeight = group.userData.forgeFallHeight || FORGE_ELEVATION + 3;
+    group.children.forEach((child) => {
+      if (child.userData.forgeMist) {
+        child.position.y -= 0.018;
+        child.material.opacity = 0.13 + Math.sin(t + child.userData.forgeMist) * 0.05;
+        if (child.position.y < 1.5) child.position.y = fallTopY - 0.8;
+      } else if (child.userData.forgeRibbon) {
+        child.position.y = child.userData.baseY;
+        child.position.x = child.userData.baseX + Math.sin(t * 1.8 + child.userData.forgeRibbon) * 0.18;
+        child.material.opacity = 0.24 + Math.sin(t * 4 + child.userData.forgeRibbon) * 0.1;
+      } else if (child.geometry?.type === "RingGeometry") {
+        const scale = 1 + Math.sin(t * 2.8) * 0.08;
+        child.scale.set(scale, scale, scale);
+      }
+    });
+  });
+  forgeAnimatedObjects.forEach((obj) => {
+    if (obj.userData.forgeCrystalBase !== undefined) {
+      obj.position.y = obj.userData.forgeCrystalBase + Math.sin(t * 1.6 + obj.userData.forgeCrystalPhase) * 0.22;
+      obj.rotation.y += 0.012;
+      obj.rotation.x = Math.sin(t * 0.9) * 0.08;
+      return;
+    }
+    if (obj.userData.forgeParticle) {
+      const p = (obj.userData.phase + t * 0.22) % 1;
+      const angle = p * Math.PI * 2.6 + obj.userData.phase * 8.0;
+      const radius = obj.userData.radius * (1 - p * 0.45);
+      obj.position.x = Math.cos(angle) * radius;
+      obj.position.z = obj.userData.centerZ + Math.sin(angle) * radius;
+      obj.position.y = obj.userData.topY - p * obj.userData.drop + Math.sin(t * 4 + obj.userData.phase * 7) * 0.035;
+      obj.rotation.y += 0.06;
+      obj.rotation.x += 0.04;
+      obj.scale.setScalar(0.65 + (1 - p) * 0.55);
+    }
+  });
 }
 
 function frame() {
@@ -14453,8 +15587,13 @@ function frame() {
   updateDayNightCycle();
   animateSea();
   publishMultiplayer();
-  updateHud();
+  if (clock.elapsedTime >= nextHudUpdateAt) {
+    nextHudUpdateAt = clock.elapsedTime + HUD_UPDATE_INTERVAL;
+    updateHud();
+  }
+  updateCursedCompassTrail();
   updateMinimap();
+  updateRenderDistanceCulling();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

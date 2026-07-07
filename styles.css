@@ -573,6 +573,14 @@ button.active {
   overflow: hidden;
 }
 
+.forge-panel {
+  left: 50%;
+  right: auto;
+  top: 50%;
+  width: min(360px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+}
+
 .shop header {
   display: flex;
   justify-content: space-between;
@@ -709,14 +717,12 @@ button.active {
   background: rgba(47, 138, 165, 0.13);
 }
 
-.snap-toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 9px;
+.inventory-section-title {
+  margin: 8px 0 2px;
   color: #41606d;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .ship-row {

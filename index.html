@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=214" />
+  <link rel="stylesheet" href="styles.css?v=231" />
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -127,9 +127,31 @@
       <button class="tab active" data-tab="goods" data-i18n="goodsTab">Goods</button>
       <button class="tab" data-tab="ships" data-i18n="shipsTab">Ships</button>
       <button class="tab" data-tab="ammo" data-i18n="shotTab">Shot</button>
+      <button class="tab" data-tab="items">Items</button>
       <button class="tab" data-tab="upgrades" data-i18n="upgradesTab">Upgrades</button>
     </nav>
     <div id="shopBody"></div>
+  </aside>
+
+  <section id="inventoryPanel" class="panel inventory-panel hidden">
+    <header>
+      <strong data-i18n="inventory">Inventory</strong>
+      <button id="closeInventory" title="Close" data-i18n-title="close">x</button>
+    </header>
+    <div id="inventoryBody"></div>
+  </section>
+
+  <aside id="forgePanel" class="shop forge-panel hidden">
+    <header>
+      <div>
+        <span>The Forge</span>
+        <strong>Ancient Forge</strong>
+      </div>
+      <button id="closeForge" title="Close" data-i18n-title="close">x</button>
+    </header>
+    <div id="forgeBody">
+      <p class="stats">The pedestal is dormant for now.</p>
+    </div>
   </aside>
 
   <script>
@@ -159,6 +181,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=223"></script>
+  <script type="module" src="game.js?v=231"></script>
 </body>
 </html>
