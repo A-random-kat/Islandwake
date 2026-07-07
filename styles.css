@@ -82,6 +82,72 @@ body::after {
   outline: none;
 }
 
+.account-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: -4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(16, 32, 42, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.account-mini > div {
+  display: flex;
+  gap: 6px;
+}
+
+.account-mini button {
+  min-width: 64px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.account-card header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-card header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.account-card header strong {
+  font-size: 18px;
+}
+
+.account-close {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 7px;
+}
+
+.account-card label {
+  display: grid;
+  gap: 7px;
+}
+
+.account-status {
+  min-height: 34px;
+  padding: 9px 10px;
+  border: 1px solid rgba(16, 32, 42, 0.11);
+  border-radius: 7px;
+  color: #355967;
+  background: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .language-select {
   width: 100%;
   height: 38px;
@@ -99,6 +165,13 @@ body::after {
 .language-select:focus {
   border-color: #2f8aa5;
   box-shadow: 0 0 0 3px rgba(47, 138, 165, 0.16);
+}
+
+@media (max-width: 720px) {
+  .name-card {
+    max-height: calc(100vh - 36px);
+    overflow: auto;
+  }
 }
 
 .guide-overlay {

@@ -61,6 +61,15 @@ const ui = {
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
   developerTokenInput: document.querySelector("#developerTokenInput"),
+  accountPanel: document.querySelector("#accountPanel"),
+  accountNameInput: document.querySelector("#accountNameInput"),
+  accountPasswordInput: document.querySelector("#accountPasswordInput"),
+  accountModeInput: document.querySelector("#accountModeInput"),
+  accountTitle: document.querySelector("#accountPanelTitle"),
+  accountStatus: document.querySelector("#accountStatus"),
+  accountSubmit: document.querySelector("#accountSubmit"),
+  accountClose: document.querySelector("#accountClose"),
+  accountOpenButtons: [...document.querySelectorAll("[data-account-open]")],
   nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
   languageSelect: document.querySelector("#languageSelect"),
   hudLanguageSelect: document.querySelector("#hudLanguageSelect"),
@@ -718,6 +727,10 @@ const state = {
   name: readSavedValue("islandwakeName"),
   language: normalizeLanguage(readSavedValue("islandwakeLanguage", DEFAULT_LANGUAGE)),
   devToken: "",
+  accountName: readSavedValue("islandwakeAccount"),
+  accountPassword: "",
+  accountMode: "",
+  accountAuthed: false,
   infiniteGold: false,
   infiniteLevels: false,
   joined: false,
@@ -1136,6 +1149,7 @@ const shipNightLights = [];
 const HUD_PANEL_REFRESH_INTERVAL = 0.12;
 const HUD_UPDATE_INTERVAL = 0.08;
 const MINIMAP_RENDER_INTERVAL = 0.1;
+const ACCOUNT_PROGRESS_INTERVAL = 5;
 const SERVER_FISH_VISUAL_INTERVAL = 0.033;
 const FISH_RENDER_DISTANCE = 260;
 const FISH_RENDER_DISTANCE_SQ = FISH_RENDER_DISTANCE * FISH_RENDER_DISTANCE;
@@ -1146,6 +1160,7 @@ const LABEL_RENDER_DISTANCE = 620;
 const RENDER_CULL_INTERVAL = 0.18;
 let serverFishVisualAccumulator = 0;
 let nextRenderCullAt = 0;
+let nextAccountProgressAt = 0;
 const lastRenderCullFocus = new THREE.Vector3(Infinity, 0, Infinity);
 const environment = {
   hemi: null,
@@ -1251,7 +1266,7 @@ function xpForLevel(level) {
 }
 
 function hasGoldDiggerPowers() {
-  return state.infiniteGold || state.devToken === "GoldDigger";
+  return state.infiniteGold || String(state.devToken || "").toLowerCase() === "golddigger";
 }
 
 function addXP(amount) {
@@ -2312,6 +2327,185 @@ function replacePlayerShip(type, spawnPosition = null, options = {}) {
   updateAmmoHotbar(true);
 }
 
+function setAccountMode(mode = "", message = "") {
+  const next = mode === "create" || mode === "signin" ? mode : "";
+  state.accountMode = next;
+  if (!next) {
+    state.accountName = "";
+    state.accountPassword = "";
+    ui.nameForm?.classList.remove("hidden");
+    ui.accountPanel?.classList.add("hidden");
+    if (ui.accountNameInput) ui.accountNameInput.value = "";
+    if (ui.accountPasswordInput) ui.accountPasswordInput.value = "";
+  } else {
+    ui.nameForm?.classList.add("hidden");
+    ui.accountPanel?.classList.remove("hidden");
+  }
+  if (ui.accountModeInput) ui.accountModeInput.value = next;
+  if (ui.accountTitle) ui.accountTitle.textContent = next === "create" ? "Create account" : next === "signin" ? "Log in" : "Account";
+  if (ui.accountSubmit) ui.accountSubmit.textContent = next === "create" ? "Create account" : "Log in";
+  if (ui.accountStatus) {
+    ui.accountStatus.textContent = message || (next === "create"
+      ? "Create a new account to save legit progress."
+      : next === "signin"
+        ? "Log in to load your saved ships, gold, level, and items."
+        : "Guest mode: progress will not be saved to an account.");
+  }
+}
+
+function accountModeFromFields() {
+  const hasAccount = Boolean(String(state.accountName || "").trim() && String(state.accountPassword || ""));
+  if (!hasAccount) return "";
+  return state.accountMode === "create" ? "create" : "signin";
+}
+
+function activeShipProgressRecord() {
+  const position = playerShip?.position || state.position;
+  const rotation = playerShip?.rotation?.y ?? state.rotation;
+  const stats = getShipStats(state.shipType);
+  return {
+    type: stats.id,
+    hp: Math.ceil(clamp(Number(state.hp) || stats.hp, 1, stats.hp)),
+    x: position.x,
+    z: position.z,
+    rotation,
+    dockedAt: state.dockedAt || "",
+    mode: state.mode === "land" && state.dockedAt ? "land" : "ship",
+  };
+}
+
+function accountPayload() {
+  const name = String(state.accountName || "").trim().replace(/\s+/g, " ").slice(0, 24);
+  const password = String(state.accountPassword || "");
+  if (!name || !password) return null;
+  return { name, password, mode: accountModeFromFields(), noSave: hasGoldDiggerPowers() };
+}
+
+function accountProgressSnapshot(options = {}) {
+  if (options.accountSave && hasGoldDiggerPowers()) return null;
+  const activeShip = activeShipProgressRecord();
+  return {
+    name: state.name,
+    level: state.level,
+    xp: state.xp,
+    gold: Math.floor(state.gold),
+    points: state.points,
+    shipType: state.shipType,
+    hp: Math.ceil(state.hp),
+    cargo: { ...state.cargo },
+    upgrades: { ...state.upgrades },
+    ammo: { ...state.ammo },
+    ammoSlots: [...state.ammoSlots],
+    selectedAmmo: state.selectedAmmo,
+    balloonStock: state.balloonStock,
+    maxBalloons: state.maxBalloons,
+    items: { ...state.items, cursedCompass: false },
+    mode: activeShip.mode,
+    dockedAt: activeShip.dockedAt,
+    activeShip,
+    fleetShips: ownedShips.slice(0, 12).map((ship) => ({
+      type: ship.type,
+      hp: ship.hp,
+      dockedAt: ship.dockedAt,
+      x: ship.group.position.x,
+      z: ship.group.position.z,
+      rotation: ship.group.rotation.y,
+    })),
+  };
+}
+
+function cleanSavedCount(value, max = 999999) {
+  return clamp(Math.floor(Number(value) || 0), 0, max);
+}
+
+function cleanSavedObject(source, keys, max = 999999) {
+  const result = {};
+  if (!source || typeof source !== "object") return result;
+  keys.forEach((key) => {
+    const value = cleanSavedCount(source[key], max);
+    if (value > 0) result[key] = value;
+  });
+  return result;
+}
+
+function applyAccountProgress(progress) {
+  if (!progress || typeof progress !== "object") return;
+  const active = progress.activeShip && typeof progress.activeShip === "object" ? progress.activeShip : progress;
+  const ship = getShipStats(active.type || progress.shipType || STARTER_SHIP);
+  if (!state.infiniteLevels) {
+    state.level = clamp(Math.floor(Number(progress.level) || 1), 1, MAX_PLAYER_LEVEL);
+    state.xp = Math.max(0, Math.floor(Number(progress.xp) || 0));
+    state.points = Math.max(0, Math.floor(Number(progress.points) || 0));
+  }
+  if (!state.infiniteGold) state.gold = Math.max(0, Math.floor(Number(progress.gold) || state.gold));
+  state.cargo = cleanSavedObject(progress.cargo, [...goods, "Whale Blubber"], 999);
+  state.upgrades = {
+    damage: cleanSavedCount(progress.upgrades?.damage, 100),
+    fireRate: Math.min(MAX_RELOAD_UPGRADES, cleanSavedCount(progress.upgrades?.fireRate, MAX_RELOAD_UPGRADES)),
+    range: cleanSavedCount(progress.upgrades?.range, 100),
+  };
+  state.ammo = {
+    grapeshot: cleanSavedCount(progress.ammo?.grapeshot, 9999),
+    hotshot: cleanSavedCount(progress.ammo?.hotshot, 9999),
+    harpoon: cleanSavedCount(progress.ammo?.harpoon, 9999),
+    airburst: cleanSavedCount(progress.ammo?.airburst, 9999),
+    rocketburst: cleanSavedCount(progress.ammo?.rocketburst, 9999),
+  };
+  if (Array.isArray(progress.ammoSlots)) {
+    const slots = progress.ammoSlots.slice(0, 5).map((id) => (CANNONBALL_TYPES[id] ? id : null));
+    slots[0] = "basic";
+    while (slots.length < 5) slots.push(null);
+    state.ammoSlots = slots;
+  }
+  const savedSelectedAmmo = CANNONBALL_TYPES[progress.selectedAmmo] ? progress.selectedAmmo : "basic";
+  const savedSelectedSlot = state.ammoSlots.indexOf(savedSelectedAmmo);
+  state.selectedAmmoSlot = savedSelectedSlot >= 0 ? savedSelectedSlot : 0;
+  state.selectedAmmo = savedSelectedSlot >= 0 ? savedSelectedAmmo : "basic";
+  state.balloonStock = clamp(Math.floor(Number(progress.balloonStock) || 0), 0, state.maxBalloons);
+  state.items = { ...state.items, ...(progress.items && typeof progress.items === "object" ? progress.items : {}), cursedCompass: false };
+  const fallbackPosition = playerShip?.position?.clone() || state.position.clone();
+  const position = new THREE.Vector3(
+    Number.isFinite(Number(active.x)) ? Number(active.x) : fallbackPosition.x,
+    SHIP_WATERLINE_Y,
+    Number.isFinite(Number(active.z)) ? Number(active.z) : fallbackPosition.z
+  );
+  const rotation = Number.isFinite(Number(active.rotation)) ? Number(active.rotation) : (playerShip?.rotation?.y ?? state.rotation);
+  replacePlayerShip(ship.id, position, { hp: active.hp ?? progress.hp, rotation });
+  const savedDockedAt = String(active.dockedAt || progress.dockedAt || "");
+  const savedMode = (active.mode || progress.mode) === "land" && savedDockedAt ? "land" : "ship";
+  state.mode = savedMode;
+  state.dockedAt = savedMode === "land" ? savedDockedAt : null;
+  state.viewMode = "ship";
+  if (character) {
+    if (savedMode === "land") {
+      character.position.copy(deckWorldPosition(0, 0, state.shipType));
+      character.position.y += 0.08;
+      character.visible = true;
+      state.walkingPos.copy(character.position);
+      state.walkVelocityY = 0;
+      state.grounded = true;
+    } else {
+      character.visible = false;
+    }
+  }
+  ownedShips.slice().forEach(removeOwnedShip);
+  (Array.isArray(progress.fleetShips) ? progress.fleetShips : []).slice(0, 12).forEach((entry) => {
+    const fleetShip = getShipStats(entry?.type || STARTER_SHIP);
+    const pos = new THREE.Vector3(
+      Number.isFinite(Number(entry?.x)) ? Number(entry.x) : position.x + 12,
+      SHIP_WATERLINE_Y,
+      Number.isFinite(Number(entry?.z)) ? Number(entry.z) : position.z + 12
+    );
+    createOwnedShip(fleetShip.id, entry?.hp, pos, Number(entry?.rotation) || 0, String(entry?.dockedAt || ""));
+  });
+  state.accountAuthed = true;
+  setAccountMode(state.accountMode, `Signed in as ${state.accountName || "account"}. Progress loaded.`);
+  multiplayer.lastSent = 0;
+  renderInventory();
+  if (ui.shop && !ui.shop.classList.contains("hidden")) renderShop();
+  updateHud();
+}
+
 function setSize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight;
@@ -2802,11 +2996,11 @@ function makeForgeIsland(data, group, radius, accent) {
   const terrainFeatures = [];
   const walkPlatforms = [];
   const surfaceLobes = [
-    { x: 0, z: 0, rx: radius * 0.72, rz: radius * 0.58, rot: 0.06 },
+    { x: 0, z: 0, rx: radius * 0.76, rz: radius * 0.68, rot: 0.06 },
     { x: -radius * 0.22, z: radius * 0.1, rx: radius * 0.36, rz: radius * 0.34, rot: -0.34 },
     { x: radius * 0.2, z: -radius * 0.12, rx: radius * 0.34, rz: radius * 0.32, rot: 0.42 },
-    { x: -radius * 0.18, z: -radius * 0.5, rx: radius * 0.24, rz: radius * 0.18, rot: 0.08 },
-    { x: -radius * 0.22, z: -radius * 0.64, rx: radius * 0.24, rz: radius * 0.16, rot: 0.1 },
+    { x: -radius * 0.18, z: -radius * 0.5, rx: radius * 0.26, rz: radius * 0.22, rot: 0.08 },
+    { x: -radius * 0.22, z: -radius * 0.64, rx: radius * 0.26, rz: radius * 0.2, rot: 0.1 },
   ];
   const addCollisionBox = (x, z, w, d, pad = 0.08, rot = 0, options = {}) => {
     collisionBoxes.push({ x: data.x + x, z: data.z + z, w, d, pad, rot, ...options });
@@ -2843,18 +3037,33 @@ function makeForgeIsland(data, group, radius, accent) {
   underside.scale.z = 0.78;
   underside.castShadow = true;
   group.add(underside);
+  const forgeGrassMat = new THREE.MeshStandardMaterial({ color: 0x78c85d, emissive: 0x123b12, emissiveIntensity: 0.1, roughness: 0.82, metalness: 0.01 });
+  const vineMat = new THREE.MeshStandardMaterial({ color: 0x315f25, emissive: 0x0c2608, emissiveIntensity: 0.12, roughness: 0.9, metalness: 0 });
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.72, radius * 0.78, 1.0, 20), mats.sand);
   sand.position.y = 1.55;
-  sand.scale.z = 0.78;
+  sand.scale.z = 1.0;
   sand.castShadow = true;
   sand.receiveShadow = true;
   group.add(sand);
-  const grass = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.5, radius * 0.64, 0.88, 18), mat(data.color));
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.66, 0.88, 22), forgeGrassMat);
   grass.position.y = 2.45;
-  grass.scale.z = 0.82;
+  grass.scale.z = 1.08;
   grass.castShadow = true;
   grass.receiveShadow = true;
   group.add(grass);
+  for (let i = 0; i < 26; i++) {
+    const angle = (i / 26) * Math.PI * 2 + (i % 3) * 0.08;
+    const edgeX = Math.cos(angle) * radius * (0.5 + (i % 4) * 0.025);
+    const edgeZ = Math.sin(angle) * radius * (0.52 + (i % 5) * 0.018) * 1.02;
+    const start = new THREE.Vector3(edgeX, 2.85 - (i % 2) * 0.12, edgeZ);
+    const end = new THREE.Vector3(
+      edgeX + Math.cos(angle + 0.6) * (0.45 + (i % 3) * 0.2),
+      -1.2 - (i % 5) * 0.82,
+      edgeZ + Math.sin(angle + 0.6) * (0.45 + (i % 4) * 0.18)
+    );
+    const vine = addRope(group, start, end, 1, 0.045 + (i % 3) * 0.008, vineMat);
+    vine.castShadow = true;
+  }
   const glowGold = new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0xffb000, emissiveIntensity: 1.25, roughness: 0.45, metalness: 0.05 });
   const crystalMat = new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffcf43, emissiveIntensity: 2.2, roughness: 0.25, metalness: 0 });
   const leafMat = new THREE.MeshStandardMaterial({ color: 0xf8f8ee, roughness: 0.82, metalness: 0.01 });
@@ -2863,8 +3072,8 @@ function makeForgeIsland(data, group, radius, accent) {
   const forgeWaterMat = new THREE.MeshStandardMaterial({ color: 0x79e8f2, roughness: 0.22, metalness: 0.02, transparent: true, opacity: 0.82 });
   const waterfallLocal = { x: FORGE_WATERFALL.x - data.x, z: FORGE_WATERFALL.z - data.z };
   const pond = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.22, 34), forgeWaterMat);
-  pond.scale.set(radius * 0.09, 1, radius * 0.065);
-  pond.position.set(waterfallLocal.x * 0.72, 3.03, waterfallLocal.z * 0.7);
+  pond.scale.set(radius * 0.085, 1, radius * 0.058);
+  pond.position.set(waterfallLocal.x * 0.42, 3.03, waterfallLocal.z * 0.42);
   pond.receiveShadow = true;
   group.add(pond);
   const streamStart = new THREE.Vector3(pond.position.x, 3.085, pond.position.z);
@@ -2885,20 +3094,6 @@ function makeForgeIsland(data, group, radius, accent) {
   const landingLocal = new THREE.Vector3(waterfallLocal.x, 0, waterfallLocal.z).add(waterfallInward.clone().multiplyScalar(6));
   const landingRot = Math.atan2(-waterfallLocal.x, -waterfallLocal.z) + Math.PI / 2;
   surfaceLobes.push({ x: landingLocal.x, z: landingLocal.z, rx: 12.2, rz: 8.6, rot: landingRot });
-  const landingSand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.7, 17), mats.sand);
-  landingSand.scale.set(12.5, 1, 8.8);
-  landingSand.position.set(landingLocal.x, 2.1, landingLocal.z);
-  landingSand.rotation.y = landingRot;
-  landingSand.castShadow = true;
-  landingSand.receiveShadow = true;
-  group.add(landingSand);
-  const landingGrass = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.76, 15), mat(data.color));
-  landingGrass.scale.set(10.9, 1, 7.5);
-  landingGrass.position.set(landingLocal.x + waterfallInward.x * 0.55, 2.5, landingLocal.z + waterfallInward.z * 0.55);
-  landingGrass.rotation.y = landingRot + 0.04;
-  landingGrass.castShadow = true;
-  landingGrass.receiveShadow = true;
-  group.add(landingGrass);
   addWalkPlatform(landingLocal.x, landingLocal.z, 18.5, 12.5, landY + 0.08, landingRot, { maxRise: 1.15 });
 
   function forgeSurfaceLocalY(x, z) {
@@ -3052,9 +3247,7 @@ function makeForgeIsland(data, group, radius, accent) {
   for (const side of [-1, 1]) {
     for (const z of [-castleD * 0.3, -castleD * 0.08, castleD * 0.16, castleD * 0.34]) addSquareSideWindow(side, z);
   }
-  for (const z of [-castleD * 0.42, castleD * 0.42]) {
-    addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 1.2, 0.16, 0.24), glowGold), 0, baseY + 1.15, z, castle);
-  }
+  addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(castleW + 1.2, 0.16, 0.24), glowGold), 0, baseY + 1.15, castleD * 0.42, castle);
   for (const x of [-castleW * 0.52, castleW * 0.52]) {
     addForgePiece(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, castleD + 1.0), glowGold), x, baseY + 1.15, 0, castle);
   }
@@ -3157,18 +3350,24 @@ function makeForgeIsland(data, group, radius, accent) {
 
   const wallMaxY = landY + wallH + 1.1;
   addWalkPlatform(0, castleZ, castleW - 0.15, castleD - 0.15, landY + 0.08, 0, { maxRise: 1.1 });
-  addCollisionBox(0, castleZ + castleD * 0.5, castleW, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(-castleW * 0.5, castleZ, 0.9, castleD, 0.16, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(castleW * 0.5, castleZ, 0.9, castleD, 0.16, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(-castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.36, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.36, 0.9, 0.16, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(0, castleZ + castleD * 0.5, castleW + 0.8, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(-castleW * 0.5, castleZ, 1.35, castleD + 0.8, 0.28, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(castleW * 0.5, castleZ, 1.35, castleD + 0.8, 0.28, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(-castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.38, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.38, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
+  addCollisionBox(0, castleZ + gateZ, 8.35, 1.25, 0.12, 0, { minY: landY + 3.25, maxY: wallMaxY, solidWall: true });
   for (const side of [-1, 1]) {
-    addCollisionBox(side * 3.35, castleZ + gateZ, 1.25, 1.1, 0.12, 0, { maxY: wallMaxY, solidWall: true });
-    addCollisionBox(side * 4.85, castleZ + gateZ, 2.7, 1.12, 0.12, 0, { maxY: wallMaxY, solidWall: true });
-    addCollisionBox(side * 4.75, castleZ - castleD * 0.5, 2.3, 0.92, 0.12, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 3.35, castleZ + gateZ, 1.55, 1.35, 0.24, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 4.85, castleZ + gateZ, 3.05, 1.35, 0.24, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 4.75, castleZ - castleD * 0.5, 2.65, 1.18, 0.24, 0, { maxY: wallMaxY, solidWall: true });
   }
   addCollisionBox(0, castleZ + castleD * 0.18, 3.1, 3.1, 0.06, 0, { minY: landY, maxY: landY + 2.0 });
-  addCollisionBox(tableX, castleZ + tableZ, 8.7, 5.5, 0.08, 0, { minY: landY, maxY: landY + 1.85, solidWall: true });
+  addCollisionBox(tableX, castleZ + tableZ, 8.8, 5.6, 0.14, 0, { minY: landY - 0.2, maxY: landY + 1.85 });
+  tableFurniturePlacements.forEach(([kind, x, z]) => {
+    const w = kind === "candelabra" ? 1.05 : kind === "chest" ? 1.28 : 1.1;
+    const d = kind === "candelabra" ? 0.75 : 1.02;
+    addCollisionBox(tableX + x, castleZ + tableZ + z, w, d, 0.08, 0, { minY: landY, maxY: landY + 2.25 });
+  });
 
   for (let i = 0; i < 8; i++) {
     const angle = i * (Math.PI * 2 / 8) + 0.28;
@@ -3220,6 +3419,7 @@ function makeForgeIsland(data, group, radius, accent) {
     tree.scale.setScalar(0.88 + Math.random() * 0.38);
     group.add(tree);
     obstacles.push({ x: data.x + x, z: data.z + z, r: 1.45 * tree.scale.x });
+    addCollisionBox(x, z, 1.55 * tree.scale.x, 1.55 * tree.scale.x, 0.18, 0, { maxY: landY + 7.2 * tree.scale.x, solidWall: true });
   }
 
   const label = makeLabel(islandName(data.name));
@@ -11353,22 +11553,46 @@ ui.tabs.forEach((tab) => tab.addEventListener("click", () => {
 
 function setupNameGate() {
   if (!ui.nameGate || !ui.nameForm || !ui.nameInput) return;
-  const joinGame = (event = null, forcedName = "", forcedToken = "") => {
+  const sendHello = () => {
+    const hello = { type: "hello", player: multiplayerPayload(), account: accountPayload() };
+    const progress = accountProgressSnapshot({ accountSave: true });
+    if (progress) hello.progress = progress;
+    sendMultiplayer(hello);
+  };
+  const joinGame = (event = null, forcedName = "", forcedToken = "", forcedAccount = "", forcedPassword = "", forcedAccountMode = "") => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (ui.nameGate.classList.contains("hidden")) return;
     if (forcedName) ui.nameInput.value = forcedName;
     if (forcedToken && ui.developerTokenInput) ui.developerTokenInput.value = forcedToken;
+    if (forcedAccount && ui.accountNameInput) ui.accountNameInput.value = forcedAccount;
+    if (forcedPassword && ui.accountPasswordInput) ui.accountPasswordInput.value = forcedPassword;
+    if (forcedAccountMode && ui.accountModeInput) setAccountMode(forcedAccountMode);
     const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
-    if (!nextName) {
+    const token = ui.developerTokenInput?.value?.trim() || "";
+    const accountName = ui.accountNameInput?.value?.trim().replace(/\s+/g, " ").slice(0, 24) || "";
+    const accountPassword = ui.accountPasswordInput?.value || "";
+    const rawAccountMode = ui.accountModeInput?.value || state.accountMode || "";
+    const accountMode = accountName && accountPassword ? (rawAccountMode || "signin") : "";
+    const resolvedName = nextName || (accountMode ? accountName.slice(0, 18) : "");
+    if (!resolvedName) {
       ui.nameInput.focus();
       return;
     }
-    const token = ui.developerTokenInput?.value?.trim() || "";
-    state.name = nextName;
+    if ((rawAccountMode === "create" || rawAccountMode === "signin") && (!accountName || !accountPassword)) {
+      setAccountMode(rawAccountMode, "Enter an account name and password.");
+      if (!accountName) ui.accountNameInput?.focus();
+      else ui.accountPasswordInput?.focus();
+      return;
+    }
+    state.name = resolvedName;
     state.devToken = token;
-    state.infiniteGold = token === "GoldDigger";
-    state.infiniteLevels = token === "GoldDigger";
+    state.accountName = accountName;
+    state.accountPassword = accountPassword;
+    state.accountMode = accountMode === "create" ? "create" : accountMode === "signin" ? "signin" : "";
+    state.accountAuthed = false;
+    state.infiniteGold = token.toLowerCase() === "golddigger";
+    state.infiniteLevels = token.toLowerCase() === "golddigger";
     if (state.infiniteGold) state.gold = 999999999;
     if (state.infiniteLevels) {
       state.level = Math.max(state.level, 999999);
@@ -11376,14 +11600,18 @@ function setupNameGate() {
       state.xp = 0;
     }
     state.joined = true;
-    saveValue("islandwakeName", nextName);
+    saveValue("islandwakeName", resolvedName);
+    if (accountName) saveValue("islandwakeAccount", accountName);
+    if (state.accountMode) setAccountMode(state.accountMode, hasGoldDiggerPowers() ? "Contacting account server. GoldDigger progress will not save." : "Contacting account server...");
     ui.nameGate.classList.add("hidden");
-    sendMultiplayer({ type: "hello", player: multiplayerPayload() });
+    sendHello();
     updateHud();
     showBeginnerQuestion();
   };
-  window.islandwakeJoin = (name = "", token = "") => joinGame(null, String(name || ""), String(token || ""));
+  window.islandwakeJoin = (name = "", token = "", account = "", password = "", accountMode = "") => joinGame(null, String(name || ""), String(token || ""), String(account || ""), String(password || ""), String(accountMode || ""));
   ui.nameInput.value = state.name;
+  if (ui.accountNameInput) ui.accountNameInput.value = state.accountName;
+  setAccountMode("");
   ui.nameGate.classList.remove("hidden");
   setTimeout(() => {
     ui.nameInput.focus();
@@ -11400,10 +11628,26 @@ function setupNameGate() {
   ui.nameButton?.addEventListener("click", joinGame);
   ui.nameForm.addEventListener("submit", joinGame);
   ui.nameGate.addEventListener("click", (event) => {
-    const button = event.target?.closest?.("button");
-    if (!button || !ui.nameGate.contains(button)) return;
+    const button = event.target?.closest?.("#setSailButton, #accountSubmit");
+    if (!button) return;
     joinGame(event);
   }, true);
+  ui.accountOpenButtons?.forEach?.((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const mode = button.dataset.accountOpen || "signin";
+      setAccountMode(mode);
+      if (!ui.accountNameInput?.value?.trim()) ui.accountNameInput?.focus();
+      else if (!ui.accountPasswordInput?.value) ui.accountPasswordInput?.focus();
+    });
+  });
+  ui.accountClose?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAccountMode("");
+    ui.nameInput?.focus();
+  });
   ui.nameInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     joinGame(event);
@@ -11412,10 +11656,21 @@ function setupNameGate() {
     if (event.key !== "Enter") return;
     joinGame(event);
   });
+  ui.accountNameInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    joinGame(event);
+  });
+  ui.accountPasswordInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    joinGame(event);
+  });
   if (window.ISLANDWAKE_PENDING_JOIN) {
-    joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN), String(window.ISLANDWAKE_PENDING_TOKEN || ""));
+    joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN), String(window.ISLANDWAKE_PENDING_TOKEN || ""), String(window.ISLANDWAKE_PENDING_ACCOUNT || ""), String(window.ISLANDWAKE_PENDING_PASSWORD || ""), String(window.ISLANDWAKE_PENDING_ACCOUNT_MODE || ""));
     window.ISLANDWAKE_PENDING_JOIN = "";
     window.ISLANDWAKE_PENDING_TOKEN = "";
+    window.ISLANDWAKE_PENDING_ACCOUNT = "";
+    window.ISLANDWAKE_PENDING_PASSWORD = "";
+    window.ISLANDWAKE_PENDING_ACCOUNT_MODE = "";
   }
 }
 
@@ -15163,6 +15418,28 @@ function handleMultiplayerMessage(message) {
     multiplayer.networkId = message.id;
   } else if (message.type === "fastWelcome") {
     multiplayer.fastReady = true;
+  } else if (message.type === "accountLoaded") {
+    state.accountAuthed = true;
+    state.accountMode = "signin";
+    if (message.progress) {
+      applyAccountProgress(message.progress);
+      toast(`Account loaded: ${message.account || state.accountName}.`);
+    } else {
+      setAccountMode("signin", `Signed in as ${message.account || state.accountName}. Progress will save.`);
+      toast(`Account ready: ${message.account || state.accountName}.`);
+    }
+  } else if (message.type === "accountSaved") {
+    state.accountAuthed = true;
+  } else if (message.type === "accountError") {
+    state.accountAuthed = false;
+    const reason = message.reason || "Account could not be loaded.";
+    setAccountMode(state.accountMode, reason);
+    if (ui.nameGate && state.accountName) {
+      ui.nameGate.classList.remove("hidden");
+      ui.accountPasswordInput?.focus();
+      ui.accountPasswordInput?.select?.();
+    }
+    toast(reason);
   } else if (message.type === "state") {
     upsertRemotePlayer(message.player);
   } else if (message.type === "motion") {
@@ -15390,7 +15667,12 @@ function setupMultiplayer(reconnecting = false) {
       multiplayer.channel.close();
       multiplayer.channel = null;
     }
-    if (state.joined) sendMultiplayer({ type: "hello", player: multiplayerPayload() });
+    if (state.joined) {
+      const hello = { type: "hello", player: multiplayerPayload(), account: accountPayload() };
+      const progress = accountProgressSnapshot({ accountSave: true });
+      if (progress) hello.progress = progress;
+      sendMultiplayer(hello);
+    }
     toast(reconnecting ? "Reconnected to multiplayer waters." : "Connected to multiplayer waters.");
   });
 
@@ -15479,10 +15761,16 @@ function publishMultiplayer() {
   if (clock.elapsedTime - multiplayer.lastSent >= MULTIPLAYER_STATE_INTERVAL) {
     multiplayer.lastSent = clock.elapsedTime;
     const player = multiplayerPayload();
-    sendMultiplayer({
+    const message = {
       type: "state",
       player: { ...player, id: playerId },
-    });
+    };
+    if (accountPayload() && clock.elapsedTime >= nextAccountProgressAt) {
+      nextAccountProgressAt = clock.elapsedTime + ACCOUNT_PROGRESS_INTERVAL;
+      const progress = accountProgressSnapshot({ accountSave: true });
+      if (progress) message.progress = progress;
+    }
+    sendMultiplayer(message);
   }
   remotePlayers.forEach((remote, id) => {
     if (clock.elapsedTime - remote.updated > 5) {

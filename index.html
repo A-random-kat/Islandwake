@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=231" />
+  <link rel="stylesheet" href="styles.css?v=235" />
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -13,11 +13,38 @@
     <div id="nameForm" class="name-card">
       <span data-i18n="captainName">Captain name</span>
       <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
+      <div class="account-mini">
+        <span>Account save</span>
+        <div>
+          <button id="openSignup" type="button" data-account-open="create">Sign up</button>
+          <button id="openLogin" type="button" data-account-open="signin">Log in</button>
+        </div>
+      </div>
       <span data-i18n="developerToken">Developer token</span>
       <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Optional" data-i18n-placeholder="optional" />
       <span data-i18n="language">Language</span>
       <select id="languageSelect" class="language-select" aria-label="Language"></select>
       <button id="setSailButton" type="button" data-i18n="setSail">Set sail</button>
+    </div>
+    <div id="accountPanel" class="name-card account-card hidden">
+      <header>
+        <div>
+          <span>Account</span>
+          <strong id="accountPanelTitle">Log in</strong>
+        </div>
+        <button id="accountClose" class="account-close" type="button" title="Back">x</button>
+      </header>
+      <label>
+        <span>Username</span>
+        <input id="accountNameInput" maxlength="24" autocomplete="username" placeholder="Account name" />
+      </label>
+      <label>
+        <span>Password</span>
+        <input id="accountPasswordInput" maxlength="48" autocomplete="current-password" type="password" placeholder="Password" />
+      </label>
+      <input id="accountModeInput" type="hidden" value="" />
+      <button id="accountSubmit" type="button">Log in</button>
+      <div id="accountStatus" class="account-status">Log in to load your saved ships, gold, level, and items.</div>
     </div>
   </div>
 
@@ -159,28 +186,84 @@
       function pendingJoin(event) {
         const gate = document.querySelector("#nameGate");
         if (!gate || gate.classList.contains("hidden")) return;
-        if (event.type === "click" && !event.target.closest("#setSailButton, #nameForm button")) return;
+        if (event.type === "click" && !event.target.closest("#setSailButton, #accountSubmit")) return;
         if (event.type === "keydown" && event.key !== "Enter") return;
         const input = document.querySelector("#captainNameInput");
         const tokenInput = document.querySelector("#developerTokenInput");
+        const accountInput = document.querySelector("#accountNameInput");
+        const passwordInput = document.querySelector("#accountPasswordInput");
+        const modeInput = document.querySelector("#accountModeInput");
         const name = input?.value?.trim().replace(/\s+/g, " ").slice(0, 18);
-        if (!name) return;
         const token = tokenInput?.value?.trim() || "";
+        const account = accountInput?.value?.trim() || "";
+        const password = passwordInput?.value || "";
+        const rawAccountMode = modeInput?.value || "";
+        const accountPanelOpen = !document.querySelector("#accountPanel")?.classList.contains("hidden");
+        if (accountPanelOpen && (!account || !password)) {
+          const status = document.querySelector("#accountStatus");
+          if (status) status.textContent = "Enter an account name and password.";
+          if (!account) accountInput?.focus();
+          else passwordInput?.focus();
+          event.preventDefault();
+          return;
+        }
+        const accountMode = account && password ? (rawAccountMode || "signin") : "";
+        const finalName = name || (accountMode ? account.slice(0, 18) : "");
+        if (!finalName) return;
         event.preventDefault();
-        window.ISLANDWAKE_PENDING_JOIN = name;
+        window.ISLANDWAKE_PENDING_JOIN = finalName;
         window.ISLANDWAKE_PENDING_TOKEN = token;
+        window.ISLANDWAKE_PENDING_ACCOUNT = accountMode ? account : "";
+        window.ISLANDWAKE_PENDING_PASSWORD = accountMode ? password : "";
+        window.ISLANDWAKE_PENDING_ACCOUNT_MODE = accountMode;
         try {
-          localStorage.setItem("islandwakeName", name);
+          localStorage.setItem("islandwakeName", finalName);
+          if (accountMode) localStorage.setItem("islandwakeAccount", account);
         } catch {}
-        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(name, token);
+        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(finalName, token, accountMode ? account : "", accountMode ? password : "", accountMode);
+      }
+      function showCaptainMenu() {
+        document.querySelector("#nameForm")?.classList.remove("hidden");
+        document.querySelector("#accountPanel")?.classList.add("hidden");
+        const modeInput = document.querySelector("#accountModeInput");
+        if (modeInput) modeInput.value = "";
+      }
+      function setAccountMode(mode) {
+        const input = document.querySelector("#accountNameInput");
+        const password = document.querySelector("#accountPasswordInput");
+        const modeInput = document.querySelector("#accountModeInput");
+        const status = document.querySelector("#accountStatus");
+        const title = document.querySelector("#accountPanelTitle");
+        const submit = document.querySelector("#accountSubmit");
+        document.querySelector("#nameForm")?.classList.add("hidden");
+        document.querySelector("#accountPanel")?.classList.remove("hidden");
+        if (modeInput) modeInput.value = mode === "create" ? "create" : "signin";
+        if (title) title.textContent = mode === "create" ? "Create account" : "Log in";
+        if (submit) submit.textContent = mode === "create" ? "Create account" : "Log in";
+        if (status) status.textContent = mode === "create" ? "Create a new account to save legit progress." : "Log in to load your saved ships, gold, level, and items.";
+        if (!input?.value?.trim()) input?.focus();
+        else if (!password?.value) password?.focus();
       }
       document.addEventListener("click", pendingJoin, true);
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-account-open]");
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setAccountMode(button.dataset.accountOpen || "signin");
+      }, true);
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest("#accountClose")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        showCaptainMenu();
+      }, true);
       document.addEventListener("submit", pendingJoin, true);
       document.addEventListener("keydown", (event) => {
-        if (event.target?.id === "captainNameInput" || event.target?.id === "developerTokenInput") pendingJoin(event);
+        if (event.target?.id === "captainNameInput" || event.target?.id === "developerTokenInput" || event.target?.id === "accountNameInput" || event.target?.id === "accountPasswordInput") pendingJoin(event);
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=231"></script>
+  <script type="module" src="game.js?v=235"></script>
 </body>
 </html>

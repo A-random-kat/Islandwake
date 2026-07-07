@@ -5,6 +5,7 @@ const crypto = require("crypto");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4174);
+const accountFilePath = path.join(root, "islandwake-accounts.json");
 const clients = new Map();
 const fastClients = new Map();
 const pendingShotBroadcasts = new Map();
@@ -103,6 +104,7 @@ let kraken = null;
 let leviathan = null;
 let cursedCompassOwner = null;
 const leviathanCooldowns = new Map();
+const accountSaveThrottleMs = 5000;
 
 function spreadIslandCenter(island) {
   return {
@@ -213,6 +215,168 @@ const SHIP_SIDE_CANNONS = {
   eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
   grandfrigate: 7, superfrigate: 9, windrunner: 6, firstrate: 8, manowar: 7,
 };
+
+function loadAccountStore() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(accountFilePath, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.accounts && typeof parsed.accounts === "object") return parsed;
+  } catch {
+    // The file is created on the first account save.
+  }
+  return { version: 1, accounts: {} };
+}
+
+const accountStore = loadAccountStore();
+let accountWriteQueued = false;
+
+function queueAccountWrite() {
+  if (accountWriteQueued) return;
+  accountWriteQueued = true;
+  setTimeout(() => {
+    accountWriteQueued = false;
+    fs.writeFile(accountFilePath, JSON.stringify(accountStore, null, 2), () => {});
+  }, 250);
+}
+
+function cleanAccountName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").replace(/[<>]/g, "").slice(0, 24);
+}
+
+function accountKey(value) {
+  return cleanAccountName(value).toLowerCase();
+}
+
+function hashPassword(password, salt) {
+  return crypto.createHash("sha256").update(`${salt}:${password}`).digest("hex");
+}
+
+function accountError(socket, reason) {
+  send(socket, { type: "accountError", reason });
+}
+
+function cleanSavedNumber(value, fallback = 0, min = 0, max = 999999999) {
+  const next = Number(value);
+  return Number.isFinite(next) ? clamp(Math.floor(next), min, max) : fallback;
+}
+
+function cleanSavedCounts(source, allowed, max = 9999) {
+  const result = {};
+  if (!source || typeof source !== "object") return result;
+  allowed.forEach((key) => {
+    const count = cleanSavedNumber(source[key], 0, 0, max);
+    if (count > 0) result[key] = count;
+  });
+  return result;
+}
+
+function sanitizeSavedShipRecord(source = {}, fallbackType = "skiff") {
+  const type = String(source?.type || source?.shipType || fallbackType || "skiff").replace(/[^a-z0-9_-]/gi, "").slice(0, 32) || "skiff";
+  const maxHp = shipStatsById.get(type)?.hp || 5000;
+  return {
+    type,
+    hp: cleanSavedNumber(source?.hp, maxHp, 1, maxHp),
+    dockedAt: String(source?.dockedAt || "").replace(/[<>]/g, "").slice(0, 40),
+    x: Number.isFinite(Number(source?.x)) ? Number(source.x) : 0,
+    z: Number.isFinite(Number(source?.z)) ? Number(source.z) : 0,
+    rotation: Number.isFinite(Number(source?.rotation)) ? Number(source.rotation) : 0,
+    mode: source?.mode === "land" && source?.dockedAt ? "land" : "ship",
+  };
+}
+
+function sanitizeProgress(progress = {}) {
+  const activeShip = sanitizeSavedShipRecord(progress.activeShip || progress, progress.shipType || "skiff");
+  const shipType = activeShip.type;
+  const maxHp = shipStatsById.get(shipType)?.hp || 5000;
+  const ammoTypes = ["grapeshot", "hotshot", "harpoon", "airburst", "rocketburst"];
+  const cargoTypes = ["Silk", "Spice", "Iron", "Tea", "Pearls", "Whale Blubber"];
+  const rawSlots = Array.isArray(progress.ammoSlots) ? progress.ammoSlots.slice(0, 5) : ["basic", "grapeshot", "hotshot", "harpoon", "airburst"];
+  const ammoSlots = rawSlots.map((id) => (["basic", ...ammoTypes].includes(id) ? id : null));
+  ammoSlots[0] = "basic";
+  while (ammoSlots.length < 5) ammoSlots.push(null);
+  const fleetShips = (Array.isArray(progress.fleetShips) ? progress.fleetShips : []).slice(0, 12).map((ship) => sanitizeSavedShipRecord(ship));
+  return {
+    name: String(progress.name || "Captain").replace(/[<>]/g, "").slice(0, 24),
+    level: cleanSavedNumber(progress.level, 1, 1, 100),
+    xp: cleanSavedNumber(progress.xp, 0, 0, 99999999),
+    gold: cleanSavedNumber(progress.gold, 240, 0, 999999999),
+    points: cleanSavedNumber(progress.points, 0, 0, 999999),
+    shipType,
+    hp: cleanSavedNumber(progress.hp, maxHp, 1, maxHp),
+    cargo: cleanSavedCounts(progress.cargo, cargoTypes, 999),
+    upgrades: {
+      damage: cleanSavedNumber(progress.upgrades?.damage, 0, 0, 100),
+      fireRate: cleanSavedNumber(progress.upgrades?.fireRate, 0, 0, maxReloadUpgrades),
+      range: cleanSavedNumber(progress.upgrades?.range, 0, 0, 100),
+    },
+    ammo: cleanSavedCounts(progress.ammo, ammoTypes, 9999),
+    ammoSlots,
+    selectedAmmo: ["basic", ...ammoTypes].includes(progress.selectedAmmo) ? progress.selectedAmmo : "basic",
+    balloonStock: cleanSavedNumber(progress.balloonStock, 0, 0, 5),
+    maxBalloons: 5,
+    items: { ...(progress.items && typeof progress.items === "object" ? progress.items : {}), cursedCompass: false },
+    mode: activeShip.mode,
+    dockedAt: activeShip.dockedAt,
+    activeShip,
+    fleetShips,
+    savedAt: Date.now(),
+  };
+}
+
+function authenticateAccount(socket, account, progress) {
+  const displayName = cleanAccountName(account?.name);
+  const key = accountKey(displayName);
+  const password = String(account?.password || "");
+  const mode = account?.mode === "create" ? "create" : "signin";
+  socket.accountNoSave = Boolean(account?.noSave);
+  if (!key && !password) return;
+  if (!key || password.length < 1) {
+    accountError(socket, "Enter both an account name and password, or leave both blank for guest mode.");
+    return;
+  }
+  let entry = accountStore.accounts[key];
+  if (!entry) {
+    if (mode !== "create") {
+      accountError(socket, "Account not found. Use Create account first.");
+      return;
+    }
+    const salt = crypto.randomBytes(16).toString("hex");
+    entry = {
+      name: displayName,
+      salt,
+      hash: hashPassword(password, salt),
+      progress: sanitizeProgress(progress),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    accountStore.accounts[key] = entry;
+    queueAccountWrite();
+  } else if (mode === "create") {
+    accountError(socket, "That account already exists. Use Sign in.");
+    return;
+  } else if (entry.hash !== hashPassword(password, entry.salt)) {
+    accountError(socket, "Wrong account password.");
+    return;
+  }
+  socket.accountKey = key;
+  socket.accountName = entry.name || displayName;
+  socket.lastAccountSaveAt = Date.now();
+  send(socket, { type: "accountLoaded", account: socket.accountName, progress: entry.progress || null });
+  return entry.progress || null;
+}
+
+function saveAccountProgress(socket, progress, force = false) {
+  if (!socket?.accountKey) return;
+  if (socket.accountNoSave) return;
+  const entry = accountStore.accounts[socket.accountKey];
+  if (!entry) return;
+  const now = Date.now();
+  if (!force && now - Number(socket.lastAccountSaveAt || 0) < accountSaveThrottleMs) return;
+  entry.progress = sanitizeProgress(progress || socket.player || {});
+  entry.updatedAt = now;
+  socket.lastAccountSaveAt = now;
+  queueAccountWrite();
+  if (force) send(socket, { type: "accountSaved" });
+}
 
 const buildItemTypes = new Set(["flag", "floor", "wall", "cornerWall", "door", "roof", "table"]);
 const buildItemPrices = { flag: 200, floor: 20, wall: 20, cornerWall: 20, door: 20, roof: 20, table: 20 };
@@ -3321,6 +3485,11 @@ const server = http.createServer((req, res) => {
     res.end("Forbidden");
     return;
   }
+  if (path.basename(filePath) === path.basename(accountFilePath)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404);
@@ -3388,6 +3557,7 @@ server.on("upgrade", (req, socket) => {
 
 function leave(socket) {
   if (!clients.has(socket.id)) return;
+  saveAccountProgress(socket, socket.lastProgress || socket.player, true);
   clients.delete(socket.id);
   const fast = fastClients.get(socket.id);
   if (fast) {
@@ -3579,6 +3749,23 @@ function handleMessage(socket, text) {
     const now = Date.now();
     const previous = socket.player;
     const next = { ...message.player, id: socket.id, updated: now };
+    let loadedProgress = null;
+    if (message.type === "hello") loadedProgress = authenticateAccount(socket, message.account, message.progress);
+    if (message.progress && typeof message.progress === "object") socket.lastProgress = message.progress;
+    if (loadedProgress) {
+      const active = loadedProgress.activeShip || loadedProgress;
+      next.name = loadedProgress.name || next.name;
+      next.level = loadedProgress.level || next.level;
+      next.gold = loadedProgress.gold ?? next.gold;
+      next.shipType = active.type || loadedProgress.shipType || next.shipType;
+      next.hp = active.hp || loadedProgress.hp || next.hp;
+      next.x = Number.isFinite(Number(active.x)) ? Number(active.x) : next.x;
+      next.z = Number.isFinite(Number(active.z)) ? Number(active.z) : next.z;
+      next.rotation = Number.isFinite(Number(active.rotation)) ? Number(active.rotation) : next.rotation;
+      next.mode = active.mode || loadedProgress.mode || next.mode;
+      next.dockedAt = active.dockedAt || loadedProgress.dockedAt || next.dockedAt;
+      next.fleetShips = Array.isArray(loadedProgress.fleetShips) ? loadedProgress.fleetShips : next.fleetShips;
+    }
     const nextX = Number(next.x);
     const nextZ = Number(next.z);
     const prevX = Number(previous?.x);
@@ -3606,6 +3793,7 @@ function handleMessage(socket, text) {
       next.turtleFire = wantsTurtleFire && Number(socket.turtleFireActiveUntil || 0) > now;
     }
     socket.player = next;
+    if (message.type === "state" && message.progress) saveAccountProgress(socket, message.progress);
     broadcast({ type: "state", player: socket.player }, socket);
     if (message.type === "hello") {
       for (const other of clients.values()) {
