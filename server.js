@@ -47,7 +47,7 @@ const krakenMaxHp = 10000;
 const krakenRadius = 25;
 const krakenAttackRadius = 62;
 const krakenSpeed = 1;
-const krakenAttackDamage = 999999;
+const krakenAttackDamage = 2980;
 const krakenBotFleeRadius = krakenAttackRadius + 46;
 const crateDropMultiplier = 1.2;
 const balloonBombDamage = 640;
@@ -200,9 +200,14 @@ const shipStats = [
   { id: "grandfrigate", hp: 3150, speed: 18, tier: 6 },
   { id: "superfrigate", hp: 3500, speed: 15, tier: 6 },
   { id: "windrunner", hp: 3000, speed: 28, tier: 6 },
+  { id: "tidebreaker", hp: 3200, speed: 26, tier: 6 },
   { id: "manowar", hp: 3360, speed: 11, tier: 6 },
   { id: "firstrate", hp: 3960, speed: 9, tier: 6 },
+  { id: "manofwar", hp: 4200, speed: 9, tier: 6 },
+  { id: "treasureship", hp: 4375, speed: 9, tier: 6 },
 ];
+const botBlockedShipIds = new Set(["modernschooner", "superfrigate", "tidebreaker", "manofwar", "treasureship"]);
+const botShipPool = shipStats.filter((ship) => !botBlockedShipIds.has(ship.id));
 
 const shipStatsById = new Map(shipStats.map((ship) => [ship.id, ship]));
 const SHIP_SIDE_CANNONS = {
@@ -213,7 +218,7 @@ const SHIP_SIDE_CANNONS = {
   fluyt: 3, polacre: 3, bombketch: 3, brig: 3, privateerbrig: 4, raiderxebec: 4, barque: 3, storm: 3, corvette: 3, whaler: 3,
   ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
   eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
-  grandfrigate: 7, superfrigate: 9, windrunner: 6, firstrate: 8, manowar: 7,
+  grandfrigate: 7, superfrigate: 9, windrunner: 6, tidebreaker: 8, firstrate: 8, manowar: 7, manofwar: 10, treasureship: 9,
 };
 
 function loadAccountStore() {
@@ -450,7 +455,7 @@ const shipRegen = {
   fluyt: 3, polacre: 2, brig: 3, storm: 2, bombketch: 3, barque: 3, corvette: 3,
   sixthrate: 3, frigate: 3, postship: 3, merchantman: 4, carrack: 4,
   galleon: 5, rocketeer: 5, eastindiaman: 4, treasure: 5, whaler: 2, ballooner: 2, razee: 4,
-  turtle: 4, fourthrate: 5, grandfrigate: 6, superfrigate: 7, manowar: 6, windrunner: 5, firstrate: 8,
+  turtle: 4, fourthrate: 5, grandfrigate: 6, superfrigate: 7, manowar: 6, windrunner: 5, tidebreaker: 7, firstrate: 8, manofwar: 9, treasureship: 7,
 };
 
 const playerShipTiers = {
@@ -492,6 +497,9 @@ const playerShipTiers = {
   grandfrigate: 6,
   superfrigate: 6,
   windrunner: 6,
+  tidebreaker: 6,
+  manofwar: 6,
+  treasureship: 6,
 };
 
 const shipPhysics = {
@@ -545,17 +553,20 @@ const shipPhysics = {
   galleon: { radius: 4.6, weight: 206 },
   rocketeer: { radius: 4.6, weight: 206 },
   eastindiaman: { radius: 4.7, weight: 219 },
-  treasure: { radius: 6.1, weight: 320 },
+  treasure: { radius: 7.65, weight: 360 },
   razee: { radius: 4.6, weight: 195 },
   whaler: { radius: 4.6, weight: 205 },
   ballooner: { radius: 4.1, weight: 160 },
   turtle: { radius: 4.9, weight: 255 },
-  grandfrigate: { radius: 5, weight: 255 },
-  superfrigate: { radius: 5.5, weight: 292 },
-  windrunner: { radius: 4.8, weight: 210 },
+  grandfrigate: { radius: 5.15, weight: 270 },
+  superfrigate: { radius: 5.95, weight: 315 },
+  windrunner: { radius: 5.1, weight: 230 },
+  tidebreaker: { radius: 6.1, weight: 285 },
   fourthrate: { radius: 4.9, weight: 222 },
   manowar: { radius: 5.2, weight: 250 },
-  firstrate: { radius: 5.6, weight: 290 },
+  firstrate: { radius: 5.7, weight: 310 },
+  manofwar: { radius: 6.4, weight: 365 },
+  treasureship: { radius: 8.85, weight: 450 },
 };
 
 const types = {
@@ -792,8 +803,11 @@ function makeKraken() {
 kraken = makeKraken();
 
 function randomShip() {
-  const botShips = shipStats.filter((ship) => ship.id !== "modernschooner");
-  return botShips[Math.floor(Math.random() * botShips.length)];
+  return botShipPool[Math.floor(Math.random() * botShipPool.length)] || shipStats[0];
+}
+
+function botShipAllowed(type) {
+  return !botBlockedShipIds.has(String(type || "").trim());
 }
 
 function normalizeShipType(type) {
@@ -3023,6 +3037,10 @@ function updateWorld() {
   const dt = 0.1;
   const now = Date.now();
   for (const bot of bots) {
+    if (!botShipAllowed(bot.shipType)) {
+      resetBot(bot);
+      continue;
+    }
     if (updateBotFire(bot, dt)) continue;
     const botTurtleFireActive = updateBotTurtleFire(bot, dt, now);
     bot.hp = clamp(bot.hp + (shipRegen[bot.shipType] || Math.max(1, Math.min(8, Math.round((bot.tier || 1) * 0.8)))) * dt, 0, bot.maxHp);

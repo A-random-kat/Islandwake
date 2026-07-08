@@ -475,8 +475,12 @@ const shipCatalog = [
   { id: "superfrigate", name: "Super Frigate", price: 50000, hp: 3500, armor: 0.2, speed: 15, regen: 7.0, color: 0x6f86c9, model: "frigate" },
   { id: "manowar", name: "Ship of the Line", price: 16800, hp: 1120, armor: 0.2, speed: 11, regen: 3.6, color: 0xd8b24a, model: "manowar" },
   { id: "windrunner", name: "Windrunner", price: 31500, hp: 1040, armor: 0.04, speed: 28, regen: 4.2, color: 0xe0b24a, model: "clipper" },
+  { id: "tidebreaker", name: "Tidebreaker", price: 50000, hp: 3200, armor: 0.1, speed: 26, regen: 7.0, color: 0x60c7d8, model: "clipper" },
   { id: "firstrate", name: "First Rate", price: 20500, hp: 1320, armor: 0.2, speed: 9, regen: 4.0, color: 0xc9b05a, model: "manowar" },
+  { id: "manofwar", name: "Man o' War", price: 50000, hp: 4200, armor: 0.22, speed: 9, regen: 9.0, color: 0xd8c05a, model: "manowar" },
+  { id: "treasureship", name: "Treasure Ship", price: 50000, hp: 4375, armor: 0.2, speed: 9, regen: 7.0, color: 0xe6bc48, model: "treasure" },
 ];
+const BOT_BLOCKED_SHIP_IDS = new Set(["modernschooner", "superfrigate", "tidebreaker", "manofwar", "treasureship"]);
 
 const shipBalance = {
   skiff: { name: "Skiff", price: 0, hp: 435, armor: 0, speed: 15, regen: 1, capacity: 4, hitbox: 2.1 },
@@ -539,7 +543,10 @@ const shipBalance = {
   superfrigate: { name: "Super Frigate", price: 50000, fixedPrice: true, hp: 3500, armor: 0.2, speed: 15, regen: 7, capacity: 25, hitbox: 5.5, weight: 292 },
   manowar: { name: "Ship of the Line", price: 26500, hp: 3360, armor: 0.19, speed: 11, regen: 6, capacity: 24, hitbox: 5.2 },
   windrunner: { name: "Windrunner", price: 31500, fixedPrice: true, hp: 3000, armor: 0, speed: 28, regen: 5, capacity: 18, hitbox: 4.8, weight: 210 },
+  tidebreaker: { name: "Tidebreaker", price: 50000, fixedPrice: true, hp: 3200, armor: 0.1, speed: 26, regen: 7, capacity: 20, hitbox: 5.8, weight: 255 },
   firstrate: { name: "First Rate", price: 33500, hp: 3960, armor: 0.2, speed: 9, regen: 8, capacity: 26, hitbox: 5.6 },
+  manofwar: { name: "Man o' War", price: 50000, fixedPrice: true, hp: 4200, armor: 0.22, speed: 9, regen: 9, capacity: 26, hitbox: 6.6, weight: 345 },
+  treasureship: { name: "Treasure Ship", price: 50000, fixedPrice: true, hp: 4375, armor: 0.2, speed: 9, regen: 7, capacity: 64, hitbox: 7.0, weight: 390 },
 };
 
 const SHIP_SIDE_CANNONS = {
@@ -550,7 +557,7 @@ const SHIP_SIDE_CANNONS = {
   fluyt: 3, polacre: 3, bombketch: 3, brig: 3, privateerbrig: 4, raiderxebec: 4, barque: 3, storm: 3, corvette: 3, whaler: 3,
   ballooner: 3, turtle: 5, frigate: 4, postship: 4, sixthrate: 4, carrack: 4, merchantman: 5,
   eastindiaman: 5, galleon: 5, rocketeer: 5, razee: 5, treasure: 7, fourthrate: 6,
-  grandfrigate: 7, superfrigate: 9, windrunner: 6, firstrate: 8, manowar: 7,
+  grandfrigate: 7, superfrigate: 9, windrunner: 6, tidebreaker: 8, firstrate: 8, manowar: 7, manofwar: 10, treasureship: 9,
 };
 
 const SHIP_VISUAL_BASE_SCALE = {
@@ -559,9 +566,9 @@ const SHIP_VISUAL_BASE_SCALE = {
   dhow: 0.88, dogger: 0.88, sloop: 0.9, modernschooner: 0.86, lugger: 0.9, tartane: 0.9,
   storm: 0.92, corsairsloop: 1.02, brig: 1.12, privateerbrig: 1.18, raiderxebec: 1.2, brigantine: 1.18, packet: 1.05, barquentine: 1.12,
   barque: 1.15, bombketch: 1.22, turtle: 1.22, corvette: 1.16, frigate: 1.22,
-  whaler: 1.36, ballooner: 1.18, razee: 1.28, grandfrigate: 1.38, superfrigate: 1.46, windrunner: 1.34,
+  whaler: 1.36, ballooner: 1.18, razee: 1.28, grandfrigate: 1.38, superfrigate: 1.535, windrunner: 1.34, tidebreaker: 1.608,
   galleon: 1.28, rocketeer: 1.28, merchantman: 1.28, eastindiaman: 1.34, carrack: 1.34,
-  treasure: 1.52, fourthrate: 1.38, manowar: 1.42, firstrate: 1.5, ironclad: 1.48,
+  treasure: 1.52, treasureship: 1.748, fourthrate: 1.38, manowar: 1.42, firstrate: 1.5, manofwar: 1.7625, ironclad: 1.48,
 };
 
 const DEFAULT_SHIP_HULL_DIMENSIONS = [6.5, 2.7];
@@ -575,16 +582,17 @@ const SHIP_HULL_DIMENSIONS = {
   cog: [6.2, 3.05], hoy: [5.9, 2.85], dogger: [6.6, 2.2], xebec: [8.3, 2.4],
   tartane: [7.2, 2.15], caravel: [6.9, 2.65], pink: [6.6, 2.55], ketch: [6.9, 2.5],
   frigate: [8.2, 2.9], whaler: [8.3, 3.05], ballooner: [8.0, 3.05], corvette: [7.8, 2.65],
-  razee: [8.5, 3.0], grandfrigate: [8.9, 3.18], superfrigate: [9.6, 3.55], windrunner: [9.4, 2.55], carrack: [7.4, 3.5],
-  manowar: [8.4, 3.8], fourthrate: [8.3, 3.65], firstrate: [9.0, 4.0], longship: [8.7, 1.7],
+  razee: [8.5, 3.0], grandfrigate: [8.9, 3.18], superfrigate: [9.6, 3.55], windrunner: [9.4, 2.55], tidebreaker: [9.4, 2.75], carrack: [7.4, 3.5],
+  manowar: [8.4, 3.8], fourthrate: [8.3, 3.65], firstrate: [9.0, 4.0], manofwar: [9.0, 4.08], longship: [8.7, 1.7],
   knarr: [6.5, 2.6], lugger: [7.0, 2.15], galley: [8.8, 2.2], snow: [7.5, 2.8],
   packet: [7.8, 2.45], chassemaree: [7.6, 2.25], barquentine: [7.7, 2.55],
   polacre: [7.9, 2.45], barque: [8.0, 2.8], fluyt: [7.0, 3.4], merchantman: [7.4, 3.45],
-  eastindiaman: [7.8, 3.55], treasure: [12.0, 4.45], ironclad: [7.8, 3.7],
+  eastindiaman: [7.8, 3.55], treasure: [12.0, 4.45], treasureship: [12.0, 4.75], ironclad: [7.8, 3.7],
 };
 
 const shipVisualScaleCache = new Map();
 const shipHullDimensionCache = new Map();
+const shipHullFootprintCache = new Map();
 
 const shipLookup = {
   byId: new Map(),
@@ -672,7 +680,7 @@ function deriveFairShipPrice(ship) {
 }
 
 function keepExactShipPrice(shipId) {
-  return ["whaler", "ballooner", "windrunner", "turtle", "rocketeer", "superfrigate", "modernschooner", "corsairsloop", "privateerbrig", "raiderxebec"].includes(shipId);
+  return ["whaler", "ballooner", "windrunner", "tidebreaker", "turtle", "rocketeer", "superfrigate", "manofwar", "treasureship", "modernschooner", "corsairsloop", "privateerbrig", "raiderxebec"].includes(shipId);
 }
 
 for (const ship of shipCatalog) {
@@ -681,8 +689,12 @@ for (const ship of shipCatalog) {
   Object.assign(ship, balance);
   ship.armor = ship.id === "turtle"
     ? 0.25
-    : clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
-  ship.regen = Math.round(clamp(ship.regen, 1, 8));
+    : ship.id === "manofwar"
+      ? 0.22
+      : clamp(Math.min(ship.armor, armorCapForSpeed(ship.speed)), 0, 0.2);
+  ship.regen = ship.id === "manofwar"
+    ? 9
+    : Math.round(clamp(ship.regen, 1, 8));
   ship.price = balance.fixedPrice && keepExactShipPrice(ship.id)
     ? Math.max(balance.price, broadsidePriceFloor(ship))
     : deriveFairShipPrice(ship);
@@ -1334,6 +1346,15 @@ function broadsideVectors(rotation = 0) {
   return { forward, right, left: right.clone().multiplyScalar(-1) };
 }
 
+function shipRotationY(ship, fallback = 0) {
+  const y = Number(ship?.rotation?.y);
+  if (Number.isFinite(y)) return y;
+  const direct = Number(ship?.rotation);
+  if (Number.isFinite(direct)) return direct;
+  const safeFallback = Number(fallback);
+  return Number.isFinite(safeFallback) ? safeFallback : 0;
+}
+
 function broadsideSideForDirection(rotation, direction) {
   const flat = direction.clone ? direction.clone() : new THREE.Vector3(direction.x || 0, 0, direction.z || 0);
   flat.y = 0;
@@ -1362,7 +1383,7 @@ function broadsideGunSlots(ship, type = state.shipType, sides = [-1, 1]) {
   const { length, width } = shipHullDimensions(type);
   const scale = shipVisualScale(type);
   const profile = getShipStats(type).model || type;
-  const rotation = ship.rotation?.y || ship.rotation || 0;
+  const rotation = shipRotationY(ship, 0);
   const { forward, right } = broadsideVectors(rotation);
   const y = 1.2 * scale;
   if (shipUsesCenterlineGun(type)) {
@@ -1429,6 +1450,11 @@ function shipHullDimensions(type = state.shipType) {
   return dimensions;
 }
 
+function shipCollisionRadius(type = state.shipType) {
+  const { length, width } = shipHullDimensions(type);
+  return Math.max(shipHitRadius(type), length * 0.34, width * 0.78);
+}
+
 function projectileHitsHull(localPoint, type) {
   const { length, width } = shipHullDimensions(type);
   const halfLength = length * 0.53 + 0.25;
@@ -1441,6 +1467,23 @@ function projectileHitsHull(localPoint, type) {
   const deckCurve = clamp(1 - Math.pow(Math.abs(localPoint.x) / Math.max(0.2, halfWidth), 2), 0, 1);
   const allowedY = hullTop - (1 - deckCurve) * 0.42;
   return Math.abs(localPoint.x) <= halfWidth && localPoint.y <= allowedY;
+}
+
+function shipHullFootprintHalfWidth(type, localZ, pad = 0) {
+  const { length, width } = shipHullDimensions(type);
+  const halfLength = length * 0.53 + 0.25 + pad;
+  const zT = Math.abs(localZ) / Math.max(0.001, halfLength);
+  if (zT > 1) return -1;
+  const taper = clamp(1 - Math.pow(zT, 1.65) * 0.82, 0.18, 1);
+  return width * 0.52 * taper + 0.18 + pad;
+}
+
+function localPointInShipHullFootprint(localPoint, type, pad = 0.16) {
+  const { length } = shipHullDimensions(type);
+  const halfLength = length * 0.53 + 0.25 + pad;
+  if (Math.abs(localPoint.z) > halfLength) return false;
+  const halfWidth = shipHullFootprintHalfWidth(type, localPoint.z, pad);
+  return halfWidth > 0 && Math.abs(localPoint.x) <= halfWidth;
 }
 
 function projectileHitsMast(localPoint, type) {
@@ -1495,11 +1538,11 @@ function shipStructureBoxes(type = state.shipType) {
   const addRawBox = (id, z, w, d, roofY) => {
     boxes.push({ id, z, w, d, floorY: deckY, roofY });
   };
-  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manowar", "merchantman", "razee", "superfrigate", "treasure"]);
-  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "postship", "razee", "superfrigate", "treasure", "windrunner"]);
+  const largeTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "manofwar", "manowar", "merchantman", "razee", "superfrigate", "tidebreaker", "treasure", "treasureship"]);
+  const largeInteriorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manofwar", "manowar", "merchantman", "postship", "razee", "superfrigate", "tidebreaker", "treasure", "treasureship", "windrunner"]);
   const hasLargeArchitecture = (largeTypes.has(type) || shipTier(type) >= 4) && !["whaler", "ballooner", "turtle"].includes(type);
   if (hasLargeArchitecture) {
-    const sternRoofY = type === "postship" ? 2.48 * scale : type === "treasure" ? 2.72 * scale : 2.08 * scale;
+    const sternRoofY = type === "postship" ? 2.48 * scale : (type === "treasure" || type === "treasureship") ? 2.72 * scale : 2.08 * scale;
     if (largeInteriorTypes.has(type)) {
       const sternCenterZ = -length * 0.34;
       boxes.push({
@@ -1552,7 +1595,7 @@ function shipStructureBoxes(type = state.shipType) {
           noRoofWalk: true,
         });
       }
-      if (type === "treasure") {
+      if (type === "treasure" || type === "treasureship") {
         boxes.push({
           id: "treasure-chart-table",
           z: sternCenterZ + length * 0.018,
@@ -1729,7 +1772,7 @@ function shipInteriorAllowed(localPoint, box, type = state.shipType) {
   const inner = Math.abs(localPoint.x - (box.x || 0)) < box.w * 0.5 - wall
     && Math.abs(localPoint.z - box.z) < box.d * 0.5 - wall;
   const centerFacingZ = box.z < 0 ? box.z + box.d * 0.5 : box.z - box.d * 0.5;
-  const generousCabinDoor = ["grandfrigate", "postship", "superfrigate", "whaler", "windrunner"].includes(type);
+  const generousCabinDoor = ["grandfrigate", "manofwar", "postship", "superfrigate", "tidebreaker", "treasure", "treasureship", "whaler", "windrunner"].includes(type);
   const doorHalfWidth = generousCabinDoor ? 0.62 * scale : 0.48 * scale;
   const doorDepth = generousCabinDoor ? 0.58 * scale : 0.44 * scale;
   const door = Math.abs(localPoint.x - (box.x || 0)) < doorHalfWidth
@@ -1800,7 +1843,7 @@ function shipSwimBlockAt(worldPoint) {
   });
   for (const candidate of candidates) {
     if (!candidate.group || !candidate.type) continue;
-    const radius = shipHitRadius(candidate.type) + 1.1;
+    const radius = shipCollisionRadius(candidate.type) + 1.1;
     if (dist2(worldPoint, candidate.group.position) > radius) continue;
     const local = candidate.group.worldToLocal(worldPoint.clone());
     const waterPoint = local.clone();
@@ -1975,6 +2018,24 @@ function scaleDamageByRange(baseDamage, distance, range) {
 function currentAmmoType() {
   const slotType = state.ammoSlots[state.selectedAmmoSlot] || "basic";
   return CANNONBALL_TYPES[slotType] || CANNONBALL_TYPES.basic;
+}
+
+function normalizeSelectedAmmoForFire() {
+  const maxSlot = Math.max(0, state.ammoSlots.length - 1);
+  const selected = Math.floor(Number(state.selectedAmmoSlot));
+  if (!Number.isFinite(selected) || selected < 0 || selected > maxSlot) {
+    state.selectedAmmoSlot = 0;
+  }
+  let type = state.ammoSlots[state.selectedAmmoSlot];
+  let ammo = CANNONBALL_TYPES[type];
+  if (!type || !ammo || (!ammo.infinite && ammoCount(type) <= 0)) {
+    state.selectedAmmoSlot = 0;
+    state.selectedAmmo = "basic";
+    type = "basic";
+    ammo = CANNONBALL_TYPES.basic;
+    updateAmmoHotbar();
+  }
+  return ammo || CANNONBALL_TYPES.basic;
 }
 
 function ammoCount(type) {
@@ -2169,10 +2230,30 @@ function maybeRollModernSchooner(island) {
   }
 }
 
+const FORGE_PORT_BASE_BY_SHIP = {
+  superfrigate: "grandfrigate",
+  tidebreaker: "windrunner",
+  manofwar: "firstrate",
+  treasureship: "treasure",
+};
+
+function forgeBaseForPortShip(type) {
+  return FORGE_PORT_BASE_BY_SHIP[normalizeShipType(type)] || null;
+}
+
+function goldDiggerCanBuyForgeShipAtIsland(type, island) {
+  const base = forgeBaseForPortShip(type);
+  return Boolean(state.infiniteGold && base && island?.shipMarket?.includes(base));
+}
+
 function availableShipsForIsland(island) {
   maybeRollModernSchooner(island);
   const ids = new Set([STARTER_SHIP, ...(island?.shipMarket || [])]);
   if (island?.name === "Port Azure" && (state.modernSchoonerAvailable || playerOwnsShip("modernschooner"))) ids.add("modernschooner");
+  Object.keys(FORGE_PORT_BASE_BY_SHIP).forEach((shipId) => {
+    if (goldDiggerCanBuyForgeShipAtIsland(shipId, island)) ids.add(shipId);
+    else ids.delete(shipId);
+  });
   return shipCatalog.filter((ship) => ids.has(ship.id)).sort((a, b) => a.price - b.price);
 }
 
@@ -2215,31 +2296,72 @@ function damageOwnedShip(record, amount, options = {}) {
   return true;
 }
 
-function shipSpawnClear(point, type, ignore = null) {
-  const radius = shipHitRadius(type) * 0.72;
+function shipSpawnClear(point, type, ignore = null, rotation = playerShip?.rotation?.y ?? state.rotation) {
+  const radius = shipCollisionRadius(type) * 0.9;
   if (islands.some((island) => dist2(point, island.group.position) < island.radius + radius + 4)) return false;
-  if (playerShip && ignore !== playerShip && dist2(point, playerShip.position) < radius + shipHitRadius(state.shipType) * 0.8 + 2) return false;
-  if (ownedShips.some((ship) => ship !== ignore && dist2(point, ship.group.position) < radius + shipHitRadius(ship.type) * 0.8 + 2)) return false;
+  const overlapsShip = (other, otherType, otherRotation = 0) => {
+    if (!other || other === ignore) return false;
+    const dx = point.x - other.position.x;
+    const dz = point.z - other.position.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance < 0.001) return true;
+    const normal = new THREE.Vector3(dx / distance, 0, dz / distance);
+    return distance < shipSeparationDistance(type, otherType, normal, rotation, otherRotation) + 1.35;
+  };
+  if (playerShip && overlapsShip(playerShip, state.shipType, playerShip.rotation.y)) return false;
+  if (ownedShips.some((ship) => overlapsShip(ship.group, ship.type, ship.group.rotation.y))) return false;
   return true;
 }
 
 function spawnPositionBesideCurrentShip(type, island = null) {
   const base = playerShip?.position?.clone() || state.position.clone();
   const rotation = playerShip?.rotation?.y ?? state.rotation;
-  const { right, forward } = broadsideVectors(rotation);
-  const offset = shipHitRadius(state.shipType) + shipHitRadius(type) + 6;
-  const candidates = [
-    base.clone().add(right.clone().multiplyScalar(offset)),
-    base.clone().add(right.clone().multiplyScalar(-offset)),
-    base.clone().add(forward.clone().multiplyScalar(offset)),
-    base.clone().add(forward.clone().multiplyScalar(-offset)),
-  ];
+  const sideCandidates = [];
+  const fallbackCandidates = [];
   const islandCenter = island?.group?.position || islandData.find((item) => item.name === island?.name);
-  candidates.sort((a, b) => {
-    if (!islandCenter) return 0;
-    return dist2(b, islandCenter) - dist2(a, islandCenter);
-  });
-  return candidates.find((candidate) => shipSpawnClear(candidate, type)) || candidates[0] || base;
+  if (islandCenter) {
+    const radius = island?.radius || 34;
+    const center = new THREE.Vector3(islandCenter.x, 0, islandCenter.z);
+    const fromCenter = base.clone().sub(center);
+    fromCenter.y = 0;
+    if (fromCenter.lengthSq() < 0.001) fromCenter.set(Math.sin(rotation), 0, Math.cos(rotation));
+    const baseAngle = Math.atan2(fromCenter.x, fromCenter.z);
+    const circleRadius = Math.max(
+      fromCenter.length(),
+      radius + Math.max(shipCollisionRadius(type), shipCollisionRadius(state.shipType)) * 0.95 + 5.5,
+    );
+    const tangentNormal = new THREE.Vector3(Math.cos(baseAngle), 0, -Math.sin(baseAngle)).normalize();
+    const sideOffset = shipSeparationDistance(type, state.shipType, tangentNormal, rotation, rotation) + 5;
+    const angularOffset = sideOffset / Math.max(circleRadius, 12);
+    const pointOnDockCircle = (angle, radialExtra = 0) => new THREE.Vector3(
+      center.x + Math.sin(angle) * (circleRadius + radialExtra),
+      SHIP_WATERLINE_Y,
+      center.z + Math.cos(angle) * (circleRadius + radialExtra),
+    );
+    [1, 1.25, 1.55, 1.9, 2.3, 2.8].forEach((scale) => {
+      sideCandidates.push(pointOnDockCircle(baseAngle + angularOffset * scale));
+      sideCandidates.push(pointOnDockCircle(baseAngle - angularOffset * scale));
+    });
+    [4, 9, 15, 24].forEach((extra) => {
+      fallbackCandidates.push(pointOnDockCircle(baseAngle + angularOffset, extra));
+      fallbackCandidates.push(pointOnDockCircle(baseAngle - angularOffset, extra));
+    });
+  } else {
+    const { right, forward } = broadsideVectors(rotation);
+    const sideOffset = shipSeparationDistance(type, state.shipType, right, rotation, rotation) + 4.5;
+    const forwardOffset = shipSeparationDistance(type, state.shipType, forward, rotation, rotation) + 5.5;
+    [1, 1.35, 1.8, 2.35].forEach((scale) => {
+      sideCandidates.push(base.clone().add(right.clone().multiplyScalar(sideOffset * scale)));
+      sideCandidates.push(base.clone().add(right.clone().multiplyScalar(-sideOffset * scale)));
+      fallbackCandidates.push(base.clone().add(forward.clone().multiplyScalar(forwardOffset * scale)));
+      fallbackCandidates.push(base.clone().add(forward.clone().multiplyScalar(-forwardOffset * scale)));
+    });
+  }
+  return sideCandidates.find((candidate) => shipSpawnClear(candidate, type, null, rotation))
+    || fallbackCandidates.find((candidate) => shipSpawnClear(candidate, type, null, rotation))
+    || sideCandidates[0]
+    || fallbackCandidates[0]
+    || base;
 }
 
 function parkCurrentShipAtIsland(islandName = state.dockedAt) {
@@ -3349,20 +3471,23 @@ function makeForgeIsland(data, group, radius, accent) {
   }
 
   const wallMaxY = landY + wallH + 1.1;
+  const wallMinY = landY - 0.55;
+  const forgeWallOptions = { minY: wallMinY, maxY: wallMaxY + 0.85, solidWall: true };
   addWalkPlatform(0, castleZ, castleW - 0.15, castleD - 0.15, landY + 0.08, 0, { maxRise: 1.1 });
-  addCollisionBox(0, castleZ + castleD * 0.5, castleW + 0.8, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(-castleW * 0.5, castleZ, 1.35, castleD + 0.8, 0.28, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(castleW * 0.5, castleZ, 1.35, castleD + 0.8, 0.28, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(-castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.38, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.38, 1.35, 0.28, 0, { maxY: wallMaxY, solidWall: true });
-  addCollisionBox(0, castleZ + gateZ, 8.35, 1.25, 0.12, 0, { minY: landY + 3.25, maxY: wallMaxY, solidWall: true });
+  addCollisionBox(0, castleZ + castleD * 0.5, castleW + 1.3, 1.85, 0.38, 0, forgeWallOptions);
+  addCollisionBox(-castleW * 0.5, castleZ, 1.85, castleD + 1.3, 0.38, 0, forgeWallOptions);
+  addCollisionBox(castleW * 0.5, castleZ, 1.85, castleD + 1.3, 0.38, 0, forgeWallOptions);
+  addCollisionBox(-castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.4, 1.85, 0.34, 0, forgeWallOptions);
+  addCollisionBox(castleW * 0.34, castleZ - castleD * 0.5, castleW * 0.4, 1.85, 0.34, 0, forgeWallOptions);
+  addCollisionBox(0, castleZ + gateZ, 8.35, 1.45, 0.18, 0, { minY: landY + 3.05, maxY: wallMaxY + 0.85, solidWall: true });
   for (const side of [-1, 1]) {
-    addCollisionBox(side * 3.35, castleZ + gateZ, 1.55, 1.35, 0.24, 0, { maxY: wallMaxY, solidWall: true });
-    addCollisionBox(side * 4.85, castleZ + gateZ, 3.05, 1.35, 0.24, 0, { maxY: wallMaxY, solidWall: true });
-    addCollisionBox(side * 4.75, castleZ - castleD * 0.5, 2.65, 1.18, 0.24, 0, { maxY: wallMaxY, solidWall: true });
+    addCollisionBox(side * 3.35, castleZ + gateZ, 1.75, 1.65, 0.32, 0, forgeWallOptions);
+    addCollisionBox(side * 4.85, castleZ + gateZ, 3.25, 1.65, 0.32, 0, forgeWallOptions);
+    addCollisionBox(side * 4.75, castleZ - castleD * 0.5, 2.85, 1.5, 0.3, 0, forgeWallOptions);
   }
   addCollisionBox(0, castleZ + castleD * 0.18, 3.1, 3.1, 0.06, 0, { minY: landY, maxY: landY + 2.0 });
-  addCollisionBox(tableX, castleZ + tableZ, 8.8, 5.6, 0.14, 0, { minY: landY - 0.2, maxY: landY + 1.85 });
+  addWalkPlatform(tableX, castleZ + tableZ, 8.65, 5.45, landY + 0.84, 0, { maxRise: 1.45 });
+  addCollisionBox(tableX, castleZ + tableZ, 8.8, 5.6, 0.14, 0, { minY: landY - 0.2, maxY: landY + 0.98, walkableTopY: landY + 0.8 });
   tableFurniturePlacements.forEach(([kind, x, z]) => {
     const w = kind === "candelabra" ? 1.05 : kind === "chest" ? 1.28 : 1.1;
     const d = kind === "candelabra" ? 0.75 : 1.02;
@@ -6301,7 +6426,7 @@ function pointInAnyIsland(point, margin = 0) {
 }
 
 function botIslandClearance(type) {
-  return Math.max(17, shipHitRadius(type) * 1.5 + 11);
+  return Math.max(17, shipCollisionRadius(type) * 1.35 + 11);
 }
 
 function botIslandBlocker(point, type, extra = 0) {
@@ -6369,7 +6494,7 @@ function localBotIslandDetour(bot, island) {
   const tangentSign = Math.random() < 0.5 ? -1 : 1;
   const tangent = new THREE.Vector3(-away.z * tangentSign, 0, away.x * tangentSign);
   const margin = island.radius + botIslandClearance(bot.shipType) + 13;
-  const sweep = 48 + shipHitRadius(bot.shipType) * 3.5;
+  const sweep = 48 + shipCollisionRadius(bot.shipType) * 3.2;
   return new THREE.Vector3(
     clamp(island.group.position.x + away.x * margin + tangent.x * sweep, -MAP_LIMIT * 0.94, MAP_LIMIT * 0.94),
     SHIP_WATERLINE_Y,
@@ -6506,40 +6631,122 @@ function landingPointForShip(island, shipPosition) {
 }
 
 function collidesWithShipAt(point, ownType = state.shipType) {
-  const ownRadius = shipHitRadius(ownType);
+  const ownRadius = shipCollisionRadius(ownType);
   for (const bot of bots) {
-    if (dist2(point, bot.group.position) < (ownRadius + shipHitRadius(bot.shipType)) * 0.72) return true;
+    if (dist2(point, bot.group.position) < (ownRadius + shipCollisionRadius(bot.shipType)) * 0.86) return true;
   }
   for (const remote of remotePlayers.values()) {
-    if (remote.group.visible && dist2(point, remote.group.position) < (ownRadius + shipHitRadius(remote.shipType)) * 0.72) return true;
-    if (remote.fleetShips?.some?.((ship) => ship.group.visible && dist2(point, ship.group.position) < (ownRadius + shipHitRadius(ship.type)) * 0.72)) return true;
+    if (remote.group.visible && dist2(point, remote.group.position) < (ownRadius + shipCollisionRadius(remote.shipType)) * 0.86) return true;
+    if (remote.fleetShips?.some?.((ship) => ship.group.visible && dist2(point, ship.group.position) < (ownRadius + shipCollisionRadius(ship.type)) * 0.86)) return true;
   }
   for (const ship of ownedShips) {
-    if (dist2(point, ship.group.position) < (ownRadius + shipHitRadius(ship.type)) * 0.72) return true;
+    if (dist2(point, ship.group.position) < (ownRadius + shipCollisionRadius(ship.type)) * 0.86) return true;
   }
   return false;
 }
 
-function shipSeparationDistance(typeA, typeB) {
-  return (shipHitRadius(typeA) + shipHitRadius(typeB)) * 0.72;
+function shipFlatBasis(rotation = 0) {
+  const sin = Math.sin(rotation);
+  const cos = Math.cos(rotation);
+  return { fx: sin, fz: cos, rx: cos, rz: -sin };
 }
 
-function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.5, bShare = 0.5) {
+function shipHullFootprintPoints(type) {
+  type = normalizeShipType(type);
+  const cached = shipHullFootprintCache.get(type);
+  if (cached) return cached;
+  const { length } = shipHullDimensions(type);
+  const halfLength = length * 0.53 + 0.25;
+  const points = [{ x: 0, z: 0 }];
+  [-1, -0.78, -0.55, -0.32, 0, 0.32, 0.55, 0.78, 1].forEach((fraction) => {
+    const z = halfLength * fraction;
+    const halfWidth = shipHullFootprintHalfWidth(type, z, 0);
+    if (halfWidth <= 0) return;
+    points.push({ x: 0, z });
+    points.push({ x: -halfWidth, z });
+    points.push({ x: halfWidth, z });
+    if (Math.abs(fraction) < 0.9) {
+      points.push({ x: -halfWidth * 0.52, z });
+      points.push({ x: halfWidth * 0.52, z });
+    }
+  });
+  shipHullFootprintCache.set(type, points);
+  return points;
+}
+
+function flatLocalToWorld(local, position, basis) {
+  return {
+    x: position.x + basis.rx * local.x + basis.fx * local.z,
+    z: position.z + basis.rz * local.x + basis.fz * local.z,
+  };
+}
+
+function flatWorldToLocal(point, position, basis) {
+  const dx = point.x - position.x;
+  const dz = point.z - position.z;
+  return {
+    x: dx * basis.rx + dz * basis.rz,
+    z: dx * basis.fx + dz * basis.fz,
+  };
+}
+
+function shipHullFootprintsOverlap(posA, typeA, rotationA, posB, typeB, rotationB, pad = 0.2) {
+  const dx = posA.x - posB.x;
+  const dz = posA.z - posB.z;
+  const broad = shipCollisionRadius(typeA) + shipCollisionRadius(typeB) + pad + 0.7;
+  if (dx * dx + dz * dz > broad * broad) return false;
+  const basisA = shipFlatBasis(rotationA);
+  const basisB = shipFlatBasis(rotationB);
+  const pointsA = shipHullFootprintPoints(typeA);
+  const pointsB = shipHullFootprintPoints(typeB);
+  for (const point of pointsA) {
+    if (localPointInShipHullFootprint(flatWorldToLocal(flatLocalToWorld(point, posA, basisA), posB, basisB), typeB, pad)) return true;
+  }
+  for (const point of pointsB) {
+    if (localPointInShipHullFootprint(flatWorldToLocal(flatLocalToWorld(point, posB, basisB), posA, basisA), typeA, pad)) return true;
+  }
+  return false;
+}
+
+function shipCollisionSupport(type, normal, rotation = 0) {
+  const nx = Number(normal?.x) || 0;
+  const nz = Number(normal?.z) || 0;
+  if (nx * nx + nz * nz < 0.0001) return shipCollisionRadius(type) * 0.86;
+  const basis = shipFlatBasis(rotation);
+  let best = shipHitRadius(type) * 0.25;
+  for (const point of shipHullFootprintPoints(type)) {
+    const wx = basis.rx * point.x + basis.fx * point.z;
+    const wz = basis.rz * point.x + basis.fz * point.z;
+    best = Math.max(best, wx * nx + wz * nz);
+  }
+  return best + 0.24;
+}
+
+function shipSeparationDistance(typeA, typeB, normal = null, rotationA = 0, rotationB = 0) {
+  if (normal) {
+    return shipCollisionSupport(typeA, { x: -normal.x, z: -normal.z }, rotationA) + shipCollisionSupport(typeB, normal, rotationB) + 0.12;
+  }
+  return (shipCollisionRadius(typeA) + shipCollisionRadius(typeB)) * 0.86;
+}
+
+function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.5, bShare = 0.5, rotationA = 0, rotationB = 0) {
   const dx = posA.x - posB.x;
   const dz = posA.z - posB.z;
   const distance = Math.hypot(dx, dz);
-  const minDistance = shipSeparationDistance(typeA, typeB);
-  if (distance >= minDistance || minDistance <= 0) return false;
   const normal = distance > 0.001
     ? new THREE.Vector3(dx / distance, 0, dz / distance)
     : new THREE.Vector3(Math.sin(clock.elapsedTime * 8.17), 0, Math.cos(clock.elapsedTime * 8.17)).normalize();
-  const overlap = minDistance - distance;
+  const minDistance = shipSeparationDistance(typeA, typeB, normal, rotationA, rotationB);
+  if (minDistance <= 0) return false;
+  const hullOverlap = shipHullFootprintsOverlap(posA, typeA, rotationA, posB, typeB, rotationB, 0.38);
+  if (distance >= minDistance && !hullOverlap) return false;
+  const overlap = Math.max(minDistance - distance, hullOverlap ? 0.18 : 0);
   const massA = shipWeight(typeA);
   const massB = shipWeight(typeB);
   const aMotion = aShare / massA;
   const bMotion = bShare / massB;
   const totalMotion = Math.max(0.000001, aMotion + bMotion);
-  const correction = Math.max(0, overlap - 0.08) * 0.68;
+  const correction = Math.max(0, overlap - 0.035) * 0.5;
   posA.add(normal.clone().multiplyScalar(correction * (aMotion / totalMotion)));
   posB.add(normal.clone().multiplyScalar(-correction * (bMotion / totalMotion)));
 
@@ -6550,11 +6757,12 @@ function separateShipPositions(posA, typeA, velA, posB, typeB, velB, aShare = 0.
     const velocityA = velA ? velA.dot(normal) : 0;
     const velocityB = velB ? velB.dot(normal) : 0;
     const relativeNormalSpeed = velocityA - velocityB;
-    const biasSpeed = clamp(Math.max(0, overlap - 0.12) * 0.42, 0, 1.9);
+    const heavierBias = clamp(Math.max(massA, massB) / Math.max(1, Math.min(massA, massB)), 1, 4);
+    const biasSpeed = clamp(Math.max(0, overlap - 0.08) * 0.5 * Math.sqrt(heavierBias), 0, 2.7);
     let normalImpulse = 0;
     if (relativeNormalSpeed < biasSpeed) {
       const restitution = relativeNormalSpeed < -5 ? 0.12 : 0.02;
-      normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / totalInvMass, 0, 900);
+      normalImpulse = clamp((biasSpeed - (1 + restitution) * relativeNormalSpeed) / totalInvMass, 0, 1250);
       if (velA) velA.add(normal.clone().multiplyScalar(normalImpulse * invMassA));
       if (velB) velB.add(normal.clone().multiplyScalar(-normalImpulse * invMassB));
     }
@@ -6597,12 +6805,16 @@ function applyRamDamage(a, b) {
   const relativeVelocity = a.velocity.clone().sub(b.velocity);
   const closing = -relativeVelocity.dot(normal);
   if (closing < 2.2) return;
+  const weightA = shipWeight(a.type);
+  const weightB = shipWeight(b.type);
   const baseWeight = shipWeight("skiff");
-  const base = 40 * clamp(closing / 15, 0.22, 2.2);
+  const base = 40 * clamp(closing / 14, 0.22, 2.35);
   const aNose = entityForward(a).dot(normal.clone().multiplyScalar(-1));
   const bNose = entityForward(b).dot(normal);
-  let damageToA = base * Math.sqrt(shipWeight(b.type) / baseWeight) * 0.42;
-  let damageToB = base * Math.sqrt(shipWeight(a.type) / baseWeight) * 0.42;
+  const weightPressureA = clamp(weightA / Math.max(1, weightB), 0.45, 2.2);
+  const weightPressureB = clamp(weightB / Math.max(1, weightA), 0.45, 2.2);
+  let damageToA = base * Math.sqrt(weightB / baseWeight) * (0.34 + weightPressureB * 0.2);
+  let damageToB = base * Math.sqrt(weightA / baseWeight) * (0.34 + weightPressureA * 0.2);
   if (aNose > 0.58 && Math.abs(bNose) < 0.42) {
     damageToB *= 1.35;
     damageToA *= 0.55;
@@ -6618,7 +6830,7 @@ function applyRamDamage(a, b) {
 }
 
 function pushShipOutOfIslands(position, shipType, velocity = null, padding = 4) {
-  const radius = shipHitRadius(shipType) * 0.55 + padding;
+  const radius = shipCollisionRadius(shipType) * 0.62 + padding;
   let pushed = false;
   islands.forEach((island) => {
     const dx = position.x - island.group.position.x;
@@ -6671,7 +6883,7 @@ function pushShipOutOfKraken(position, shipType, velocity = null, padding = 1) {
 function resolveShipContacts() {
   if (state.mode === "ship" && playerShip) {
     bots.forEach((bot) => {
-      if (separateShipPositions(playerShip.position, state.shipType, state.velocity, bot.group.position, bot.shipType, bot.velocity, 0.42, 0.58)) {
+      if (separateShipPositions(playerShip.position, state.shipType, state.velocity, bot.group.position, bot.shipType, bot.velocity, 0.42, 0.58, playerShip.rotation.y, bot.group.rotation.y)) {
         bot.agroUntil = Math.max(bot.agroUntil || 0, clock.elapsedTime + 1.2);
         applyRamDamage(
           { id: "player", target: state, position: playerShip.position, velocity: state.velocity, type: state.shipType, rotation: state.rotation },
@@ -6680,13 +6892,13 @@ function resolveShipContacts() {
       }
     });
     remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0);
+      if (remote.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0, playerShip.rotation.y, remote.group.rotation.y);
       remote.fleetShips?.forEach?.((ship) => {
-        if (ship.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0);
+        if (ship.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0, playerShip.rotation.y, ship.group.rotation.y);
       });
     });
     ownedShips.forEach((ship) => {
-      if (separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0)) {
+      if (separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0, playerShip.rotation.y, ship.group.rotation.y)) {
         ship.group.position.y = SHIP_WATERLINE_Y;
       }
     });
@@ -6703,7 +6915,7 @@ function resolveShipContacts() {
     pushShipOutOfIslands(bot.group.position, bot.shipType, bot.velocity, 5);
     pushShipOutOfKraken(bot.group.position, bot.shipType, bot.velocity, 1);
     for (let j = i + 1; j < bots.length; j++) {
-      if (separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5)) {
+      if (separateShipPositions(bot.group.position, bot.shipType, bot.velocity, bots[j].group.position, bots[j].shipType, bots[j].velocity, 0.5, 0.5, bot.group.rotation.y, bots[j].group.rotation.y)) {
         applyRamDamage(
           { id: bot.localId || bot.serverId, target: bot, position: bot.group.position, velocity: bot.velocity, type: bot.shipType, rotation: bot.rotation ?? bot.group.rotation.y },
           { id: bots[j].localId || bots[j].serverId, target: bots[j], position: bots[j].group.position, velocity: bots[j].velocity, type: bots[j].shipType, rotation: bots[j].rotation ?? bots[j].group.rotation.y },
@@ -6711,13 +6923,13 @@ function resolveShipContacts() {
       }
     }
     remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0);
+      if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0, bot.group.rotation.y, remote.group.rotation.y);
       remote.fleetShips?.forEach?.((ship) => {
-        if (ship.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0);
+        if (ship.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0, bot.group.rotation.y, ship.group.rotation.y);
       });
     });
     ownedShips.forEach((ship) => {
-      separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0);
+      separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0, bot.group.rotation.y, ship.group.rotation.y);
     });
   }
   remotePlayers.forEach((remote) => {
@@ -6763,8 +6975,25 @@ function hullProfile(profile = "skiff") {
   return { ...DEFAULT_HULL_TUNING, ...(HULL_TUNING[profile] || {}) };
 }
 
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 function hullMesh(length, width, height, material = mats.hull, profile = "skiff") {
-  const tuning = hullProfile(profile);
+  length = finiteNumber(length, DEFAULT_SHIP_HULL_DIMENSIONS[0]);
+  width = finiteNumber(width, DEFAULT_SHIP_HULL_DIMENSIONS[1]);
+  height = finiteNumber(height, 1);
+  const rawTuning = hullProfile(profile);
+  const tuning = {
+    stern: finiteNumber(rawTuning.stern, DEFAULT_HULL_TUNING.stern),
+    bow: finiteNumber(rawTuning.bow, DEFAULT_HULL_TUNING.bow),
+    mid: finiteNumber(rawTuning.mid, DEFAULT_HULL_TUNING.mid),
+    fullness: finiteNumber(rawTuning.fullness, DEFAULT_HULL_TUNING.fullness),
+    bowLift: finiteNumber(rawTuning.bowLift, DEFAULT_HULL_TUNING.bowLift),
+    sternLift: finiteNumber(rawTuning.sternLift, DEFAULT_HULL_TUNING.sternLift),
+    keel: finiteNumber(rawTuning.keel, DEFAULT_HULL_TUNING.keel),
+  };
   const vertices = [];
   const indices = [];
   const stationCount = 10;
@@ -6776,7 +7005,7 @@ function hullMesh(length, width, height, material = mats.hull, profile = "skiff"
   for (let i = 0; i < stationCount; i++) {
     const t = i / (stationCount - 1);
     const z = length * (0.52 - t * 1.1);
-    const midCurve = Math.pow(Math.sin(t * Math.PI), tuning.fullness);
+    const midCurve = Math.pow(Math.max(0, Math.sin(t * Math.PI)), tuning.fullness);
     const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
     const beam = width * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
     const topHalf = beam * 0.48;
@@ -7387,9 +7616,20 @@ function deckWidthAt(length, width, scale, z, profile = "skiff") {
 }
 
 function hullSideXAt(length, width, scale, z, inset = 1, profile = "skiff") {
-  const tuning = hullProfile(profile);
+  length = finiteNumber(length, DEFAULT_SHIP_HULL_DIMENSIONS[0]);
+  width = finiteNumber(width, DEFAULT_SHIP_HULL_DIMENSIONS[1]);
+  scale = finiteNumber(scale, 1);
+  z = finiteNumber(z, 0);
+  inset = finiteNumber(inset, 1);
+  const rawTuning = hullProfile(profile);
+  const tuning = {
+    stern: finiteNumber(rawTuning.stern, DEFAULT_HULL_TUNING.stern),
+    bow: finiteNumber(rawTuning.bow, DEFAULT_HULL_TUNING.bow),
+    mid: finiteNumber(rawTuning.mid, DEFAULT_HULL_TUNING.mid),
+    fullness: finiteNumber(rawTuning.fullness, DEFAULT_HULL_TUNING.fullness),
+  };
   const localZ = z / scale;
-  const t = clamp((0.52 - localZ / length) / 1.1, 0, 1);
+  const t = clamp((0.52 - localZ / Math.max(0.001, length)) / 1.1, 0, 1);
   const midCurve = Math.pow(Math.max(0.001, Math.sin(t * Math.PI)), tuning.fullness);
   const endWidth = tuning.stern * (1 - t) + tuning.bow * t;
   const beam = width * scale * (endWidth * (1 - midCurve) + tuning.mid * midCurve);
@@ -7459,8 +7699,9 @@ function mastPlan(type, length) {
   if (type === "superfrigate") return [-length * 0.4, -length * 0.18, length * 0.1, length * 0.34];
   if (type === "grandfrigate") return [-length * 0.38, -length * 0.16, length * 0.12, length * 0.35];
   if (type === "windrunner") return [-length * 0.38, -length * 0.15, length * 0.13, length * 0.36];
-  if (type === "manowar" || type === "firstrate") return [-length * 0.37, -length * 0.14, length * 0.13, length * 0.36];
-  if (type === "treasure") return [-length * 0.4, -length * 0.24, -length * 0.08, length * 0.09, length * 0.25, length * 0.39];
+  if (type === "tidebreaker") return [-length * 0.4, -length * 0.17, length * 0.11, length * 0.38];
+  if (type === "manofwar" || type === "manowar" || type === "firstrate") return [-length * 0.37, -length * 0.14, length * 0.13, length * 0.36];
+  if (type === "treasure" || type === "treasureship") return [-length * 0.4, -length * 0.24, -length * 0.08, length * 0.09, length * 0.25, length * 0.39];
   if (["sloop", "storm", "dart", "lugger", "dogger", "tartane", "chassemaree"].includes(type)) return [-length * 0.18, length * 0.11];
   if (["galleon", "carrack", "merchantman", "eastindiaman", "fourthrate", "frigate", "razee", "sixthrate", "postship"].includes(type)) {
     return [-length * 0.3, -length * 0.04, length * 0.1];
@@ -7700,7 +7941,10 @@ function turtleFireActiveForState() {
 
 function turtleFireBasis(ship, type = "turtle") {
   const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).setY(0);
-  if (forward.lengthSq() < 0.0001) forward.set(Math.sin(ship.rotation?.y || 0), 0, Math.cos(ship.rotation?.y || 0));
+  if (forward.lengthSq() < 0.0001) {
+    const rotation = shipRotationY(ship, 0);
+    forward.set(Math.sin(rotation), 0, Math.cos(rotation));
+  }
   forward.normalize();
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
   const front = shipHullDimensions(type).length * (type === "turtle" ? 0.68 : 0.48);
@@ -7754,7 +7998,7 @@ function rocketeerAimPoint() {
 }
 
 function rocketeerRocketOrigin(index = 0) {
-  const rotation = playerShip.rotation?.y || state.rotation;
+  const rotation = shipRotationY(playerShip, state.rotation);
   const { forward, right } = broadsideVectors(rotation);
   const scale = shipVisualScale("rocketeer");
   const pattern = index % 10;
@@ -7854,11 +8098,11 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   const actualWidth = width * scale;
   const sternZ = actualLength * 0.34;
   const bowZ = -actualLength * 0.34;
-  const castleColor = ["galleon", "rocketeer", "carrack", "eastindiaman", "merchantman", "treasure"].includes(type) ? 0x654231 : 0x40342f;
-  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manowar", "merchantman", "razee", "sixthrate", "postship", "superfrigate", "treasure", "windrunner"]);
+  const castleColor = ["galleon", "rocketeer", "carrack", "eastindiaman", "merchantman", "treasure", "treasureship"].includes(type) ? 0x654231 : 0x40342f;
+  const interiorTypes = new Set(["carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "grandfrigate", "manofwar", "manowar", "merchantman", "razee", "sixthrate", "postship", "superfrigate", "tidebreaker", "treasure", "treasureship", "windrunner"]);
   const hasInterior = interiorTypes.has(type);
   const postShipCabin = type === "postship";
-  const treasureCabin = type === "treasure";
+  const treasureCabin = type === "treasure" || type === "treasureship";
   const sternWallMat = mat(castleColor);
   if (hasInterior) {
     sternWallMat.side = THREE.DoubleSide;
@@ -7885,7 +8129,7 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
   else if (postShipCabin) addWindowRow(group, width * 0.82, sternZ + actualLength * 0.09, 1.52 * scale, scale, 0xffd36a, 4);
   if (hasInterior) {
     const doorZ = sternZ - actualLength * 0.087;
-    const generousCabinDoor = ["grandfrigate", "postship", "superfrigate", "treasure", "windrunner"].includes(type);
+    const generousCabinDoor = ["grandfrigate", "manofwar", "postship", "superfrigate", "tidebreaker", "treasure", "treasureship", "windrunner"].includes(type);
     const doorWidth = treasureCabin ? 1.12 : generousCabinDoor ? 0.96 : 0.76;
     const doorHeight = treasureCabin ? 1.05 : postShipCabin ? 0.96 : 0.68;
     const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * scale, doorHeight * scale, 0.055 * scale), mats.dark);
@@ -7970,7 +8214,7 @@ function addLargeShipArchitecture(group, type, length, width, scale, spec, tier,
         group.add(ceilingBeam);
       }
     }
-    if (type === "treasure") {
+    if (type === "treasure" || type === "treasureship") {
       const chart = new THREE.Mesh(new THREE.BoxGeometry(0.62 * scale, 0.03 * scale, 0.42 * scale), mat(0xd8c28f));
       chart.position.set(0.02 * scale, 1.52 * scale, sternZ + actualLength * 0.012);
       chart.rotation.y = -0.1;
@@ -8178,19 +8422,19 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   const tier = spec.price > 16000 ? 5 : spec.price > 10000 ? 4 : spec.price > 5500 ? 3 : spec.price > 2500 ? 2 : spec.price > 800 ? 1 : 0;
   const customCabinTypes = new Set([
     "bombketch", "caravel", "carrack", "cog", "dart", "eastindiaman", "fluyt", "fourthrate",
-    "galley", "galleon", "rocketeer", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manowar", "merchantman",
-    "packet", "pink", "pinnace", "razee", "schooner", "modernschooner", "sloop", "storm", "superfrigate", "treasure",
+    "galley", "galleon", "rocketeer", "grandfrigate", "hoy", "junk", "ketch", "knarr", "manofwar", "manowar", "merchantman",
+    "packet", "pink", "pinnace", "razee", "schooner", "modernschooner", "sloop", "storm", "superfrigate", "tidebreaker", "treasure", "treasureship",
     "xebec", "tartane", "firstrate", "windrunner", "whaler", "ballooner", "chassemaree",
     "polacre", "sixthrate", "postship", "turtle",
   ]);
   const customDeckTypes = new Set([
     "carrack", "eastindiaman", "firstrate", "fourthrate", "galleon", "rocketeer", "ironclad",
-    "knarr", "manowar", "merchantman", "razee", "treasure", "turtle",
+    "knarr", "manofwar", "manowar", "merchantman", "razee", "treasure", "treasureship", "turtle",
   ]);
   const customProwTypes = new Set(["cat", "dhow", "galley", "longship", "turtle", "ironclad"]);
   const gunDeckTypes = new Set([
     "bombketch", "brig", "brigantine", "barque", "barquentine", "corvette", "frigate", "fourthrate",
-    "galleon", "rocketeer", "manowar", "merchantman", "eastindiaman", "razee", "storm", "superfrigate", "treasure",
+    "galleon", "rocketeer", "manofwar", "manowar", "merchantman", "eastindiaman", "razee", "storm", "superfrigate", "tidebreaker", "treasure", "treasureship",
     "firstrate", "snow", "sixthrate", "postship",
   ]);
   addHullDetailLines(group, hullLength, hullWidth, scale, tier, profile);
@@ -8200,10 +8444,10 @@ function addHistoricalDetails(group, type, hullLength, hullWidth, scale, spec, p
   if (!customProwTypes.has(type)) addBowspritAndRudder(group, hullLength, hullWidth, scale, tier);
   addAttachedPennant(group, hullLength, scale, spec.color, tier);
   addRailCaps(group, hullLength, hullWidth, scale, tier, profile);
-  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "rocketeer", "carrack", "eastindiaman", "superfrigate", "treasure", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
+  if ((tier >= 4 && !["whaler", "ballooner", "turtle"].includes(type)) || ["galleon", "rocketeer", "carrack", "eastindiaman", "superfrigate", "tidebreaker", "treasure", "treasureship", "manofwar", "manowar", "fourthrate", "firstrate", "razee", "sixthrate", "postship"].includes(type)) {
     addLargeShipArchitecture(group, type, hullLength, hullWidth, scale, spec, tier, profile);
   }
-  if (type === "treasure") addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile);
+  if (type === "treasure" || type === "treasureship") addTreasureJunkDetails(group, hullLength, hullWidth, scale, spec, profile);
   if (type === "rocketeer") addRocketeerDetails(group, hullLength, hullWidth, scale);
   if (shipUsesCenterlineGun(type)) {
     addCenterlineDeckCannon(group, hullLength, scale);
@@ -8267,10 +8511,12 @@ function makeShip(type = "skiff", remote = false) {
     grandfrigate: [8.9, 3.18],
     superfrigate: [9.6, 3.55],
     windrunner: [9.4, 2.55],
+    tidebreaker: [9.4, 2.75],
     carrack: [7.4, 3.5],
     manowar: [8.4, 3.8],
     fourthrate: [8.3, 3.65],
     firstrate: [9.0, 4.0],
+    manofwar: [9.0, 4.08],
     longship: [8.7, 1.7],
     knarr: [6.5, 2.6],
     lugger: [7.0, 2.15],
@@ -8283,16 +8529,18 @@ function makeShip(type = "skiff", remote = false) {
     merchantman: [7.4, 3.45],
     eastindiaman: [7.8, 3.55],
     treasure: [12.0, 4.45],
+    treasureship: [12.0, 4.75],
     ironclad: [7.8, 3.7],
   }[type] || [6.5, 2.7];
   const profile = spec.model || type;
-  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "superfrigate", "galleon", "rocketeer", "eastindiaman", "carrack", "fourthrate", "manowar", "firstrate", "ironclad"].includes(type);
+  const darkHulled = ["brig", "brigantine", "corvette", "frigate", "sixthrate", "postship", "razee", "grandfrigate", "superfrigate", "tidebreaker", "galleon", "rocketeer", "eastindiaman", "carrack", "fourthrate", "manofwar", "manowar", "firstrate", "ironclad"].includes(type);
+  const isTreasureHull = type === "treasure" || type === "treasureship";
   const hullMaterial = type === "modernschooner"
     ? mat(0xf2f4ef)
-    : type === "treasure"
+    : isTreasureHull
       ? mat(0x6f3f25)
       : darkHulled ? mats.hullDark : mats.hull;
-  const hullHeight = (type === "treasure" ? 1.34 : 1.15) * scale;
+  const hullHeight = (isTreasureHull ? 1.34 : 1.15) * scale;
   group.add(hullMesh(hullSize[0] * scale, hullSize[1] * scale, hullHeight, hullMaterial, profile));
   addHullEndCaps(group, hullSize[0], hullSize[1], scale, hullMaterial, profile);
   [-1, 1].forEach((side) => {
@@ -8312,8 +8560,8 @@ function makeShip(type = "skiff", remote = false) {
     );
   });
   const deckMaterial = type === "modernschooner" ? mat(0xf8fbff) : mats.wood;
-  const deck = hullMesh(hullSize[0] * (type === "treasure" ? 0.64 : 0.58) * scale, hullSize[1] * (type === "treasure" ? 0.68 : 0.62) * scale, (type === "treasure" ? 0.28 : 0.24) * scale, deckMaterial, profile);
-  deck.position.y = (type === "treasure" ? 1.24 : 1.08) * scale;
+  const deck = hullMesh(hullSize[0] * (isTreasureHull ? 0.64 : 0.58) * scale, hullSize[1] * (isTreasureHull ? 0.68 : 0.62) * scale, (isTreasureHull ? 0.28 : 0.24) * scale, deckMaterial, profile);
+  deck.position.y = (isTreasureHull ? 1.24 : 1.08) * scale;
   deck.castShadow = true;
   group.add(deck);
 
@@ -8355,7 +8603,7 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.98, -3.72, 1.34, 0xf6ead0, 3);
     addSquareSail(group, -0.34, -1.62, 1.42, 0xfff0c4, 3);
     addSquareSail(group, 0.34, 0.94, 1.3, 0xf6ead0, 3);
-    addSquareSail(group, 1.02, 3.32, 1.08, 0xfff0c4, 2);
+    addSquareSail(group, 1.02, 3.32, 1.14, 0xfff0c4, 3);
     const commandDeck = new THREE.Mesh(new THREE.BoxGeometry(2.7 * scale, 0.42 * scale, 1.2 * scale), mat(0x3b3440));
     commandDeck.position.set(0, 2.18 * scale, 2.8 * scale);
     commandDeck.castShadow = true;
@@ -8374,12 +8622,23 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.85, -3.42, 1.2, 0xf2ead5, 2);
     addSquareSail(group, -0.25, -1.42, 1.28, 0xf8efd8, 3);
     addSquareSail(group, 0.42, 1.04, 1.16, 0xf2ead5, 2);
-    addSquareSail(group, 0.96, 3.12, 0.92, 0xf5ead8, 1);
+    addSquareSail(group, 0.96, 3.12, 1.0, 0xf5ead8, 2);
   } else if (type === "windrunner") {
     addSquareSail(group, -0.65, -3.55, 1.02, 0xfff3ce, 2);
     addSquareSail(group, -0.1, -1.42, 1.12, 0xffdf9b, 2);
     addSquareSail(group, 0.42, 1.08, 0.98, 0xfff3ce, 2);
     addSquareSail(group, 0.72, 3.18, 0.9, 0xfff3ce, 3);
+  } else if (type === "tidebreaker") {
+    addSquareSail(group, -0.86, -3.74, 1.18, 0xe8fbff, 3);
+    addSquareSail(group, -0.25, -1.58, 1.28, 0xcff6ff, 3);
+    addSquareSail(group, 0.42, 1.04, 1.16, 0xe8fbff, 3);
+    addSquareSail(group, 0.92, 3.42, 1.02, 0xcff6ff, 3);
+    [-1, 1].forEach((side) => {
+      const runnerTrim = new THREE.Mesh(new THREE.BoxGeometry(0.07 * scale, 0.18 * scale, 6.4 * scale), mat(0x95efff));
+      runnerTrim.position.set(side * 1.45 * scale, 1.38 * scale, -0.15 * scale);
+      runnerTrim.castShadow = true;
+      group.add(runnerTrim);
+    });
   } else if (type === "clipper") {
     addSquareSail(group, -0.25, -1.35, 0.92, 0xfff3ce, 2);
     addSquareSail(group, 0.35, 0.9, 0.78, 0xffdf9b, 2);
@@ -8743,35 +9002,45 @@ function makeShip(type = "skiff", remote = false) {
     addSquareSail(group, -0.9, -2.1, 1.0 * sailBoost, 0xf6ead0, type === "fourthrate" ? 2 : 3);
     addSquareSail(group, 0, -0.1, 1.08 * sailBoost, 0xf8e7bb, 3);
     addSquareSail(group, 0.9, 1.42, 0.95 * sailBoost, 0xf6ead0, 2);
-  } else if (type === "manowar" || type === "firstrate") {
-    const sailBoost = type === "firstrate" ? 1.18 : 1.1;
+  } else if (type === "manowar" || type === "firstrate" || type === "manofwar") {
+    const sailBoost = type === "manofwar" ? 1.28 : type === "firstrate" ? 1.18 : 1.1;
     addSquareSail(group, -1.0, -3.18, 1.06 * sailBoost, 0xf6ead0, 3);
     addSquareSail(group, -0.34, -1.28, 1.16 * sailBoost, 0xf8e7bb, 3);
     addSquareSail(group, 0.36, 1.08, 1.08 * sailBoost, 0xf6ead0, 3);
-    addSquareSail(group, 0.95, 3.08, 0.9 * sailBoost, 0xf6ead0, type === "firstrate" ? 2 : 1);
-  } else if (type === "treasure") {
-    addSquareSail(group, -1.05, -4.75, 1.2, 0xf5df9b, 3);
-    addSquareSail(group, -0.62, -2.88, 1.32, 0xf8e8aa, 3);
-    addSquareSail(group, -0.18, -0.98, 1.42, 0xf1d98d, 3);
-    addSquareSail(group, 0.28, 1.08, 1.34, 0xf8e8aa, 3);
-    addSquareSail(group, 0.7, 3.08, 1.2, 0xf5df9b, 2);
-    addSquareSail(group, 1.02, 4.58, 1.02, 0xf1d98d, 2);
+    addSquareSail(group, 0.95, 3.08, 0.9 * sailBoost, 0xf6ead0, type === "manofwar" ? 3 : type === "firstrate" ? 2 : 1);
+    if (type === "manofwar") {
+      [-1, 1].forEach((side) => {
+        const goldSide = new THREE.Mesh(new THREE.BoxGeometry(0.08 * scale, 0.2 * scale, 7.2 * scale), mats.gold);
+        goldSide.position.set(side * 2.0 * scale, 1.48 * scale, -0.05 * scale);
+        goldSide.castShadow = true;
+        group.add(goldSide);
+      });
+    }
+  } else if (type === "treasure" || type === "treasureship") {
+    const treasureSailScale = type === "treasureship" ? 1.08 : 1;
+    addSquareSail(group, -1.05, -4.75, 1.2 * treasureSailScale, 0xf5df9b, 3);
+    addSquareSail(group, -0.62, -2.88, 1.32 * treasureSailScale, 0xf8e8aa, 3);
+    addSquareSail(group, -0.18, -0.98, 1.42 * treasureSailScale, 0xf1d98d, 3);
+    addSquareSail(group, 0.28, 1.08, 1.34 * treasureSailScale, 0xf8e8aa, 3);
+    addSquareSail(group, 0.7, 3.08, 1.2 * treasureSailScale, 0xf5df9b, 3);
+    addSquareSail(group, 1.02, 4.58, 1.02 * treasureSailScale, 0xf1d98d, 2);
     const pagodaZ = hullSize[0] * 0.37 * scale;
-    const pagodaBase = new THREE.Mesh(new THREE.BoxGeometry(2.0 * scale, 0.72 * scale, 1.28 * scale), mat(0x7e3d2a));
+    const pagodaSize = type === "treasureship" ? 1.18 : 1;
+    const pagodaBase = new THREE.Mesh(new THREE.BoxGeometry(2.0 * scale * pagodaSize, 0.72 * scale * pagodaSize, 1.28 * scale * pagodaSize), mat(0x7e3d2a));
     pagodaBase.position.set(0, 2.48 * scale, pagodaZ);
     pagodaBase.castShadow = true;
     group.add(pagodaBase);
-    const pagodaRoof = new THREE.Mesh(new THREE.ConeGeometry(1.5 * scale, 0.45 * scale, 4), mat(0xd6a83c));
-    pagodaRoof.position.set(0, 3.05 * scale, pagodaZ);
+    const pagodaRoof = new THREE.Mesh(new THREE.ConeGeometry(1.5 * scale * pagodaSize, 0.45 * scale * pagodaSize, 4), mat(0xd6a83c));
+    pagodaRoof.position.set(0, (3.05 + (pagodaSize - 1) * 0.25) * scale, pagodaZ);
     pagodaRoof.rotation.y = Math.PI / 4;
     pagodaRoof.castShadow = true;
     group.add(pagodaRoof);
-    const pagodaUpper = new THREE.Mesh(new THREE.BoxGeometry(1.26 * scale, 0.54 * scale, 0.86 * scale), mat(0x9f3428));
-    pagodaUpper.position.set(0, 3.34 * scale, pagodaZ);
+    const pagodaUpper = new THREE.Mesh(new THREE.BoxGeometry(1.26 * scale * pagodaSize, 0.54 * scale * pagodaSize, 0.86 * scale * pagodaSize), mat(0x9f3428));
+    pagodaUpper.position.set(0, (3.34 + (pagodaSize - 1) * 0.38) * scale, pagodaZ);
     pagodaUpper.castShadow = true;
     group.add(pagodaUpper);
-    const pagodaTop = new THREE.Mesh(new THREE.ConeGeometry(1.05 * scale, 0.38 * scale, 4), mat(0xd6a83c));
-    pagodaTop.position.set(0, 3.78 * scale, pagodaZ);
+    const pagodaTop = new THREE.Mesh(new THREE.ConeGeometry(1.05 * scale * pagodaSize, 0.38 * scale * pagodaSize, 4), mat(0xd6a83c));
+    pagodaTop.position.set(0, (3.78 + (pagodaSize - 1) * 0.5) * scale, pagodaZ);
     pagodaTop.rotation.y = Math.PI / 4;
     group.add(pagodaTop);
   } else if (type === "ironclad") {
@@ -10177,13 +10446,14 @@ function applyKrakenAttack(attack) {
   const startedWall = Date.now() - ageMs;
   setTimeout(() => {
     if (Date.now() - startedWall > KRAKEN_SLAM_DELAY_MS + 800) return;
+    const attackDamage = Number.isFinite(Number(attack.damage)) ? Number(attack.damage) : 2980;
     if (state.mode === "ship" && (krakenAttackSlamContains(playerShip.position, attack, shipHitRadius(state.shipType)) || krakenAttackWallContains(playerShip.position, attack, shipHitRadius(state.shipType) * 0.4))) {
-      damageTarget(state, maxHp() * 4);
+      damageTarget(state, attackDamage);
     }
     if (!multiplayer.serverWorld) {
       bots.forEach((bot) => {
         if (krakenAttackSlamContains(bot.group.position, attack, shipHitRadius(bot.shipType)) || krakenAttackWallContains(bot.group.position, attack, shipHitRadius(bot.shipType) * 0.4)) {
-          damageTarget(bot, getShipStats(bot.shipType).hp * 4);
+          damageTarget(bot, attackDamage);
         }
       });
     }
@@ -11421,7 +11691,7 @@ function initWorld() {
   for (let i = 0; i < STARTING_FISH_COUNT; i++) makeFish();
   for (let i = 0; i < STARTING_SQUID_COUNT; i++) makeSquid();
   for (let i = 0; i < 7; i++) makeWhale();
-  const botSpawnCatalog = shipCatalog.filter((ship) => ship.id !== "modernschooner");
+  const botSpawnCatalog = shipCatalog.filter((ship) => !BOT_BLOCKED_SHIP_IDS.has(ship.id));
   for (let i = 0; i < 15; i++) {
     const spec = botSpawnCatalog[1 + Math.floor(Math.random() * Math.max(1, botSpawnCatalog.length - 1))];
     const group = makeShip(spec.id, true);
@@ -12014,24 +12284,33 @@ function useTool() {
   dir.normalize();
   if (state.tool === "cannon") {
     const fireDelay = cannonReload();
+    state.cooldown = Number.isFinite(Number(state.cooldown)) ? Math.max(0, Number(state.cooldown)) : 0;
     if (state.cooldown > 0) return;
-    const ammo = currentAmmoType();
+    const ammo = normalizeSelectedAmmoForFire();
     const slots = broadsideGunSlots(playerShip, state.shipType, [-1, 1]);
     if (!slots.length) return toast("No cannons are ready on this ship.");
-    if (!consumeAmmo(ammo)) return;
+    if (!ammo.infinite && ammoCount(ammo.id) <= 0) {
+      state.selectedAmmoSlot = 0;
+      state.selectedAmmo = "basic";
+      updateAmmoHotbar();
+    }
+    const firingAmmo = !ammo.infinite && ammoCount(ammo.id) <= 0 ? CANNONBALL_TYPES.basic : ammo;
     const range = clamp(aimDistance, 4, cannonRange());
     const fired = fireBroadsideVolley({
       owner: playerId,
       ship: playerShip,
       shipType: state.shipType,
       sides: [-1, 1],
-      ammo,
+      ammo: firingAmmo,
       range,
       baseDamage: cannonDamage(),
       targetKind: "any",
       publish: true,
     });
-    if (fired > 0) state.cooldown = fireDelay;
+    if (fired > 0) {
+      consumeAmmo(firingAmmo);
+      state.cooldown = fireDelay;
+    }
   } else if (state.tool === "rod") {
     if (state.rodCooldown > 0) return;
     state.rodCooldown = 1.1;
@@ -12190,31 +12469,61 @@ function nearForgePedestal() {
   return dist2(character.position, island.forgePedestal) < 5.2;
 }
 
+const FORGE_RECIPES = [
+  {
+    from: "grandfrigate",
+    to: "superfrigate",
+    intro: "The pedestal can reforge your Grand Frigate into this ship.",
+    body: "A reinforced grand frigate refit with heavier broadsides, stronger armor, and a larger hold.",
+  },
+  {
+    from: "windrunner",
+    to: "tidebreaker",
+    intro: "The pedestal can reforge your Windrunner into this ship.",
+    body: "A larger Windrunner refit with stronger broadsides, more hull strength, and the same fast raider spirit.",
+  },
+  {
+    from: "firstrate",
+    to: "manofwar",
+    intro: "The pedestal can reforge your First Rate into this ship.",
+    body: "A heavier command ship with thicker sides, ten-gun broadsides, and a fortress-like hull.",
+  },
+  {
+    from: "treasure",
+    to: "treasureship",
+    intro: "The pedestal can reforge your Treasure Junk into this ship.",
+    body: "An immense treasure fleet flagship with a giant hold, towering decks, and heavier cannon decks.",
+  },
+];
+
 function renderForgePanel() {
   if (!ui.forgeBody) return;
-  const ship = getShipStats("superfrigate");
-  const eligible = state.shipType === "grandfrigate";
-  if (!eligible) {
-    ui.forgeBody.innerHTML = `<p class="stats">The crystal hums over the pedestal. Sail here with a Grand Frigate to unlock the Forge reforge.</p>`;
+  const recipes = FORGE_RECIPES.filter((recipe) => state.shipType === recipe.from);
+  if (!recipes.length) {
+    ui.forgeBody.innerHTML = `<p class="stats">The crystal hums over the pedestal. Sail here with a Grand Frigate, Windrunner, First Rate, or Treasure Junk to unlock a Forge reforge.</p>`;
     return;
   }
-  const preview = shipPreviewImage(ship.id);
-  const previewMarkup = preview
-    ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
-    : `<div class="ship-preview empty" aria-hidden="true"></div>`;
-  ui.forgeBody.innerHTML = `<p class="stats">The pedestal can reforge your Grand Frigate into this ship.</p><div class="row ship-row forge-ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-forge-ship="${ship.id}">${t("buy")}</button></div><p>A reinforced grand frigate refit with heavier broadsides, stronger armor, and a larger hold.</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })} / Cannons ${shipSideCannons(ship.id)}/side</p>${shipCompareMarkup(ship)}</div></div>`;
+  ui.forgeBody.innerHTML = recipes.map((recipe) => {
+    const ship = getShipStats(recipe.to);
+    const preview = shipPreviewImage(ship.id);
+    const previewMarkup = preview
+      ? `<img class="ship-preview" src="${preview}" alt="${shipName(ship)} preview">`
+      : `<div class="ship-preview empty" aria-hidden="true"></div>`;
+    return `<p class="stats">${recipe.intro}</p><div class="row ship-row forge-ship-row">${previewMarkup}<div class="ship-info"><div class="ship-title-line"><h3>${shipName(ship)} <span class="price">${t("price", { price: ship.price })}</span></h3><button data-forge-ship="${ship.id}">${t("buy")}</button></div><p>${recipe.body}</p><p>${t("shipStats", { hp: ship.hp, armor: Math.round(ship.armor * 100), speed: ship.speed, regen: ship.regen, hold: ship.capacity })} / Cannons ${shipSideCannons(ship.id)}/side</p>${shipCompareMarkup(ship)}</div></div>`;
+  }).join("");
 }
 
 function buyForgeShip(id) {
-  if (id !== "superfrigate") return;
+  const recipe = FORGE_RECIPES.find((item) => item.to === id);
+  if (!recipe) return;
   if (!nearForgePedestal()) return toast("Stand near the Forge pedestal.");
   const ship = getShipStats(id);
-  if (state.shipType !== "grandfrigate") return toast("The Forge only reforges a Grand Frigate into a Super Frigate.");
-  if (state.gold < ship.price) return toast("Not enough gold.");
+  if (state.shipType !== recipe.from) return toast(`The Forge only reforges a ${shipName(recipe.from)} into a ${shipName(recipe.to)}.`);
+  if (!state.infiniteGold && state.gold < ship.price) return toast("Not enough gold.");
   if (totalCargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity}.`);
   const shipPosition = playerShip?.position?.clone() || state.position.clone();
   const shipRotation = playerShip?.rotation?.y ?? state.rotation;
-  state.gold -= ship.price;
+  if (!state.infiniteGold) state.gold -= ship.price;
   replacePlayerShip(ship.id, shipPosition, { hp: ship.hp, rotation: shipRotation });
   state.mode = "land";
   state.viewMode = "ship";
@@ -12224,7 +12533,7 @@ function buyForgeShip(id) {
   state.walkingPos.copy(character.position);
   multiplayer.lastSent = 0;
   playSound("forge", character.position);
-  toast("The Forge reforged your Grand Frigate into a Super Frigate.");
+  toast(`The Forge reforged your ${shipName(recipe.from)} into a ${shipName(recipe.to)}.`);
   updateHud();
 }
 
@@ -12466,6 +12775,7 @@ function handleShopBodyAction(event) {
   if (button.dataset.ship) {
     const ship = getShipStats(button.dataset.ship);
     if (!availableShipsForIsland(island).some((item) => item.id === ship.id)) return toast("That ship is not sold here.");
+    if (forgeBaseForPortShip(ship.id) && !goldDiggerCanBuyForgeShipAtIsland(ship.id, island)) return toast("That ship is only reforged at the Forge pedestal.");
     if (playerOwnsShip(ship.id)) return toast(`You already own a ${ship.name}.`);
     if (state.gold < ship.price) return toast("Not enough gold.");
     if (regularCargoCount() > ship.capacity) return toast(`Sell cargo first. ${ship.name} holds ${ship.capacity} regular cargo.`);
@@ -12547,6 +12857,15 @@ function handleShopBodyAction(event) {
 
 ui.shopBody.addEventListener("pointerdown", handleShopBodyAction);
 ui.shopBody.addEventListener("click", handleShopBodyAction);
+function containShopScroll(event) {
+  if (!event.target?.closest?.("#shop")) return;
+  event.stopPropagation();
+}
+ui.shop?.addEventListener("wheel", containShopScroll, { passive: true });
+ui.shopBody?.addEventListener("wheel", containShopScroll, { passive: true });
+ui.shop?.addEventListener("mousedown", (event) => {
+  if (event.button === 1) event.preventDefault();
+});
 
 function makeBalloonMesh(showDirectionArrow = true) {
   const group = new THREE.Group();
@@ -12999,7 +13318,7 @@ function updateBalloons(dt) {
 
 function updateShip(dt) {
   const spec = getShipStats();
-  state.cooldown = Math.max(0, state.cooldown - dt);
+  state.cooldown = Number.isFinite(Number(state.cooldown)) ? Math.max(0, Number(state.cooldown) - dt) : 0;
   state.rodCooldown = Math.max(0, state.rodCooldown - dt);
   const netsActive = state.shipType === "whaler" && state.whalerNets;
   state.whalerNetProgress += ((netsActive ? 1 : 0) - state.whalerNetProgress) * clamp(dt * 4.8, 0, 1);

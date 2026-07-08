@@ -644,6 +644,7 @@ button.active {
   flex-direction: column;
   border-radius: 8px;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .forge-panel {
@@ -689,6 +690,9 @@ button.active {
 #shopBody {
   overflow: auto;
   padding: 8px 10px;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
 }
 
 .row {
