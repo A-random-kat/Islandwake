@@ -136,6 +136,43 @@ body::after {
   gap: 7px;
 }
 
+.google-account-button {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.google-account-button #googleAccountLabel {
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.google-mark {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(16, 32, 42, 0.16);
+  border-radius: 50%;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.48);
+  font-size: 14px;
+  text-transform: none;
+}
+
+.google-button-mount {
+  min-height: 42px;
+}
+
+.google-button-mount > div {
+  width: 100% !important;
+}
+
 .account-status {
   min-height: 34px;
   padding: 9px 10px;
@@ -294,11 +331,7 @@ body::after {
 }
 
 .hud-language {
-  width: 104px;
-  height: 30px;
-  padding: 0 7px;
-  font-size: 12px;
-  pointer-events: auto;
+  display: none;
 }
 
 #modeLabel {
@@ -588,6 +621,67 @@ button.active {
   min-width: 56px;
   height: 34px;
   pointer-events: auto;
+}
+
+.settings-button {
+  position: fixed;
+  right: 232px;
+  top: 16px;
+  z-index: 13;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.settings-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.settings-panel {
+  position: fixed;
+  right: 232px;
+  top: 66px;
+  z-index: 13;
+  width: min(270px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.settings-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-panel header button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-panel span {
+  color: #41606d;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .cargo strong {
@@ -922,6 +1016,16 @@ button.active {
     top: 96px;
     right: 10px;
     bottom: auto;
+  }
+
+  .settings-button {
+    right: 10px;
+    top: 10px;
+  }
+
+  .settings-panel {
+    right: 10px;
+    top: 58px;
   }
 
   .shop {

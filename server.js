@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 4174);
 const accountFilePath = path.join(root, "islandwake-accounts.json");
+const googleOAuthClientId = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const clients = new Map();
 const fastClients = new Map();
 const pendingShotBroadcasts = new Map();
@@ -259,6 +260,63 @@ function accountError(socket, reason) {
   send(socket, { type: "accountError", reason });
 }
 
+function escapeHtmlAttribute(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function decodeBase64UrlJson(value) {
+  const body = String(value || "");
+  const normalized = body.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+}
+
+async function verifyGoogleCredential(credential) {
+  const token = String(credential || "").trim();
+  const parts = token.split(".");
+  if (parts.length < 2) throw new Error("Google sign-in did not return a valid credential.");
+  let localPayload;
+  try {
+    localPayload = decodeBase64UrlJson(parts[1]);
+  } catch {
+    throw new Error("Google account details could not be read.");
+  }
+  const issuer = String(localPayload.iss || "");
+  if (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") {
+    throw new Error("Google sign-in came from an unknown issuer.");
+  }
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Number(localPayload.exp || 0) && Number(localPayload.exp) < nowSeconds - 60) {
+    throw new Error("Google sign-in expired. Try again.");
+  }
+  if (googleOAuthClientId && String(localPayload.aud || "") !== googleOAuthClientId) {
+    throw new Error("Google sign-in is not configured for this game.");
+  }
+  if (typeof fetch !== "function") return localPayload;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3500);
+  try {
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`, { signal: controller.signal });
+    if (!response.ok) throw new Error("Google rejected the sign-in token.");
+    const verified = await response.json();
+    if (String(verified.sub || "") !== String(localPayload.sub || "")) throw new Error("Google account verification did not match.");
+    if (googleOAuthClientId && String(verified.aud || "") !== googleOAuthClientId) {
+      throw new Error("Google sign-in is not configured for this game.");
+    }
+    return { ...localPayload, ...verified };
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Google sign-in timed out. Try again.");
+    if (String(error?.message || "").startsWith("Google")) throw error;
+    throw new Error("Google sign-in could not be verified. Try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function cleanSavedNumber(value, fallback = 0, min = 0, max = 999999999) {
   const next = Number(value);
   return Number.isFinite(next) ? clamp(Math.floor(next), min, max) : fallback;
@@ -327,7 +385,60 @@ function sanitizeProgress(progress = {}) {
   };
 }
 
-function authenticateAccount(socket, account, progress) {
+async function authenticateGoogleAccount(socket, account, progress) {
+  socket.accountNoSave = Boolean(account?.noSave);
+  let payload;
+  try {
+    payload = await verifyGoogleCredential(account?.credential);
+  } catch (error) {
+    accountError(socket, error?.message || "Google sign-in could not be verified.");
+    return null;
+  }
+  const sub = String(payload.sub || "").replace(/[^a-z0-9._-]/gi, "").slice(0, 120);
+  if (!sub) {
+    accountError(socket, "Google sign-in did not include an account id.");
+    return null;
+  }
+  const email = String(payload.email || account?.email || "").trim().replace(/[<>]/g, "").slice(0, 120);
+  const fallbackName = email.split("@")[0] || "Google Captain";
+  const displayName = cleanAccountName(account?.name || payload.name || fallbackName) || "Google Captain";
+  const key = `google:${sub}`;
+  const mode = account?.mode === "create" ? "create" : "signin";
+  let entry = accountStore.accounts[key];
+  if (!entry) {
+    if (mode !== "create") {
+      accountError(socket, "Google account not found. Use Sign up with Google first.");
+      return null;
+    }
+    entry = {
+      name: displayName,
+      provider: "google",
+      googleSub: sub,
+      googleEmail: email,
+      progress: sanitizeProgress(progress),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    accountStore.accounts[key] = entry;
+    queueAccountWrite();
+  } else if (mode === "create") {
+    accountError(socket, "That Google account already exists. Use Log in with Google.");
+    return null;
+  } else {
+    entry.name = displayName || entry.name;
+    entry.googleEmail = email || entry.googleEmail;
+    entry.updatedAt = Date.now();
+    queueAccountWrite();
+  }
+  socket.accountKey = key;
+  socket.accountName = entry.name || displayName;
+  socket.lastAccountSaveAt = Date.now();
+  send(socket, { type: "accountLoaded", account: socket.accountName, progress: entry.progress || null });
+  return entry.progress || null;
+}
+
+async function authenticateAccount(socket, account, progress) {
+  if (account?.provider === "google" || account?.credential) return authenticateGoogleAccount(socket, account, progress);
   const displayName = cleanAccountName(account?.name);
   const key = accountKey(displayName);
   const password = String(account?.password || "");
@@ -1414,6 +1525,17 @@ function aimBotShot(bot, shotTarget, maxRange = botCannonRange) {
     targetZ = bot.z + (dz / aimedDistance) * maxRange;
   }
   return { targetX, targetZ };
+}
+
+function botShotRangeToward(origin, targetX, targetZ, maxRange) {
+  const dirX = Number(origin.dirX) || 0;
+  const dirZ = Number(origin.dirZ) || 0;
+  const toX = targetX - origin.x;
+  const toZ = targetZ - origin.z;
+  const along = toX * dirX + toZ * dirZ;
+  const direct = Math.hypot(toX, toZ);
+  const aimed = Number.isFinite(along) && along > 0.01 ? along : direct;
+  return clamp(aimed, 4, maxRange);
 }
 
 function rotateFlatVector(dx, dz, angle) {
@@ -3426,8 +3548,9 @@ function updateWorld() {
         const shots = [];
         let krakenDamage = 0;
         for (const origin of origins) {
-          const targetX = origin.x + origin.dirX * shotRange;
-          const targetZ = origin.z + origin.dirZ * shotRange;
+          const projectileRange = botShotRangeToward(origin, targetX, targetZ, shotRange);
+          const shotTargetX = origin.x + origin.dirX * projectileRange;
+          const shotTargetZ = origin.z + origin.dirZ * projectileRange;
           shots.push({
             id: crypto.randomUUID(),
             owner: bot.id,
@@ -3437,19 +3560,19 @@ function updateWorld() {
             z: origin.z,
             dirX: origin.dirX,
             dirZ: origin.dirZ,
-            targetX,
-            targetZ,
+            targetX: shotTargetX,
+            targetZ: shotTargetZ,
             targetKind: shotTarget.kind,
             damage: baseDamage,
             baseDamage,
             rangeDamage: true,
             ballistic: true,
             startY: 1.15,
-            range: shotRange,
+            range: projectileRange,
           });
-          const botHit = firstBotHitByBotShot(bot, origin, shotRange);
+          const botHit = firstBotHitByBotShot(bot, origin, projectileRange);
           if (botHit?.bot) {
-            const hitDamage = scaleDamageByRange(baseDamage, botHit.distance, shotRange);
+            const hitDamage = scaleDamageByRange(baseDamage, botHit.distance, projectileRange);
             damageBot(botHit.bot, hitDamage);
             botHit.bot.targetBot = bot.id;
             botHit.bot.botFightUntil = now + 9000;
@@ -3515,11 +3638,18 @@ const server = http.createServer((req, res) => {
       return;
     }
     const ext = path.extname(filePath);
+    let body = data;
+    if (ext === ".html" && googleOAuthClientId) {
+      body = Buffer.from(data.toString("utf8").replace(
+        /<meta name="google-signin-client_id" content="[^"]*" \/>/,
+        `<meta name="google-signin-client_id" content="${escapeHtmlAttribute(googleOAuthClientId)}" />`,
+      ));
+    }
     res.writeHead(200, {
       "Content-Type": types[ext] || "application/octet-stream",
       "Cache-Control": ext === ".html" ? "no-store" : "no-cache",
     });
-    res.end(data);
+    res.end(body);
   });
 });
 
@@ -3643,7 +3773,7 @@ function readFrames(socket, chunk) {
       bytes[i] = masked ? payload[i] ^ mask[i % 4] : payload[i];
     }
     if (socket.realtime) handleRealtimeMessage(socket, bytes.toString("utf8"));
-    else handleMessage(socket, bytes.toString("utf8"));
+    else handleMessage(socket, bytes.toString("utf8")).catch(() => {});
   }
   socket.pending = offset < buffer.length ? buffer.subarray(offset) : Buffer.alloc(0);
 }
@@ -3756,7 +3886,7 @@ function handleRealtimeMessage(socket, text) {
   }
 }
 
-function handleMessage(socket, text) {
+async function handleMessage(socket, text) {
   let message;
   try {
     message = JSON.parse(text);
@@ -3768,7 +3898,7 @@ function handleMessage(socket, text) {
     const previous = socket.player;
     const next = { ...message.player, id: socket.id, updated: now };
     let loadedProgress = null;
-    if (message.type === "hello") loadedProgress = authenticateAccount(socket, message.account, message.progress);
+    if (message.type === "hello") loadedProgress = await authenticateAccount(socket, message.account, message.progress);
     if (message.progress && typeof message.progress === "object") socket.lastProgress = message.progress;
     if (loadedProgress) {
       const active = loadedProgress.activeShip || loadedProgress;

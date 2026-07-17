@@ -68,11 +68,19 @@ const ui = {
   accountTitle: document.querySelector("#accountPanelTitle"),
   accountStatus: document.querySelector("#accountStatus"),
   accountSubmit: document.querySelector("#accountSubmit"),
+  googleAccountButton: document.querySelector("#googleAccountButton"),
+  googleAccountLabel: document.querySelector("#googleAccountLabel"),
+  googleButtonMount: document.querySelector("#googleButtonMount"),
   accountClose: document.querySelector("#accountClose"),
   accountOpenButtons: [...document.querySelectorAll("[data-account-open]")],
   nameButton: document.querySelector("#setSailButton") || document.querySelector("#nameForm button"),
   languageSelect: document.querySelector("#languageSelect"),
   hudLanguageSelect: document.querySelector("#hudLanguageSelect"),
+  settingsButton: document.querySelector("#settingsButton"),
+  settingsPanel: document.querySelector("#settingsPanel"),
+  settingsClose: document.querySelector("#settingsClose"),
+  settingsLanguageSelect: document.querySelector("#settingsLanguageSelect"),
+  graphicsSelect: document.querySelector("#graphicsSelect"),
   beginnerGuide: document.querySelector("#beginnerGuide"),
   guideQuestion: document.querySelector("#guideQuestion"),
   guideContent: document.querySelector("#guideContent"),
@@ -118,6 +126,9 @@ const CHARACTER_SCALE = 0.187;
 const CHARACTER_EYE_HEIGHT = 0.7;
 const CHARACTER_MAX_HP = 1;
 const WILDLIFE_SPAWN_MULTIPLIER = 5;
+const PLAYER_SHIP_BOB = 0.026;
+const BOT_SHIP_BOB = 0.024;
+const OWNED_SHIP_BOB = 0.018;
 const STARTING_FISH_COUNT = 36 * WILDLIFE_SPAWN_MULTIPLIER * 2;
 const STARTING_SQUID_COUNT = 18 * WILDLIFE_SPAWN_MULTIPLIER * 2;
 const MAST_SIZE_SCALE = 1.2;
@@ -193,10 +204,16 @@ const LANGUAGE_OPTIONS = {
   es: "Español",
 };
 const DEFAULT_LANGUAGE = "en";
+const GRAPHICS_OPTIONS = {
+  high: { labelKey: "graphicsHigh", pixelRatioCap: MAX_RENDER_PIXEL_RATIO, shadows: true, shadowMapSize: 2048, shadowType: THREE.PCFSoftShadowMap },
+  medium: { labelKey: "graphicsMedium", pixelRatioCap: 1.15, shadows: true, shadowMapSize: 1024, shadowType: THREE.PCFShadowMap },
+  low: { labelKey: "graphicsLow", pixelRatioCap: 0.82, shadows: false, shadowMapSize: 512, shadowType: THREE.BasicShadowMap },
+};
+const DEFAULT_GRAPHICS_QUALITY = "high";
 const I18N = {
   en: {
     ui: {
-      captainName: "Captain name", enterName: "Enter your name", developerToken: "Developer token", optional: "Optional", language: "Language", setSail: "Set sail",
+      captainName: "Captain name", enterName: "Enter your name", developerToken: "Developer token", optional: "Optional", language: "Language", settings: "Settings", graphics: "Graphics", graphicsHigh: "High", graphicsMedium: "Medium", graphicsLow: "Low", setSail: "Set sail",
       firstVoyage: "First voyage", newQuestion: "Are you new to Islandwake?", newQuestionBody: "A short captain's guide can show you how sailing, islands, shops, fishing, combat, and loot work.", showGuide: "Yes, show guide", noSetSail: "No, set sail",
       beginnerGuide: "Beginner's guide", guideHeadline: "Survive, trade, upgrade", guideSailingTitle: "Sailing", guideSailingBody: "Use WASD to move your ship. Aim with the mouse and click to fire your selected cannon shot. The minimap shows islands, bosses, storms, balloons, and wind.",
       guideIslandsTitle: "Islands", guideIslandsBody: "Get close to an island and press T to dock. On land, press R to shop and C to set sail again. Shops sell ships, goods, cannon shots, balloons, and upgrades.",
@@ -732,16 +749,22 @@ function normalizeLanguage(value) {
   return I18N[value] ? value : DEFAULT_LANGUAGE;
 }
 
+function normalizeGraphicsQuality(value) {
+  return GRAPHICS_OPTIONS[value] ? value : DEFAULT_GRAPHICS_QUALITY;
+}
+
 const captainId = readSavedValue("islandwakeId") || crypto.randomUUID();
 saveValue("islandwakeId", captainId);
 const playerId = crypto.randomUUID();
 const state = {
   name: readSavedValue("islandwakeName"),
   language: normalizeLanguage(readSavedValue("islandwakeLanguage", DEFAULT_LANGUAGE)),
+  graphicsQuality: DEFAULT_GRAPHICS_QUALITY,
   devToken: "",
   accountName: readSavedValue("islandwakeAccount"),
   accountPassword: "",
   accountMode: "",
+  googleAccount: null,
   accountAuthed: false,
   infiniteGold: false,
   infiniteLevels: false,
@@ -791,17 +814,23 @@ const state = {
   turtleFire: false,
   turtleFireTimer: 0,
   turtleFireCooldown: 0,
+  turtleFireUntil: 0,
+  turtleFireCooldownUntil: 0,
   rocketBurst: null,
   rocketCooldown: 0,
+  rocketCooldownUntil: 0,
   characterHp: CHARACTER_MAX_HP,
   swimHp: CHARACTER_MAX_HP,
   showWindMarkers: readSavedValue("islandwakeWindMarkers") === "1",
   fire: null,
   cooldown: 0,
+  cooldownUntil: 0,
   rodCooldown: 0,
+  rodCooldownUntil: 0,
   position: new THREE.Vector3(-15, 0, -12),
   velocity: new THREE.Vector3(),
   rotation: 0,
+  shipBank: 0,
   walkingPos: new THREE.Vector3(),
   walkHeight: 0,
   walkVelocityY: 0,
@@ -997,7 +1026,7 @@ function translateMessage(message) {
 
 function refreshLanguageUI() {
   document.documentElement.lang = state.language;
-  [ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
+  [ui.languageSelect, ui.hudLanguageSelect, ui.settingsLanguageSelect].forEach((select) => {
     if (!select) return;
     if (!select.options.length) {
       Object.entries(LANGUAGE_OPTIONS).forEach(([value, label]) => {
@@ -1022,6 +1051,7 @@ function refreshLanguageUI() {
   if (shopTitle) shopTitle.textContent = t("harborMarket");
   if (ui.shopIsland && state.dockedAt) ui.shopIsland.textContent = islandName(state.dockedAt);
   if (ui.playerName) ui.playerName.title = t("captainName");
+  refreshGraphicsUI();
   refreshIslandLabels();
   updateAmmoHotbar(true);
   renderInventory();
@@ -1035,6 +1065,57 @@ function setLanguage(value) {
   state.language = next;
   saveValue("islandwakeLanguage", next);
   refreshLanguageUI();
+}
+
+function refreshGraphicsUI() {
+  if (!ui.graphicsSelect) return;
+  if (!ui.graphicsSelect.options.length) {
+    Object.keys(GRAPHICS_OPTIONS).forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      ui.graphicsSelect.appendChild(option);
+    });
+  }
+  [...ui.graphicsSelect.options].forEach((option) => {
+    const entry = GRAPHICS_OPTIONS[option.value];
+    option.textContent = t(entry?.labelKey || "graphicsHigh");
+  });
+  ui.graphicsSelect.value = state.graphicsQuality;
+}
+
+function graphicsPixelRatio() {
+  const entry = GRAPHICS_OPTIONS[state.graphicsQuality] || GRAPHICS_OPTIONS.high;
+  const deviceRatio = Number(devicePixelRatio) || 1;
+  return Math.max(0.55, Math.min(deviceRatio, entry.pixelRatioCap));
+}
+
+function applyGraphicsQuality({ resize = true } = {}) {
+  const entry = GRAPHICS_OPTIONS[state.graphicsQuality] || GRAPHICS_OPTIONS.high;
+  renderer.setPixelRatio(graphicsPixelRatio());
+  renderer.shadowMap.enabled = Boolean(entry.shadows);
+  renderer.shadowMap.type = entry.shadowType;
+  renderer.shadowMap.needsUpdate = true;
+  if (environment.sun) {
+    environment.sun.castShadow = Boolean(entry.shadows);
+    environment.sun.shadow.mapSize.set(entry.shadowMapSize, entry.shadowMapSize);
+    if (environment.sun.shadow.map) {
+      environment.sun.shadow.map.dispose();
+      environment.sun.shadow.map = null;
+    }
+    environment.sun.shadow.needsUpdate = true;
+  }
+  refreshGraphicsUI();
+  if (resize) setSize();
+}
+
+function setGraphicsQuality(value) {
+  const next = normalizeGraphicsQuality(value);
+  if (state.graphicsQuality === next) {
+    refreshGraphicsUI();
+    return;
+  }
+  state.graphicsQuality = next;
+  applyGraphicsQuality();
 }
 
 let playerShip;
@@ -1144,6 +1225,7 @@ let shipPreviewCamera;
 let fishingLine;
 let fishingBobber;
 let balloonReticle;
+let balloonDirectionArrow;
 let leviathan;
 let leviathanCooldown = 0;
 let tabHiddenAt = 0;
@@ -1237,6 +1319,64 @@ function angleDelta(target, current) {
 
 function lerpAngle(current, target, amount) {
   return current + angleDelta(target, current) * amount;
+}
+
+function timerDeadline(seconds) {
+  return Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+}
+
+function timerRemainingSeconds(until) {
+  return Math.max(0, (Number(until) || 0) - Date.now()) / 1000;
+}
+
+function syncActionCooldowns() {
+  state.cooldown = timerRemainingSeconds(state.cooldownUntil);
+  state.rodCooldown = timerRemainingSeconds(state.rodCooldownUntil);
+  state.turtleFireCooldown = timerRemainingSeconds(state.turtleFireCooldownUntil);
+  state.rocketCooldown = timerRemainingSeconds(state.rocketCooldownUntil);
+  if (state.turtleFire) state.turtleFireTimer = timerRemainingSeconds(state.turtleFireUntil);
+}
+
+function ensureShipRockPhase(group) {
+  if (!group?.userData) return 0;
+  if (!Number.isFinite(group.userData.shipRockPhase)) group.userData.shipRockPhase = Math.random() * 1000;
+  return group.userData.shipRockPhase;
+}
+
+function clearShipVisualRock(group, bank = 0) {
+  if (!group?.userData?.visualRockApplied) return;
+  group.rotation.x = 0;
+  group.rotation.z = bank || 0;
+  group.userData.visualRockApplied = false;
+}
+
+function clearAllShipVisualRock() {
+  if (playerShip) clearShipVisualRock(playerShip, state.shipBank || 0);
+  bots.forEach((bot) => clearShipVisualRock(bot.group, 0));
+  ownedShips.forEach((ship) => clearShipVisualRock(ship.group, 0));
+  remotePlayers.forEach((remote) => {
+    clearShipVisualRock(remote.group, remote.bank || 0);
+    remote.fleetShips?.forEach?.((ship) => clearShipVisualRock(ship.group, 0));
+  });
+}
+
+function applyShipVisualRock(group, bank = 0, amount = 1) {
+  if (!group?.visible || group.userData?.renderCulled) return;
+  const phase = ensureShipRockPhase(group);
+  const t = clock.elapsedTime;
+  group.rotation.x = (Math.sin(t * 0.74 + phase) * 0.0038 + Math.sin(t * 1.31 + phase * 0.37) * 0.0018) * amount;
+  group.rotation.z = (bank || 0) + (Math.cos(t * 0.68 + phase * 1.7) * 0.0045 + Math.sin(t * 1.07 + phase * 0.19) * 0.0018) * amount;
+  group.userData.visualRockApplied = true;
+}
+
+function applyAllShipVisualRock() {
+  if (playerShip && !state.fallingOffWorld && !state.leviathanGrabbed) applyShipVisualRock(playerShip, state.shipBank || 0, 1);
+  bots.forEach((bot) => applyShipVisualRock(bot.group, 0, 0.9));
+  ownedShips.forEach((ship) => applyShipVisualRock(ship.group, 0, 0.8));
+  remotePlayers.forEach((remote) => {
+    applyShipVisualRock(remote.group, remote.bank || 0, 0.9);
+    remote.fleetShips?.forEach?.((ship) => applyShipVisualRock(ship.group, 0, 0.75));
+  });
 }
 
 function toast(message) {
@@ -1830,15 +1970,15 @@ function shipSwimBlockAt(worldPoint) {
   const candidates = [];
   if (playerShip) candidates.push({ group: playerShip, type: state.shipType });
   ownedShips.forEach((ship) => {
-    if (ship.group?.visible !== false) candidates.push({ group: ship.group, type: ship.type || "skiff" });
+    if (ship.group) candidates.push({ group: ship.group, type: ship.type || "skiff" });
   });
   bots.forEach((bot) => {
-    if (bot.group?.visible !== false) candidates.push({ group: bot.group, type: bot.shipType || "cog" });
+    if (bot.group) candidates.push({ group: bot.group, type: bot.shipType || "cog" });
   });
   remotePlayers.forEach((remote) => {
-    if (remote.group?.visible !== false) candidates.push({ group: remote.group, type: remote.shipType || "skiff" });
+    if (remote.group) candidates.push({ group: remote.group, type: remote.shipType || "skiff" });
     remote.fleetShips?.forEach?.((ship) => {
-      if (ship.group?.visible !== false) candidates.push({ group: ship.group, type: ship.type || "skiff" });
+      if (ship.group) candidates.push({ group: ship.group, type: ship.type || "skiff" });
     });
   });
   for (const candidate of candidates) {
@@ -2428,13 +2568,18 @@ function replacePlayerShip(type, spawnPosition = null, options = {}) {
     state.turtleFire = false;
     state.turtleFireTimer = 0;
     state.turtleFireCooldown = 0;
+    state.turtleFireUntil = 0;
+    state.turtleFireCooldownUntil = 0;
   }
   if (ship.id !== "rocketeer") {
     state.rocketBurst = null;
     state.rocketCooldown = 0;
+    state.rocketCooldownUntil = 0;
   }
   state.cooldown = 0;
+  state.cooldownUntil = 0;
   state.rodCooldown = 0;
+  state.rodCooldownUntil = 0;
   setTool("cannon");
   playerShip = makeShip(ship.id);
   updateWhalerNetVisuals(playerShip, state.whalerNets, 1);
@@ -2449,16 +2594,93 @@ function replacePlayerShip(type, spawnPosition = null, options = {}) {
   updateAmmoHotbar(true);
 }
 
+let googleIdentityScriptPromise = null;
+let googleCredentialHandler = null;
+
+function googleClientId() {
+  return String(window.ISLANDWAKE_GOOGLE_CLIENT_ID || document.querySelector('meta[name="google-signin-client_id"]')?.content || "").trim();
+}
+
+function googleModeLabel() {
+  return state.accountMode === "create" ? "Sign up with Google" : "Log in with Google";
+}
+
+function decodeGoogleJwtPayload(token) {
+  const body = String(token || "").split(".")[1] || "";
+  if (!body) throw new Error("Google did not send account details.");
+  const normalized = body.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function googleNameFromPayload(payload = {}) {
+  const emailName = String(payload.email || "").split("@")[0] || "";
+  return String(payload.name || emailName || "Google Captain").trim().replace(/\s+/g, " ").slice(0, 24) || "Google Captain";
+}
+
+function loadGoogleIdentityScript() {
+  if (window.google?.accounts?.id) return Promise.resolve(window.google);
+  if (googleIdentityScriptPromise) return googleIdentityScriptPromise;
+  googleIdentityScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve(window.google);
+    script.onerror = () => reject(new Error("Google sign-in could not load."));
+    document.head.appendChild(script);
+  });
+  return googleIdentityScriptPromise;
+}
+
+function renderGoogleAccountButton() {
+  if (ui.googleAccountLabel) ui.googleAccountLabel.textContent = googleModeLabel();
+  ui.googleButtonMount?.classList.add("hidden");
+  ui.googleAccountButton?.classList.toggle("hidden", !state.accountMode);
+}
+
+function startGoogleAccountPrompt() {
+  const clientId = googleClientId();
+  if (!clientId) {
+    setAccountMode(state.accountMode || "signin", "Google sign-in needs a Google OAuth client ID first.");
+    return;
+  }
+  if (ui.accountStatus) ui.accountStatus.textContent = "Opening Google sign-in...";
+  loadGoogleIdentityScript()
+    .then((google) => {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => googleCredentialHandler?.(response),
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      google.accounts.id.prompt((notification) => {
+        if (!notification) return;
+        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+          if (ui.accountStatus) ui.accountStatus.textContent = "Google sign-in did not open. Try again or allow Google popups/cookies.";
+        }
+      });
+    })
+    .catch(() => {
+      if (ui.accountStatus) ui.accountStatus.textContent = "Google sign-in could not load. Check your connection and try again.";
+    });
+}
+
 function setAccountMode(mode = "", message = "") {
   const next = mode === "create" || mode === "signin" ? mode : "";
   state.accountMode = next;
   if (!next) {
     state.accountName = "";
     state.accountPassword = "";
+    state.googleAccount = null;
     ui.nameForm?.classList.remove("hidden");
     ui.accountPanel?.classList.add("hidden");
     if (ui.accountNameInput) ui.accountNameInput.value = "";
     if (ui.accountPasswordInput) ui.accountPasswordInput.value = "";
+    ui.googleButtonMount?.classList.add("hidden");
+    ui.googleAccountButton?.classList.add("hidden");
   } else {
     ui.nameForm?.classList.add("hidden");
     ui.accountPanel?.classList.remove("hidden");
@@ -2468,14 +2690,16 @@ function setAccountMode(mode = "", message = "") {
   if (ui.accountSubmit) ui.accountSubmit.textContent = next === "create" ? "Create account" : "Log in";
   if (ui.accountStatus) {
     ui.accountStatus.textContent = message || (next === "create"
-      ? "Create a new account to save legit progress."
+      ? "Create an account to save progress."
       : next === "signin"
         ? "Log in to load your saved ships, gold, level, and items."
         : "Guest mode: progress will not be saved to an account.");
   }
+  renderGoogleAccountButton();
 }
 
 function accountModeFromFields() {
+  if (state.googleAccount?.credential) return state.accountMode === "create" ? "create" : "signin";
   const hasAccount = Boolean(String(state.accountName || "").trim() && String(state.accountPassword || ""));
   if (!hasAccount) return "";
   return state.accountMode === "create" ? "create" : "signin";
@@ -2497,6 +2721,16 @@ function activeShipProgressRecord() {
 }
 
 function accountPayload() {
+  if (state.googleAccount?.credential) {
+    return {
+      provider: "google",
+      credential: state.googleAccount.credential,
+      name: String(state.googleAccount.name || state.accountName || "").trim().replace(/\s+/g, " ").slice(0, 24),
+      email: String(state.googleAccount.email || "").trim().slice(0, 120),
+      mode: accountModeFromFields(),
+      noSave: hasGoldDiggerPowers(),
+    };
+  }
   const name = String(state.accountName || "").trim().replace(/\s+/g, " ").slice(0, 24);
   const password = String(state.accountPassword || "");
   if (!name || !password) return null;
@@ -2629,6 +2863,7 @@ function applyAccountProgress(progress) {
 }
 
 function setSize() {
+  renderer.setPixelRatio(graphicsPixelRatio());
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
@@ -2739,8 +2974,9 @@ function renderDistanceVisible(position, distance, radius = 0, focus = lightingF
 
 function setRenderableVisible(object, visible) {
   if (!object) return;
-  object.visible = Boolean(visible);
-  object.userData.renderCulled = !visible;
+  const nextVisible = Boolean(visible);
+  if (object.visible !== nextVisible) object.visible = nextVisible;
+  if (object.userData.renderCulled !== !nextVisible) object.userData.renderCulled = !nextVisible;
 }
 
 function updateRenderDistanceCulling(force = false) {
@@ -6636,8 +6872,8 @@ function collidesWithShipAt(point, ownType = state.shipType) {
     if (dist2(point, bot.group.position) < (ownRadius + shipCollisionRadius(bot.shipType)) * 0.86) return true;
   }
   for (const remote of remotePlayers.values()) {
-    if (remote.group.visible && dist2(point, remote.group.position) < (ownRadius + shipCollisionRadius(remote.shipType)) * 0.86) return true;
-    if (remote.fleetShips?.some?.((ship) => ship.group.visible && dist2(point, ship.group.position) < (ownRadius + shipCollisionRadius(ship.type)) * 0.86)) return true;
+    if (remote.group && dist2(point, remote.group.position) < (ownRadius + shipCollisionRadius(remote.shipType)) * 0.86) return true;
+    if (remote.fleetShips?.some?.((ship) => ship.group && dist2(point, ship.group.position) < (ownRadius + shipCollisionRadius(ship.type)) * 0.86)) return true;
   }
   for (const ship of ownedShips) {
     if (dist2(point, ship.group.position) < (ownRadius + shipCollisionRadius(ship.type)) * 0.86) return true;
@@ -6859,7 +7095,7 @@ function krakenHeadWorldPosition() {
 }
 
 function pushShipOutOfKraken(position, shipType, velocity = null, padding = 1) {
-  if (!krakenBoss?.alive || !krakenBoss.group?.visible) return false;
+  if (!krakenBoss?.alive || !krakenBoss.group) return false;
   const center = krakenHeadWorldPosition();
   if (!center) return false;
   const minDistance = 7.5 + shipHitRadius(shipType) * 0.72 + padding;
@@ -6892,9 +7128,9 @@ function resolveShipContacts() {
       }
     });
     remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0, playerShip.rotation.y, remote.group.rotation.y);
+      if (remote.group) separateShipPositions(playerShip.position, state.shipType, state.velocity, remote.group.position, remote.shipType, null, 1, 0, playerShip.rotation.y, remote.group.rotation.y);
       remote.fleetShips?.forEach?.((ship) => {
-        if (ship.group.visible) separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0, playerShip.rotation.y, ship.group.rotation.y);
+        if (ship.group) separateShipPositions(playerShip.position, state.shipType, state.velocity, ship.group.position, ship.type, null, 1, 0, playerShip.rotation.y, ship.group.rotation.y);
       });
     });
     ownedShips.forEach((ship) => {
@@ -6903,11 +7139,11 @@ function resolveShipContacts() {
       }
     });
     remotePlayers.forEach((remote) => {
-      if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
+      if (remote.group) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
     });
     pushShipOutOfIslands(playerShip.position, state.shipType, state.velocity, 3);
     pushShipOutOfKraken(playerShip.position, state.shipType, state.velocity, 1.2);
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
+    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * PLAYER_SHIP_BOB;
     state.position.copy(playerShip.position);
   }
   for (let i = 0; i < bots.length; i++) {
@@ -6923,9 +7159,9 @@ function resolveShipContacts() {
       }
     }
     remotePlayers.forEach((remote) => {
-      if (remote.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0, bot.group.rotation.y, remote.group.rotation.y);
+      if (remote.group) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, remote.group.position, remote.shipType, null, 1, 0, bot.group.rotation.y, remote.group.rotation.y);
       remote.fleetShips?.forEach?.((ship) => {
-        if (ship.group.visible) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0, bot.group.rotation.y, ship.group.rotation.y);
+        if (ship.group) separateShipPositions(bot.group.position, bot.shipType, bot.velocity, ship.group.position, ship.type, null, 1, 0, bot.group.rotation.y, ship.group.rotation.y);
       });
     });
     ownedShips.forEach((ship) => {
@@ -6933,15 +7169,15 @@ function resolveShipContacts() {
     });
   }
   remotePlayers.forEach((remote) => {
-    if (remote.group.visible) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
+    if (remote.group) pushShipOutOfKraken(remote.group.position, remote.shipType, remote.velocity, 1);
     remote.fleetShips?.forEach?.((ship) => {
-      if (ship.group.visible) pushShipOutOfKraken(ship.group.position, ship.type, null, 1);
+      if (ship.group) pushShipOutOfKraken(ship.group.position, ship.type, null, 1);
     });
   });
   ownedShips.forEach((ship, index) => {
     pushShipOutOfIslands(ship.group.position, ship.type, null, 3);
     pushShipOutOfKraken(ship.group.position, ship.type, null, 1);
-    ship.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.15 + index * 0.7) * 0.055;
+    ship.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.15 + index * 0.7) * OWNED_SHIP_BOB;
   });
 }
 
@@ -7897,21 +8133,29 @@ function updateTurtleFireTimers(dt) {
     state.turtleFire = false;
     state.turtleFireTimer = 0;
     state.turtleFireCooldown = 0;
+    state.turtleFireUntil = 0;
+    state.turtleFireCooldownUntil = 0;
     updateTurtleFireVisual(playerShip, false, dt);
     return;
   }
-  state.turtleFireCooldown = Math.max(0, (state.turtleFireCooldown || 0) - dt);
+  if (!state.turtleFireCooldownUntil && state.turtleFireCooldown > 0) {
+    state.turtleFireCooldownUntil = timerDeadline(state.turtleFireCooldown);
+  }
+  state.turtleFireCooldown = timerRemainingSeconds(state.turtleFireCooldownUntil);
   if (!state.turtleFire) return;
-  state.turtleFireTimer = Math.max(0, (state.turtleFireTimer || 0) - dt);
+  if (!state.turtleFireUntil && state.turtleFireTimer > 0) state.turtleFireUntil = timerDeadline(state.turtleFireTimer);
+  state.turtleFireTimer = timerRemainingSeconds(state.turtleFireUntil);
   if (state.turtleFireTimer <= 0 || state.mode !== "ship" || state.viewMode !== "ship") {
     state.turtleFire = false;
     state.turtleFireTimer = 0;
+    state.turtleFireUntil = 0;
     updateTurtleFireVisual(playerShip, false, dt);
   }
 }
 
 function startTurtleFireAbility() {
   if (state.shipType !== "turtle") return false;
+  syncActionCooldowns();
   if (state.turtleFire) {
     toast(`Turtle fire already venting (${Math.ceil(state.turtleFireTimer || 0)}s).`);
     return true;
@@ -7921,8 +8165,10 @@ function startTurtleFireAbility() {
     return true;
   }
   state.turtleFire = true;
-  state.turtleFireTimer = TURTLE_FIRE_DURATION;
-  state.turtleFireCooldown = TURTLE_FIRE_COOLDOWN;
+  state.turtleFireUntil = timerDeadline(TURTLE_FIRE_DURATION);
+  state.turtleFireCooldownUntil = timerDeadline(TURTLE_FIRE_COOLDOWN);
+  state.turtleFireTimer = timerRemainingSeconds(state.turtleFireUntil);
+  state.turtleFireCooldown = timerRemainingSeconds(state.turtleFireCooldownUntil);
   updateTurtleFireVisual(playerShip, true, 1);
   multiplayer.lastSent = 0;
   toast("Turtle fire vent opened.");
@@ -8037,6 +8283,7 @@ function launchRocketeerRocket(index = 0) {
 
 function startRocketeerBurstAbility() {
   if (state.shipType !== "rocketeer") return false;
+  syncActionCooldowns();
   if (rocketBurstShotsRemaining() > 0) {
     toast(`Rocket burst firing (${rocketBurstShotsRemaining()} rockets left in this burst).`);
     return true;
@@ -8051,7 +8298,8 @@ function startRocketeerBurstAbility() {
   }
   state.ammo.rocketburst = Math.max(0, ammoCount("rocketburst") - 1);
   state.rocketBurst = { shotsRemaining: ROCKET_BURST_COUNT, remaining: ROCKET_BURST_COUNT, totalShots: ROCKET_BURST_COUNT, timer: 0, fired: 0, ammoBurstsSpent: 1 };
-  state.rocketCooldown = ROCKET_BURST_COOLDOWN;
+  state.rocketCooldownUntil = timerDeadline(ROCKET_BURST_COOLDOWN);
+  state.rocketCooldown = timerRemainingSeconds(state.rocketCooldownUntil);
   multiplayer.lastSent = 0;
   toast(`Rocket burst launched: ${ROCKET_BURST_COUNT} rockets.`);
   updateHud();
@@ -8062,9 +8310,11 @@ function updateRocketeerBurst(dt) {
   if (state.shipType !== "rocketeer") {
     state.rocketBurst = null;
     state.rocketCooldown = 0;
+    state.rocketCooldownUntil = 0;
     return;
   }
-  state.rocketCooldown = Math.max(0, (state.rocketCooldown || 0) - dt);
+  if (!state.rocketCooldownUntil && state.rocketCooldown > 0) state.rocketCooldownUntil = timerDeadline(state.rocketCooldown);
+  state.rocketCooldown = timerRemainingSeconds(state.rocketCooldownUntil);
   if (!state.rocketBurst) return;
   if (!rocketeerActiveForState()) {
     state.rocketBurst = null;
@@ -10190,7 +10440,7 @@ function syncKraken(data) {
 }
 
 function projectileHitsKraken(shot) {
-  if (!krakenBoss?.alive || !krakenBoss.group.visible) return false;
+  if (!krakenBoss?.alive || !krakenBoss.group) return false;
   const localPoint = krakenBoss.group.worldToLocal(shot.mesh.position.clone());
   const headCenter = new THREE.Vector3(0, 2.75, -6.55);
   const dx = (localPoint.x - headCenter.x) / 5.8;
@@ -11678,6 +11928,7 @@ function damageTarget(target, amount, options = {}) {
 
 function initWorld() {
   addLights();
+  applyGraphicsQuality({ resize: true });
   addSea();
   initCompassTrail();
   initWindCurrents();
@@ -11732,9 +11983,16 @@ function setTool(tool) {
 ui.toolButtons.cannon.addEventListener("click", () => setTool("cannon"));
 ui.toolButtons.rod.addEventListener("click", () => setTool("rod"));
 ui.toolButtons.glass.addEventListener("click", () => setTool("glass"));
-[ui.languageSelect, ui.hudLanguageSelect].forEach((select) => {
+[ui.languageSelect, ui.hudLanguageSelect, ui.settingsLanguageSelect].forEach((select) => {
   select?.addEventListener("change", () => setLanguage(select.value));
 });
+ui.graphicsSelect?.addEventListener("change", () => setGraphicsQuality(ui.graphicsSelect.value));
+ui.settingsButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  ui.settingsPanel?.classList.toggle("hidden");
+});
+ui.settingsClose?.addEventListener("click", () => ui.settingsPanel?.classList.add("hidden"));
+ui.settingsPanel?.addEventListener("pointerdown", (event) => event.stopPropagation());
 ui.guideYes?.addEventListener("click", () => showBeginnerGuide());
 ui.guideNo?.addEventListener("click", () => closeBeginnerGuide());
 ui.guideClose?.addEventListener("click", () => closeBeginnerGuide());
@@ -11829,7 +12087,7 @@ function setupNameGate() {
     if (progress) hello.progress = progress;
     sendMultiplayer(hello);
   };
-  const joinGame = (event = null, forcedName = "", forcedToken = "", forcedAccount = "", forcedPassword = "", forcedAccountMode = "") => {
+  const joinGame = (event = null, forcedName = "", forcedToken = "", forcedAccount = "", forcedPassword = "", forcedAccountMode = "", forcedGoogleAccount = null) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (ui.nameGate.classList.contains("hidden")) return;
@@ -11838,18 +12096,24 @@ function setupNameGate() {
     if (forcedAccount && ui.accountNameInput) ui.accountNameInput.value = forcedAccount;
     if (forcedPassword && ui.accountPasswordInput) ui.accountPasswordInput.value = forcedPassword;
     if (forcedAccountMode && ui.accountModeInput) setAccountMode(forcedAccountMode);
+    if (forcedGoogleAccount?.credential) {
+      state.googleAccount = forcedGoogleAccount;
+      if (ui.accountNameInput) ui.accountNameInput.value = forcedGoogleAccount.email || forcedGoogleAccount.name || "";
+      if (ui.accountPasswordInput) ui.accountPasswordInput.value = "";
+    }
     const nextName = ui.nameInput.value.trim().replace(/\s+/g, " ").slice(0, 18);
     const token = ui.developerTokenInput?.value?.trim() || "";
     const accountName = ui.accountNameInput?.value?.trim().replace(/\s+/g, " ").slice(0, 24) || "";
     const accountPassword = ui.accountPasswordInput?.value || "";
     const rawAccountMode = ui.accountModeInput?.value || state.accountMode || "";
-    const accountMode = accountName && accountPassword ? (rawAccountMode || "signin") : "";
-    const resolvedName = nextName || (accountMode ? accountName.slice(0, 18) : "");
+    const googleAccount = state.googleAccount?.credential && (rawAccountMode === "create" || rawAccountMode === "signin") ? state.googleAccount : null;
+    const accountMode = googleAccount ? (rawAccountMode || "signin") : accountName && accountPassword ? (rawAccountMode || "signin") : "";
+    const resolvedName = nextName || (googleAccount ? String(googleAccount.name || googleAccount.email || "Captain").slice(0, 18) : accountMode ? accountName.slice(0, 18) : "");
     if (!resolvedName) {
       ui.nameInput.focus();
       return;
     }
-    if ((rawAccountMode === "create" || rawAccountMode === "signin") && (!accountName || !accountPassword)) {
+    if ((rawAccountMode === "create" || rawAccountMode === "signin") && !googleAccount && (!accountName || !accountPassword)) {
       setAccountMode(rawAccountMode, "Enter an account name and password.");
       if (!accountName) ui.accountNameInput?.focus();
       else ui.accountPasswordInput?.focus();
@@ -11857,9 +12121,11 @@ function setupNameGate() {
     }
     state.name = resolvedName;
     state.devToken = token;
-    state.accountName = accountName;
-    state.accountPassword = accountPassword;
+    state.accountName = googleAccount ? (googleAccount.email || googleAccount.name || accountName) : accountName;
+    state.accountPassword = googleAccount ? "" : accountPassword;
     state.accountMode = accountMode === "create" ? "create" : accountMode === "signin" ? "signin" : "";
+    if (googleAccount) state.googleAccount = { ...googleAccount, mode: state.accountMode };
+    else state.googleAccount = null;
     state.accountAuthed = false;
     state.infiniteGold = token.toLowerCase() === "golddigger";
     state.infiniteLevels = token.toLowerCase() === "golddigger";
@@ -11871,14 +12137,40 @@ function setupNameGate() {
     }
     state.joined = true;
     saveValue("islandwakeName", resolvedName);
-    if (accountName) saveValue("islandwakeAccount", accountName);
+    if (state.accountName) saveValue("islandwakeAccount", state.accountName);
     if (state.accountMode) setAccountMode(state.accountMode, hasGoldDiggerPowers() ? "Contacting account server. GoldDigger progress will not save." : "Contacting account server...");
     ui.nameGate.classList.add("hidden");
     sendHello();
     updateHud();
     showBeginnerQuestion();
   };
+  const joinWithGoogleCredential = (response, forcedMode = "") => {
+    const credential = String(response?.credential || "");
+    if (!credential) {
+      setAccountMode(state.accountMode || "signin", "Google did not return an account credential.");
+      return;
+    }
+    let payload = {};
+    try {
+      payload = decodeGoogleJwtPayload(credential);
+    } catch {
+      setAccountMode(state.accountMode || "signin", "Google account details could not be read.");
+      return;
+    }
+    const mode = forcedMode === "create" || forcedMode === "signin" ? forcedMode : state.accountMode === "create" ? "create" : "signin";
+    const name = googleNameFromPayload(payload);
+    const email = String(payload.email || "").trim();
+    const googleAccount = { provider: "google", credential, name, email, mode };
+    state.googleAccount = googleAccount;
+    if (ui.nameInput && !ui.nameInput.value.trim()) ui.nameInput.value = name.slice(0, 18);
+    if (ui.accountNameInput) ui.accountNameInput.value = email || name;
+    if (ui.accountPasswordInput) ui.accountPasswordInput.value = "";
+    setAccountMode(mode, "Checking Google account...");
+    joinGame(null, ui.nameInput?.value || name, "", email || name, "", mode, googleAccount);
+  };
+  googleCredentialHandler = joinWithGoogleCredential;
   window.islandwakeJoin = (name = "", token = "", account = "", password = "", accountMode = "") => joinGame(null, String(name || ""), String(token || ""), String(account || ""), String(password || ""), String(accountMode || ""));
+  window.islandwakeJoinGoogle = (credential = "", accountMode = "") => joinWithGoogleCredential({ credential: String(credential || "") }, String(accountMode || ""));
   ui.nameInput.value = state.name;
   if (ui.accountNameInput) ui.accountNameInput.value = state.accountName;
   setAccountMode("");
@@ -11912,6 +12204,11 @@ function setupNameGate() {
       else if (!ui.accountPasswordInput?.value) ui.accountPasswordInput?.focus();
     });
   });
+  ui.googleAccountButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    startGoogleAccountPrompt();
+  });
   ui.accountClose?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -11930,9 +12227,15 @@ function setupNameGate() {
     if (event.key !== "Enter") return;
     joinGame(event);
   });
+  ui.accountNameInput?.addEventListener("input", () => {
+    state.googleAccount = null;
+  });
   ui.accountPasswordInput?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     joinGame(event);
+  });
+  ui.accountPasswordInput?.addEventListener("input", () => {
+    state.googleAccount = null;
   });
   if (window.ISLANDWAKE_PENDING_JOIN) {
     joinGame(null, String(window.ISLANDWAKE_PENDING_JOIN), String(window.ISLANDWAKE_PENDING_TOKEN || ""), String(window.ISLANDWAKE_PENDING_ACCOUNT || ""), String(window.ISLANDWAKE_PENDING_PASSWORD || ""), String(window.ISLANDWAKE_PENDING_ACCOUNT_MODE || ""));
@@ -12045,7 +12348,8 @@ addEventListener("keydown", (event) => {
     event.preventDefault();
     clearFishingRig();
     state.fishing = null;
-    state.rodCooldown = 0.35;
+    state.rodCooldownUntil = timerDeadline(0.35);
+    state.rodCooldown = timerRemainingSeconds(state.rodCooldownUntil);
     toast("Line retracted.");
     return;
   }
@@ -12130,7 +12434,7 @@ function startDocking(island) {
   if (!island || state.mode !== "ship") return;
   if (island.forge) return toast("The Forge has no dock. Swim into its waterfall in first person.");
   if (state.docking?.island === island.name) return;
-  state.docking = { island: island.name, remaining: 5 };
+  state.docking = { island: island.name, remaining: 5, endAt: timerDeadline(5) };
   state.velocity.multiplyScalar(0.25);
   toast(`Docking at ${islandName(island)}: 5 seconds.`);
 }
@@ -12144,7 +12448,8 @@ function updateDocking(dt) {
     return;
   }
   state.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
-  state.docking.remaining -= dt;
+  if (!state.docking.endAt && state.docking.remaining > 0) state.docking.endAt = timerDeadline(state.docking.remaining);
+  state.docking.remaining = timerRemainingSeconds(state.docking.endAt);
   if (state.docking.remaining <= 0) {
     state.docking = null;
     dockAtIsland(island);
@@ -12229,6 +12534,7 @@ function fireBroadsideVolley({
   range = BOT_CANNON_RANGE,
   baseDamage = 34,
   targetKind = "any",
+  targetPoint = null,
   publish = false,
 } = {}) {
   if (!ship) return 0;
@@ -12239,7 +12545,14 @@ function fireBroadsideVolley({
     for (let i = 0; i < pellets; i++) {
       const spread = pellets > 1 || ammo.spread ? (Math.random() - 0.5) * (ammo.spread || 0) : 0;
       const shotDir = rotateFlatDirection(slot.dir, spread).normalize();
-      const shotRange = range * (ammo.rangeScale || 1);
+      const maxShotRange = range * (ammo.rangeScale || 1);
+      let shotRange = maxShotRange;
+      if (targetPoint) {
+        const toTarget = targetPoint.clone().sub(slot.origin);
+        toTarget.y = 0;
+        const aimed = toTarget.dot(shotDir);
+        shotRange = clamp(aimed > 0.01 ? aimed : toTarget.length(), 4, maxShotRange);
+      }
       const directDamage = Number.isFinite(ammo.fixedDamage) ? ammo.fixedDamage : baseDamage * (ammo.damageScale || 1);
       const target = slot.origin.clone().add(shotDir.clone().multiplyScalar(shotRange));
       target.y = 0;
@@ -12268,6 +12581,8 @@ function fireBroadsideVolley({
 function useTool() {
   if (nameGateOpen()) return;
   if (ui.shop.classList.contains("hidden") === false) return;
+  clearAllShipVisualRock();
+  syncActionCooldowns();
   if (state.viewMode === "balloon") {
     dropBalloonBomb(activeBalloon());
     return;
@@ -12284,7 +12599,7 @@ function useTool() {
   dir.normalize();
   if (state.tool === "cannon") {
     const fireDelay = cannonReload();
-    state.cooldown = Number.isFinite(Number(state.cooldown)) ? Math.max(0, Number(state.cooldown)) : 0;
+    state.cooldown = timerRemainingSeconds(state.cooldownUntil);
     if (state.cooldown > 0) return;
     const ammo = normalizeSelectedAmmoForFire();
     const slots = broadsideGunSlots(playerShip, state.shipType, [-1, 1]);
@@ -12309,11 +12624,14 @@ function useTool() {
     });
     if (fired > 0) {
       consumeAmmo(firingAmmo);
-      state.cooldown = fireDelay;
+      state.cooldownUntil = timerDeadline(fireDelay);
+      state.cooldown = timerRemainingSeconds(state.cooldownUntil);
     }
   } else if (state.tool === "rod") {
+    state.rodCooldown = timerRemainingSeconds(state.rodCooldownUntil);
     if (state.rodCooldown > 0) return;
-    state.rodCooldown = 1.1;
+    state.rodCooldownUntil = timerDeadline(1.1);
+    state.rodCooldown = timerRemainingSeconds(state.rodCooldownUntil);
     let best = null;
     let bestDist = 17;
     crates.forEach((crate) => {
@@ -12867,7 +13185,7 @@ ui.shop?.addEventListener("mousedown", (event) => {
   if (event.button === 1) event.preventDefault();
 });
 
-function makeBalloonMesh(showDirectionArrow = true) {
+function makeBalloonMesh(showDirectionArrow = false) {
   const group = new THREE.Group();
   const envelope = new THREE.Mesh(new THREE.SphereGeometry(1.8, 18, 12), new THREE.MeshStandardMaterial({ color: 0xd85842, roughness: 0.82, metalness: 0.02 }));
   envelope.scale.set(1.05, 1.22, 1.05);
@@ -12936,6 +13254,29 @@ function ensureBalloonReticle() {
   return balloonReticle;
 }
 
+function ensureBalloonDirectionArrow() {
+  if (balloonDirectionArrow) return balloonDirectionArrow;
+  balloonDirectionArrow = new THREE.Group();
+  const backing = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.55, 3), new THREE.MeshBasicMaterial({ color: 0x17323b, depthTest: false, depthWrite: false }));
+  backing.rotation.x = Math.PI / 2;
+  backing.position.z = 0.72;
+  balloonDirectionArrow.add(backing);
+  const backingTail = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.45), new THREE.MeshBasicMaterial({ color: 0x17323b, depthTest: false, depthWrite: false }));
+  backingTail.position.set(0, -0.035, -0.22);
+  balloonDirectionArrow.add(backingTail);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.58, 1.32, 3), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false }));
+  head.rotation.x = Math.PI / 2;
+  head.position.z = 0.72;
+  balloonDirectionArrow.add(head);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 1.25), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false }));
+  tail.position.z = -0.16;
+  balloonDirectionArrow.add(tail);
+  balloonDirectionArrow.renderOrder = 30;
+  balloonDirectionArrow.visible = false;
+  scene.add(balloonDirectionArrow);
+  return balloonDirectionArrow;
+}
+
 function predictedBalloonBombPoint(balloon) {
   const plan = ensureBalloonBombPlan(balloon);
   const start = balloon.group.position.clone().add(plan.offset);
@@ -12945,13 +13286,22 @@ function predictedBalloonBombPoint(balloon) {
 
 function updateBalloonReticle() {
   const reticle = ensureBalloonReticle();
+  const arrow = ensureBalloonDirectionArrow();
   const balloon = activeBalloon();
   reticle.visible = Boolean(balloon && !balloon.destroyed && balloon.bomb && !balloon.landing);
-  if (!reticle.visible) return;
-  const point = predictedBalloonBombPoint(balloon);
-  reticle.position.copy(point);
-  const pulse = 1 + Math.sin(clock.elapsedTime * 5.4) * 0.08;
-  reticle.scale.set(pulse, pulse, pulse);
+  arrow.visible = Boolean(balloon && !balloon.destroyed && !balloon.landing);
+  if (arrow.visible) {
+    arrow.position.set(balloon.group.position.x, balloon.group.position.y + 7.05, balloon.group.position.z);
+    arrow.rotation.set(0, balloon.rotation, 0);
+    const arrowPulse = 1 + Math.sin(clock.elapsedTime * 4.8) * 0.045;
+    arrow.scale.setScalar(arrowPulse);
+  }
+  if (reticle.visible) {
+    const point = predictedBalloonBombPoint(balloon);
+    reticle.position.copy(point);
+    const pulse = 1 + Math.sin(clock.elapsedTime * 5.4) * 0.08;
+    reticle.scale.set(pulse, pulse, pulse);
+  }
 }
 
 function launchBalloon() {
@@ -12968,6 +13318,7 @@ function launchBalloon() {
     hp: 100,
     velocity: new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation)).multiplyScalar(6),
     rotation: state.rotation,
+    bank: 0,
     bomb: true,
     landing: false,
     destroyed: false,
@@ -13175,7 +13526,7 @@ function detonateBalloonBomb(position, options = {}) {
       if (animal.hp <= 0) damageAnimal(animal, { ammoType: "bomb", damage: 9999, mesh: { position } });
     }
   });
-  if (!options.visualOnly && krakenBoss?.alive && krakenBoss.group?.visible) {
+  if (!options.visualOnly && krakenBoss?.alive && krakenBoss.group) {
     const head = krakenHeadWorldPosition() || krakenBoss.group.position;
     const d = dist2(position, head);
     const radius = 28;
@@ -13198,6 +13549,7 @@ function detonateBalloonBomb(position, options = {}) {
 
 function updateBalloons(dt) {
   serverBotBalloons.slice().forEach((balloon) => {
+    const previousRotation = balloon.group.rotation.y;
     if (balloon.serverPosition) balloon.group.position.lerp(balloon.serverPosition, clamp(dt * (balloon.falling ? 8 : 6), 0, balloon.falling ? 0.45 : 0.3));
     if (Number.isFinite(balloon.serverRotation)) balloon.group.rotation.y = lerpAngle(balloon.group.rotation.y, balloon.serverRotation, clamp(dt * 6, 0, 0.3));
     if (balloon.falling) {
@@ -13205,8 +13557,11 @@ function updateBalloons(dt) {
       balloon.group.rotation.y += dt * (balloon.fallSpin?.y || 0.4);
       balloon.group.rotation.z += dt * (balloon.fallSpin?.z || 1.0);
     } else {
+      const turnRate = angleDelta(balloon.group.rotation.y, previousRotation) / Math.max(dt, 0.001);
+      const targetBank = clamp(-turnRate * 0.08, -0.18, 0.18);
+      balloon.bank = (balloon.bank || 0) + (targetBank - (balloon.bank || 0)) * clamp(dt * 4.5, 0, 1);
       balloon.group.rotation.x *= Math.pow(0.08, dt);
-      balloon.group.rotation.z *= Math.pow(0.08, dt);
+      balloon.group.rotation.z = balloon.bank || 0;
     }
   });
   const controlled = activeBalloon();
@@ -13234,11 +13589,16 @@ function updateBalloons(dt) {
       const turn = (keys.has("a") ? 1 : 0) - (keys.has("d") ? 1 : 0);
       const throttle = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 0.55 : 0);
       balloon.rotation += turn * dt * 1.7;
+      const targetBank = -turn * 0.18;
+      balloon.bank = (balloon.bank || 0) + (targetBank - (balloon.bank || 0)) * clamp(dt * 5.2, 0, 1);
       const forward = new THREE.Vector3(Math.sin(balloon.rotation), 0, Math.cos(balloon.rotation));
       balloon.velocity.add(forward.multiplyScalar(throttle * 20 * dt));
       balloon.velocity.multiplyScalar(Math.pow(0.9, dt * 6));
     } else if (!balloon.landing) {
       balloon.velocity.multiplyScalar(Math.pow(0.58, dt * 6));
+      balloon.bank = (balloon.bank || 0) * Math.pow(0.08, dt);
+    } else {
+      balloon.bank = (balloon.bank || 0) * Math.pow(0.12, dt);
     }
     if (balloon === controlled || balloon.landing) {
       balloon.velocity.add(windAt(balloon.group.position).multiplyScalar(dt * (balloon.landing ? 0.45 : 2.35)));
@@ -13285,6 +13645,7 @@ function updateBalloons(dt) {
       balloon.group.position.y += (24 + Math.sin(clock.elapsedTime * 1.4 + index) * 1.2 - balloon.group.position.y) * clamp(dt * 0.8, 0, 0.05);
     }
     balloon.group.rotation.y = balloon.rotation;
+    balloon.group.rotation.z = balloon.bank || 0;
     if (Math.abs(balloon.group.position.x) > WATERFALL_LIMIT || Math.abs(balloon.group.position.z) > WATERFALL_LIMIT) destroyBalloon(balloon, "edge");
   });
   for (let i = 0; i < balloons.length; i++) {
@@ -13318,8 +13679,7 @@ function updateBalloons(dt) {
 
 function updateShip(dt) {
   const spec = getShipStats();
-  state.cooldown = Number.isFinite(Number(state.cooldown)) ? Math.max(0, Number(state.cooldown) - dt) : 0;
-  state.rodCooldown = Math.max(0, state.rodCooldown - dt);
+  syncActionCooldowns();
   const netsActive = state.shipType === "whaler" && state.whalerNets;
   state.whalerNetProgress += ((netsActive ? 1 : 0) - state.whalerNetProgress) * clamp(dt * 4.8, 0, 1);
   updateWhalerNetVisuals(playerShip, netsActive, dt);
@@ -13347,6 +13707,7 @@ function updateShip(dt) {
       state.fallVelocityY = 0;
       state.fallDrift.set(0, 0, 0);
       state.fallSpin.set(0, 0, 0);
+      state.shipBank = 0;
       playerShip.rotation.set(0, state.rotation, 0);
       damageTarget(state, maxHp() * 4);
     }
@@ -13354,19 +13715,25 @@ function updateShip(dt) {
   }
   if (state.leviathanGrabbed) {
     state.velocity.set(0, 0, 0);
+    state.shipBank *= Math.pow(0.08, dt);
+    playerShip.rotation.set(0, state.rotation, state.shipBank);
     state.position.copy(playerShip.position);
     return;
   }
   if (state.viewMode === "deck" || state.viewMode === "swim") {
     state.velocity.multiplyScalar(Math.pow(0.5, dt * 8));
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
+    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * PLAYER_SHIP_BOB;
+    state.shipBank *= Math.pow(0.08, dt);
+    playerShip.rotation.set(0, state.rotation, state.shipBank);
     updateSeaWalker(dt);
     state.position.copy(playerShip.position);
     return;
   }
   if (state.viewMode === "balloon") {
     state.velocity.multiplyScalar(Math.pow(0.55, dt * 8));
-    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
+    playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * PLAYER_SHIP_BOB;
+    state.shipBank *= Math.pow(0.08, dt);
+    playerShip.rotation.set(0, state.rotation, state.shipBank);
     state.position.copy(playerShip.position);
     return;
   }
@@ -13377,6 +13744,9 @@ function updateShip(dt) {
   const rudderAuthority = rudderSpeedRatio * rudderSpeedRatio * (3 - 2 * rudderSpeedRatio);
   const speedTurnScale = clamp(effectiveSpeed / 18, 0.45, 1.25);
   state.rotation += turn * dt * (1.25 + effectiveSpeed / 32) * speedTurnScale * rudderAuthority;
+  const bankSpeedRatio = clamp(state.velocity.length() / Math.max(1, effectiveSpeed), 0, 1.15);
+  const targetShipBank = -turn * rudderAuthority * bankSpeedRatio * 0.075;
+  state.shipBank += (targetShipBank - state.shipBank) * clamp(dt * 4.4, 0, 1);
   const forward = new THREE.Vector3(Math.sin(state.rotation), 0, Math.cos(state.rotation));
   state.velocity.add(forward.multiplyScalar(throttle * effectiveSpeed * dt));
   const wind = windAt(playerShip.position);
@@ -13390,8 +13760,8 @@ function updateShip(dt) {
   } else {
     state.velocity.multiplyScalar(-0.22);
   }
-  playerShip.rotation.y = state.rotation;
-  playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * 0.08;
+  playerShip.rotation.set(0, state.rotation, state.shipBank);
+  playerShip.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.8) * PLAYER_SHIP_BOB;
   state.position.copy(playerShip.position);
   if (Math.abs(playerShip.position.x) > WATERFALL_LIMIT || Math.abs(playerShip.position.z) > WATERFALL_LIMIT) {
     state.fallingOffWorld = true;
@@ -13623,9 +13993,11 @@ function updateBots(dt) {
         bot.group.rotation.y = lerpAngle(bot.group.rotation.y, bot.serverRotation, clamp(dt * 7, 0, 0.32));
         bot.rotation = bot.group.rotation.y;
       }
-      bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
-      updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
-      updateTurtleFireVisual(bot.group, Boolean(bot.turtleFire), dt);
+      bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * BOT_SHIP_BOB;
+      if (!bot.group.userData.renderCulled) {
+        updateWhalerNetVisuals(bot.group, Boolean(bot.netsExtended), dt);
+        updateTurtleFireVisual(bot.group, Boolean(bot.turtleFire), dt);
+      }
       updateFireDamage(bot, dt, bot.velocity.length());
     });
     return;
@@ -13763,9 +14135,9 @@ function updateBots(dt) {
         if (other !== bot) avoidShip(other.group.position, other.shipType, fightingBot === other ? 0.28 : 0.75);
       });
       remotePlayers.forEach((remote) => {
-        if (remote.group.visible) avoidShip(remote.group.position, remote.shipType, 0.8);
+        if (remote.group) avoidShip(remote.group.position, remote.shipType, 0.8);
       });
-      if (krakenBoss?.alive && krakenBoss.group?.visible) {
+      if (krakenBoss?.alive && krakenBoss.group) {
         const head = krakenHeadWorldPosition();
         if (head) {
           const away = bot.group.position.clone().sub(head);
@@ -13825,7 +14197,7 @@ function updateBots(dt) {
       }
       bot.group.rotation.y = bot.rotation;
     }
-    bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * 0.08;
+    bot.group.position.y = SHIP_WATERLINE_Y + Math.sin(clock.elapsedTime * 2.4 + i) * BOT_SHIP_BOB;
     updateFireDamage(bot, dt, bot.velocity.length());
     botCollectCrates(bot);
     const shotTarget = aggressive ? playerShip : fightingBot?.group;
@@ -13848,6 +14220,7 @@ function updateBots(dt) {
           range: botRange,
           baseDamage: botCannonDamage(bot),
           targetKind: fightingBot ? "bot" : "player",
+          targetPoint,
         });
         bot.fireCooldown = botCannonReload(bot);
       }
@@ -14134,6 +14507,14 @@ function setupTransientResumeCleanup() {
       return;
     }
     if (tabHiddenAt && Date.now() - tabHiddenAt > 1400) clearPastTransientEffects();
+    syncActionCooldowns();
+    if (state.docking?.endAt) state.docking.remaining = timerRemainingSeconds(state.docking.endAt);
+    if (state.joined) {
+      updateTurtleFireTimers(0);
+      updateRocketeerBurst(0);
+      nextHudUpdateAt = 0;
+      updateHud();
+    }
     tabHiddenAt = 0;
   });
 }
@@ -15113,13 +15494,17 @@ function syncRemoteBalloons(remote, dataBalloons = []) {
   wanted.forEach((entry, index) => {
     let balloon = remote.balloons[index];
     if (!balloon) {
-      balloon = { group: makeBalloonMesh(false) };
+      balloon = { group: makeBalloonMesh(false), bank: 0 };
       balloon.group.scale.setScalar(0.86);
       scene.add(balloon.group);
       remote.balloons[index] = balloon;
     }
+    const previousRotation = balloon.group.rotation.y;
     balloon.group.position.set(Number(entry.x) || 0, Number(entry.y) || 24, Number(entry.z) || 0);
     balloon.group.rotation.y = Number(entry.rotation) || 0;
+    const targetBank = clamp(-angleDelta(balloon.group.rotation.y, previousRotation) * 3.2, -0.16, 0.16);
+    balloon.bank = (balloon.bank || 0) + (targetBank - (balloon.bank || 0)) * 0.28;
+    balloon.group.rotation.z = balloon.bank || 0;
     balloon.group.visible = true;
   });
 }
@@ -15153,6 +15538,7 @@ function upsertRemotePlayer(data) {
       name: data.name || "Captain",
       shipType,
       velocity: new THREE.Vector3(),
+      bank: 0,
       fleetShips: [],
       serverPosition: new THREE.Vector3(),
       avatarTargetPosition: new THREE.Vector3(),
@@ -15238,9 +15624,16 @@ function updateRemotePlayers(dt) {
       remote.group.position.lerp(remote.serverPosition, positionAlpha);
       remote.group.position.y = SHIP_WATERLINE_Y;
     }
+    const previousRotation = remote.group.rotation.y;
     if (Number.isFinite(remote.serverRotation)) {
       remote.group.rotation.y = lerpAngle(remote.group.rotation.y, remote.serverRotation, rotationAlpha);
     }
+    const speed = getShipStats(remote.shipType).speed || 15;
+    const speedRatio = clamp((remote.velocity?.length?.() || 0) / Math.max(1, speed), 0, 1.15);
+    const turnRate = angleDelta(remote.group.rotation.y, previousRotation) / Math.max(dt, 0.001);
+    const targetBank = clamp(-turnRate * speedRatio * 0.035, -0.075, 0.075);
+    remote.bank = (remote.bank || 0) + (targetBank - (remote.bank || 0)) * clamp(dt * 4.2, 0, 1);
+    remote.group.rotation.z = remote.bank || 0;
     updateWhalerNetVisuals(remote.group, Boolean(remote.whalerNets), dt);
     if (remote.avatar.visible && remote.avatarTargetPosition) {
       remote.avatar.position.lerp(remote.avatarTargetPosition, positionAlpha);
@@ -15755,8 +16148,12 @@ function handleMultiplayerMessage(message) {
     setAccountMode(state.accountMode, reason);
     if (ui.nameGate && state.accountName) {
       ui.nameGate.classList.remove("hidden");
-      ui.accountPasswordInput?.focus();
-      ui.accountPasswordInput?.select?.();
+      if (state.googleAccount?.credential) {
+        ui.accountStatus?.focus?.();
+      } else {
+        ui.accountPasswordInput?.focus();
+        ui.accountPasswordInput?.select?.();
+      }
     }
     toast(reason);
   } else if (message.type === "state") {
@@ -16163,13 +16560,16 @@ function animateSea() {
 }
 
 function frame() {
+  clearAllShipVisualRock();
   const dt = Math.min(0.033, clock.getDelta());
+  syncActionCooldowns();
   if (state.joined) {
     updateTurtleFireTimers(dt);
     updateRocketeerBurst(dt);
     if (state.mode !== "ship" && state.turtleFire) {
       state.turtleFire = false;
       state.turtleFireTimer = 0;
+      state.turtleFireUntil = 0;
       updateTurtleFireVisual(playerShip, false, dt);
     }
     if (state.mode === "ship") updateShip(dt);
@@ -16201,6 +16601,7 @@ function frame() {
   updateCursedCompassTrail();
   updateMinimap();
   updateRenderDistanceCulling();
+  applyAllShipVisualRock();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
