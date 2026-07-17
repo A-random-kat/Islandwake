@@ -2621,7 +2621,7 @@ function googleNameFromPayload(payload = {}) {
 }
 
 function loadGoogleIdentityScript() {
-  if (window.google?.accounts?.id) return Promise.resolve(window.google);
+  if (window.google?.accounts?.id || window.google?.accounts?.oauth2) return Promise.resolve(window.google);
   if (googleIdentityScriptPromise) return googleIdentityScriptPromise;
   googleIdentityScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -2644,24 +2644,23 @@ function renderGoogleAccountButton() {
 function startGoogleAccountPrompt() {
   const clientId = googleClientId();
   if (!clientId) {
-    setAccountMode(state.accountMode || "signin", "Google sign-in needs a Google OAuth client ID first.");
+    setAccountMode(state.accountMode || "signin", "Google login is not ready yet. Use username and password for now.");
     return;
   }
-  if (ui.accountStatus) ui.accountStatus.textContent = "Opening Google sign-in...";
+  if (ui.accountStatus) ui.accountStatus.textContent = "Opening Google sign-in window...";
   loadGoogleIdentityScript()
     .then((google) => {
-      google.accounts.id.initialize({
+      if (!google.accounts.oauth2?.initTokenClient) throw new Error("Google popup sign-in could not load.");
+      const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        callback: (response) => googleCredentialHandler?.(response),
-        auto_select: false,
-        cancel_on_tap_outside: true,
+        scope: "openid email profile",
+        prompt: "select_account",
+        callback: (response) => googleCredentialHandler?.({ accessToken: response?.access_token || "", error: response?.error || "" }),
+        error_callback: () => {
+          if (ui.accountStatus) ui.accountStatus.textContent = "Google sign-in window was closed or blocked.";
+        },
       });
-      google.accounts.id.prompt((notification) => {
-        if (!notification) return;
-        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
-          if (ui.accountStatus) ui.accountStatus.textContent = "Google sign-in did not open. Try again or allow Google popups/cookies.";
-        }
-      });
+      tokenClient.requestAccessToken({ prompt: "select_account" });
     })
     .catch(() => {
       if (ui.accountStatus) ui.accountStatus.textContent = "Google sign-in could not load. Check your connection and try again.";
@@ -2699,7 +2698,7 @@ function setAccountMode(mode = "", message = "") {
 }
 
 function accountModeFromFields() {
-  if (state.googleAccount?.credential) return state.accountMode === "create" ? "create" : "signin";
+  if (state.googleAccount?.credential || state.googleAccount?.accessToken) return state.accountMode === "create" ? "create" : "signin";
   const hasAccount = Boolean(String(state.accountName || "").trim() && String(state.accountPassword || ""));
   if (!hasAccount) return "";
   return state.accountMode === "create" ? "create" : "signin";
@@ -2721,10 +2720,11 @@ function activeShipProgressRecord() {
 }
 
 function accountPayload() {
-  if (state.googleAccount?.credential) {
+  if (state.googleAccount?.credential || state.googleAccount?.accessToken) {
     return {
       provider: "google",
       credential: state.googleAccount.credential,
+      accessToken: state.googleAccount.accessToken || "",
       name: String(state.googleAccount.name || state.accountName || "").trim().replace(/\s+/g, " ").slice(0, 24),
       email: String(state.googleAccount.email || "").trim().slice(0, 120),
       mode: accountModeFromFields(),
@@ -12146,21 +12146,28 @@ function setupNameGate() {
   };
   const joinWithGoogleCredential = (response, forcedMode = "") => {
     const credential = String(response?.credential || "");
-    if (!credential) {
-      setAccountMode(state.accountMode || "signin", "Google did not return an account credential.");
+    const accessToken = String(response?.accessToken || response?.access_token || "");
+    const mode = forcedMode === "create" || forcedMode === "signin" ? forcedMode : state.accountMode === "create" ? "create" : "signin";
+    if (response?.error) {
+      setAccountMode(mode, "Google sign-in was cancelled or blocked.");
+      return;
+    }
+    if (!credential && !accessToken) {
+      setAccountMode(mode, "Google did not return a sign-in token.");
       return;
     }
     let payload = {};
-    try {
-      payload = decodeGoogleJwtPayload(credential);
-    } catch {
-      setAccountMode(state.accountMode || "signin", "Google account details could not be read.");
-      return;
+    if (credential) {
+      try {
+        payload = decodeGoogleJwtPayload(credential);
+      } catch {
+        setAccountMode(mode, "Google account details could not be read.");
+        return;
+      }
     }
-    const mode = forcedMode === "create" || forcedMode === "signin" ? forcedMode : state.accountMode === "create" ? "create" : "signin";
     const name = googleNameFromPayload(payload);
     const email = String(payload.email || "").trim();
-    const googleAccount = { provider: "google", credential, name, email, mode };
+    const googleAccount = { provider: "google", credential, accessToken, name, email, mode };
     state.googleAccount = googleAccount;
     if (ui.nameInput && !ui.nameInput.value.trim()) ui.nameInput.value = name.slice(0, 18);
     if (ui.accountNameInput) ui.accountNameInput.value = email || name;

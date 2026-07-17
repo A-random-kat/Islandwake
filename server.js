@@ -317,6 +317,40 @@ async function verifyGoogleCredential(credential) {
   }
 }
 
+async function verifyGoogleAccessToken(accessToken) {
+  const token = String(accessToken || "").trim();
+  if (!token) throw new Error("Google sign-in did not return a valid token.");
+  if (typeof fetch !== "function") throw new Error("Google sign-in cannot be verified on this server.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const infoResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`, { signal: controller.signal });
+    if (!infoResponse.ok) throw new Error("Google rejected the sign-in token.");
+    const info = await infoResponse.json();
+    if (googleOAuthClientId && String(info.aud || "") !== googleOAuthClientId) {
+      throw new Error("Google sign-in is not configured for this game.");
+    }
+    const profileResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    const profile = profileResponse.ok ? await profileResponse.json() : {};
+    return {
+      ...info,
+      ...profile,
+      sub: String(info.sub || profile.sub || info.user_id || ""),
+      email: String(info.email || profile.email || ""),
+      name: String(profile.name || info.name || ""),
+    };
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Google sign-in timed out. Try again.");
+    if (String(error?.message || "").startsWith("Google")) throw error;
+    throw new Error("Google sign-in could not be verified. Try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function cleanSavedNumber(value, fallback = 0, min = 0, max = 999999999) {
   const next = Number(value);
   return Number.isFinite(next) ? clamp(Math.floor(next), min, max) : fallback;
@@ -389,7 +423,9 @@ async function authenticateGoogleAccount(socket, account, progress) {
   socket.accountNoSave = Boolean(account?.noSave);
   let payload;
   try {
-    payload = await verifyGoogleCredential(account?.credential);
+    payload = account?.credential
+      ? await verifyGoogleCredential(account.credential)
+      : await verifyGoogleAccessToken(account?.accessToken);
   } catch (error) {
     accountError(socket, error?.message || "Google sign-in could not be verified.");
     return null;
@@ -438,7 +474,7 @@ async function authenticateGoogleAccount(socket, account, progress) {
 }
 
 async function authenticateAccount(socket, account, progress) {
-  if (account?.provider === "google" || account?.credential) return authenticateGoogleAccount(socket, account, progress);
+  if (account?.provider === "google" || account?.credential || account?.accessToken) return authenticateGoogleAccount(socket, account, progress);
   const displayName = cleanAccountName(account?.name);
   const key = accountKey(displayName);
   const password = String(account?.password || "");
@@ -3648,6 +3684,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, {
       "Content-Type": types[ext] || "application/octet-stream",
       "Cache-Control": ext === ".html" ? "no-store" : "no-cache",
+      "Referrer-Policy": "no-referrer-when-downgrade",
     });
     res.end(body);
   });
