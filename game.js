@@ -12715,11 +12715,13 @@ function inspectWithSpyglass(dir = null, requireShipHit = false) {
   const candidates = [
     ...bots.map((bot) => {
       const spec = getShipStats(bot.shipType);
-      return { kind: "Hostile", name: shipName(bot.shipType), level: bot.level, hp: bot.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
+      const hp = Number(bot.hp);
+      return { kind: "Hostile", spyKind: "bot", spyId: bot.serverId || bot.localId || String(bot.group.id), name: shipName(bot.shipType), level: bot.level, hp: Number.isFinite(hp) ? hp : spec.hp, max: bot.serverMaxHp || spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: bot.group.position, shipPos: bot.group.position, shipType: bot.shipType, group: bot.group };
     }),
-    ...[...remotePlayers.values()].map((p) => {
+    ...[...remotePlayers.entries()].map(([id, p]) => {
       const spec = getShipStats(p.shipType);
-      return { kind: "Captain", name: p.name, level: p.level || 1, hp: p.hp || spec.hp, max: spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: p.lookPosition || p.group.position, shipPos: p.group.position, shipType: p.shipType, group: p.group };
+      const hp = Number(p.hp);
+      return { kind: "Captain", spyKind: "player", spyId: id, name: p.name, level: p.level || 1, hp: Number.isFinite(hp) ? hp : spec.hp, max: spec.hp, armor: spec.armor, speed: spec.speed, regen: spec.regen, pos: p.lookPosition || p.group.position, shipPos: p.group.position, shipType: p.shipType, group: p.group };
     }),
   ];
   const directTarget = requireShipHit
@@ -14995,8 +14997,41 @@ function escapeMarkup(value) {
   })[char]);
 }
 
+function liveSpyTarget(snapshot) {
+  if (!snapshot?.spyKind || !snapshot.spyId) return snapshot;
+  let live = null;
+  if (snapshot.spyKind === "bot") {
+    live = bots.find((bot) => (bot.serverId || bot.localId || String(bot.group?.id)) === snapshot.spyId);
+  } else if (snapshot.spyKind === "player") {
+    live = remotePlayers.get(snapshot.spyId);
+  }
+  if (!live?.group) return null;
+  const spec = getShipStats(live.shipType || snapshot.shipType);
+  const hp = Number(live.hp);
+  const max = snapshot.spyKind === "bot" ? Number(live.serverMaxHp) || spec.hp : spec.hp;
+  const level = Number(live.level) || snapshot.level || 1;
+  const pos = snapshot.spyKind === "player" ? live.lookPosition || live.group.position : live.group.position;
+  const threat = level > state.level + 2 ? "Dangerous" : (Number.isFinite(hp) ? hp : spec.hp) < max * 0.4 ? "Wounded" : "Manageable";
+  return {
+    ...snapshot,
+    name: snapshot.spyKind === "player" ? live.name || snapshot.name : shipName(live.shipType || snapshot.shipType),
+    level,
+    hp: Number.isFinite(hp) ? hp : spec.hp,
+    max,
+    armor: spec.armor,
+    speed: spec.speed,
+    regen: spec.regen,
+    pos,
+    shipPos: live.group.position,
+    shipType: live.shipType || snapshot.shipType,
+    group: live.group,
+    crateEstimate: snapshot.spyKind === "bot" ? crateDropCount({ isBot: true, shipType: live.shipType || snapshot.shipType, level }) : snapshot.crateEstimate,
+    threat,
+  };
+}
+
 function updateSpyPanel() {
-  const target = state.spyTarget;
+  const target = liveSpyTarget(state.spyTarget);
   if (!target || clock.elapsedTime > target.expires) {
     state.spyTarget = null;
     ui.spyPanel.classList.add("hidden");
