@@ -5,52 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="google-signin-client_id" content="" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=256" />
+  <link rel="stylesheet" href="styles.css?v=272" />
 </head>
-<body>
+<body class="menu-screen">
   <canvas id="game"></canvas>
 
   <div id="nameGate" class="name-gate">
-    <div id="nameForm" class="name-card">
-      <span data-i18n="captainName">Captain name</span>
-      <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
-      <div class="account-mini">
+    <div class="name-stack">
+      <div id="nameForm" class="name-card">
+        <span>Username</span>
+        <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
+        <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Token" />
+        <button id="setSailButton" type="button" data-i18n="setSail">Set sail</button>
+      </div>
+      <div id="accountMini" class="account-mini">
         <span>Account save</span>
         <div>
           <button id="openSignup" type="button" data-account-open="create">Sign up</button>
           <button id="openLogin" type="button" data-account-open="signin">Log in</button>
         </div>
       </div>
-      <span data-i18n="developerToken">Developer token</span>
-      <input id="developerTokenInput" maxlength="32" autocomplete="off" placeholder="Optional" data-i18n-placeholder="optional" />
-      <span data-i18n="language">Language</span>
-      <select id="languageSelect" class="language-select" aria-label="Language"></select>
-      <button id="setSailButton" type="button" data-i18n="setSail">Set sail</button>
-    </div>
-    <div id="accountPanel" class="name-card account-card hidden">
-      <header>
-        <div>
-          <span>Account</span>
-          <strong id="accountPanelTitle">Log in</strong>
-        </div>
-        <button id="accountClose" class="account-close" type="button" title="Back">x</button>
-      </header>
-      <label>
-        <span>Username</span>
-        <input id="accountNameInput" maxlength="24" autocomplete="username" placeholder="Account name" />
-      </label>
-      <label>
-        <span>Password</span>
-        <input id="accountPasswordInput" maxlength="48" autocomplete="current-password" type="password" placeholder="Password" />
-      </label>
-      <input id="accountModeInput" type="hidden" value="" />
-      <button id="accountSubmit" type="button">Log in</button>
-      <button id="googleAccountButton" class="google-account-button" type="button">
-        <span class="google-mark">G</span>
-        <span id="googleAccountLabel">Log in with Google</span>
-      </button>
-      <div id="googleButtonMount" class="google-button-mount hidden"></div>
-      <div id="accountStatus" class="account-status">Log in to load your saved ships, gold, level, and items.</div>
+      <div id="accountPanel" class="name-card account-card hidden">
+        <header>
+          <div>
+            <strong id="accountPanelTitle">Log in</strong>
+          </div>
+          <button id="accountClose" class="account-close" type="button" title="Back">x</button>
+        </header>
+        <label>
+          <span>Username</span>
+          <input id="accountNameInput" maxlength="24" autocomplete="username" placeholder="Account name" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="accountPasswordInput" maxlength="48" autocomplete="current-password" type="password" placeholder="Password" />
+        </label>
+        <input id="accountModeInput" type="hidden" value="" />
+        <button id="accountSubmit" type="button">Log in</button>
+        <button id="googleAccountButton" class="google-account-button" type="button">
+          <span class="google-mark">G</span>
+          <span id="googleAccountLabel">Log in with Google</span>
+        </button>
+        <div id="googleButtonMount" class="google-button-mount hidden"></div>
+        <div id="accountStatus" class="account-status"></div>
+      </div>
     </div>
   </div>
 
@@ -94,12 +92,14 @@
   <div id="hud">
     <section class="panel captain">
       <div>
-        <strong id="playerName">Captain</strong>
+        <div class="captain-title">
+          <strong id="playerName">Captain</strong>
+          <span id="playerLevel" class="player-level">Lvl. 1</span>
+        </div>
         <select id="hudLanguageSelect" class="language-select hud-language" aria-label="Language"></select>
-        <span id="modeLabel">At sea</span>
       </div>
       <div class="bars">
-        <div class="bar hp"><span id="hpBar"></span></div>
+        <div class="bar hp"><span id="hpBar"></span><b id="hpCounter" class="bar-counter">0/0</b></div>
         <div class="bar xp"><span id="xpBar"></span></div>
       </div>
       <div class="stats" id="statsLine"></div>
@@ -211,6 +211,9 @@
 
   <script>
     (() => {
+      function randomCaptainName() {
+        return `Captain ${100 + Math.floor(Math.random() * 900)}`;
+      }
       function pendingJoin(event) {
         const gate = document.querySelector("#nameGate");
         if (!gate || gate.classList.contains("hidden")) return;
@@ -236,8 +239,7 @@
           return;
         }
         const accountMode = account && password ? (rawAccountMode || "signin") : "";
-        const finalName = name || (accountMode ? account.slice(0, 18) : "");
-        if (!finalName) return;
+        const finalName = name || randomCaptainName();
         event.preventDefault();
         window.ISLANDWAKE_PENDING_JOIN = finalName;
         window.ISLANDWAKE_PENDING_TOKEN = token;
@@ -245,13 +247,13 @@
         window.ISLANDWAKE_PENDING_PASSWORD = accountMode ? password : "";
         window.ISLANDWAKE_PENDING_ACCOUNT_MODE = accountMode;
         try {
-          localStorage.setItem("islandwakeName", finalName);
           if (accountMode) localStorage.setItem("islandwakeAccount", account);
         } catch {}
         if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(finalName, token, accountMode ? account : "", accountMode ? password : "", accountMode);
       }
       function showCaptainMenu() {
         document.querySelector("#nameForm")?.classList.remove("hidden");
+        document.querySelector("#accountMini")?.classList.remove("hidden");
         document.querySelector("#accountPanel")?.classList.add("hidden");
         document.querySelector("#googleAccountButton")?.classList.add("hidden");
         document.querySelector("#googleButtonMount")?.classList.add("hidden");
@@ -269,6 +271,7 @@
         const googleLabel = document.querySelector("#googleAccountLabel");
         const googleMount = document.querySelector("#googleButtonMount");
         document.querySelector("#nameForm")?.classList.add("hidden");
+        document.querySelector("#accountMini")?.classList.add("hidden");
         document.querySelector("#accountPanel")?.classList.remove("hidden");
         if (modeInput) modeInput.value = mode === "create" ? "create" : "signin";
         if (title) title.textContent = mode === "create" ? "Create account" : "Log in";
@@ -276,7 +279,7 @@
         googleButton?.classList.remove("hidden");
         googleMount?.classList.add("hidden");
         if (googleLabel) googleLabel.textContent = mode === "create" ? "Sign up with Google" : "Log in with Google";
-        if (status) status.textContent = mode === "create" ? "Create an account to save progress." : "Log in to load your saved ships, gold, level, and items.";
+        if (status) status.textContent = "";
         if (!input?.value?.trim()) input?.focus();
         else if (!password?.value) password?.focus();
       }
@@ -300,6 +303,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=256"></script>
+  <script type="module" src="game.js?v=272"></script>
 </body>
 </html>

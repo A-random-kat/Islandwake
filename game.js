@@ -27,8 +27,9 @@ const projectileHitLocal = new THREE.Vector3();
 
 const ui = {
   playerName: document.querySelector("#playerName"),
-  modeLabel: document.querySelector("#modeLabel"),
+  playerLevel: document.querySelector("#playerLevel"),
   hpBar: document.querySelector("#hpBar"),
+  hpCounter: document.querySelector("#hpCounter"),
   xpBar: document.querySelector("#xpBar"),
   statsLine: document.querySelector("#statsLine"),
   cargoList: document.querySelector("#cargoList"),
@@ -61,6 +62,7 @@ const ui = {
   nameForm: document.querySelector("#nameForm"),
   nameInput: document.querySelector("#captainNameInput"),
   developerTokenInput: document.querySelector("#developerTokenInput"),
+  accountMini: document.querySelector("#accountMini"),
   accountPanel: document.querySelector("#accountPanel"),
   accountNameInput: document.querySelector("#accountNameInput"),
   accountPasswordInput: document.querySelector("#accountPasswordInput"),
@@ -221,7 +223,7 @@ const I18N = {
       guideProgressTitle: "Progress", guideProgressBody: "Sell goods where prices are better, sink ships for crates, buy stronger ships, and spend level points on damage, reload, and range. Stay away from the Kraken and map edge early on.", startPlaying: "Start playing",
       cargo: "Cargo", noTarget: "No target", map: "Map", wind: "Wind", toggleWindMarkers: "Toggle wind markers", openMinimap: "Open minimap", gold: "Gold", openLeaderboard: "Open leaderboard", close: "Close", harborMarket: "Harbor Market",
       goodsTab: "Goods", shipsTab: "Ships", shotTab: "Shot", buildTab: "Build", upgradesTab: "Upgrades", inventory: "Inventory", snapBuild: "Snap building pieces", captain: "Captain", atSea: "At sea", swimming: "Swimming", onDeck: "On deck", docked: "Docked: {island}",
-      lvlInfinite: "Lvl. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
+      lvlInfinite: "Lv. infinite", lvlMax: "Lv.{level} MAX", lvl: "Lv.{level}", hp: "HP", armor: "Armor", speed: "Speed", regen: "Regen", hold: "Hold", blubber: "Blubber", nets: "Nets", out: "out", in: "in", burning: "Burning {seconds}s", emptyHold: "Empty hold",
       dockingPrompt: "Docking {island}: <b>{seconds}s</b>", pressDock: "Press <b>T</b> to dock at {island}", pressSailShop: "Press <b>C</b> to set sail or <b>R</b> for the shop", pressSailBuild: "Press <b>C</b> to set sail or <b>R</b> to rotate buildings",
       unchartedShop: "{island} is uncharted. There are no shops, shipwrights, or trade goods here.", marketIntro: "{culture} market | Hold {hold}/{capacity}{blubber}. Buy low, then sell where demand is higher.", blubberInHold: " | Blubber {count} in hold",
       buy: "Buy", sell: "Sell", buyPrice: "Buy {price}g", sellPrice: "Sell {price}g", owned: "Owned {count}.", blubberTrade: "Owned {owned}. Portsmouth pays 200g each; other ports will not buy it. It uses normal cargo space unless you sail a Whaler, which can carry 50 blubber.",
@@ -755,9 +757,10 @@ function normalizeGraphicsQuality(value) {
 
 const captainId = readSavedValue("islandwakeId") || crypto.randomUUID();
 saveValue("islandwakeId", captainId);
+const fallbackCaptainNumber = 100 + Array.from(captainId).reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 900, 0);
 const playerId = crypto.randomUUID();
 const state = {
-  name: readSavedValue("islandwakeName"),
+  name: "",
   language: normalizeLanguage(readSavedValue("islandwakeLanguage", DEFAULT_LANGUAGE)),
   graphicsQuality: DEFAULT_GRAPHICS_QUALITY,
   devToken: "",
@@ -1203,8 +1206,9 @@ const minimapCtx = ui.minimap.getContext("2d");
 const shipPreviewCache = new Map();
 let ammoHotbarSignature = "";
 let hudNameText = "";
-let hudModeText = "";
+let hudLevelText = "";
 let hudHpWidth = "";
+let hudHpText = "";
 let hudXpWidth = "";
 let hudStatsText = "";
 let hudCargoHtml = "";
@@ -1386,12 +1390,21 @@ function toast(message) {
 }
 
 function captainName() {
-  return state.name.trim() || `${t("captain")} ${captainId.slice(0, 3).toUpperCase()}`;
+  return state.name.trim() || `Captain ${fallbackCaptainNumber}`;
+}
+
+function randomCaptainName() {
+  return `Captain ${100 + Math.floor(Math.random() * 900)}`;
 }
 
 function nameGateOpen() {
   return (ui.nameGate && !ui.nameGate.classList.contains("hidden"))
     || (ui.beginnerGuide && !ui.beginnerGuide.classList.contains("hidden"));
+}
+
+function setMenuScreen(open) {
+  document.body?.classList.toggle("menu-screen", Boolean(open));
+  document.body?.classList.toggle("game-screen", !open);
 }
 
 function closeBeginnerGuide() {
@@ -2289,13 +2302,13 @@ function updateAmmoHotbar(force = false) {
   ui.ammoHotbar.innerHTML = state.ammoSlots.map((type, index) => {
     if (!type) {
       const active = state.selectedAmmoSlot === index ? " active" : "";
-      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="${t("emptySlotTitle")}"><span>${index + 1}</span><strong>${t("emptySlot")}</strong><em>-</em></button>`;
+      return `<button class="ammo-slot empty${active}" data-ammo-slot="${index}" title="${t("emptySlotTitle")}"><strong>${t("emptySlot")}</strong><em>-</em></button>`;
     }
     const ammo = CANNONBALL_TYPES[type] || CANNONBALL_TYPES.basic;
     const count = ammo.infinite ? "&infin;" : ammoCount(type);
     const active = state.selectedAmmoSlot === index ? " active" : "";
     const empty = !ammo.infinite && ammoCount(type) <= 0 ? " empty" : "";
-    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammoName(ammo)}"><span>${index + 1}</span><strong>${ammoShortName(ammo)}</strong><em>${count}</em></button>`;
+    return `<button class="ammo-slot${active}${empty}" data-ammo-slot="${index}" title="${ammoName(ammo)}"><strong>${ammoShortName(ammo)}</strong><em>${count}</em></button>`;
   }).join("");
 }
 
@@ -2675,6 +2688,7 @@ function setAccountMode(mode = "", message = "") {
     state.accountPassword = "";
     state.googleAccount = null;
     ui.nameForm?.classList.remove("hidden");
+    ui.accountMini?.classList.remove("hidden");
     ui.accountPanel?.classList.add("hidden");
     if (ui.accountNameInput) ui.accountNameInput.value = "";
     if (ui.accountPasswordInput) ui.accountPasswordInput.value = "";
@@ -2682,17 +2696,14 @@ function setAccountMode(mode = "", message = "") {
     ui.googleAccountButton?.classList.add("hidden");
   } else {
     ui.nameForm?.classList.add("hidden");
+    ui.accountMini?.classList.add("hidden");
     ui.accountPanel?.classList.remove("hidden");
   }
   if (ui.accountModeInput) ui.accountModeInput.value = next;
   if (ui.accountTitle) ui.accountTitle.textContent = next === "create" ? "Create account" : next === "signin" ? "Log in" : "Account";
   if (ui.accountSubmit) ui.accountSubmit.textContent = next === "create" ? "Create account" : "Log in";
   if (ui.accountStatus) {
-    ui.accountStatus.textContent = message || (next === "create"
-      ? "Create an account to save progress."
-      : next === "signin"
-        ? "Log in to load your saved ships, gold, level, and items."
-        : "Guest mode: progress will not be saved to an account.");
+    ui.accountStatus.textContent = message || "";
   }
   renderGoogleAccountButton();
 }
@@ -3963,14 +3974,21 @@ function makeIsland(data) {
   const dockLength = 16 + (dockThemeSeed % 4) * 1.35 + (["naval", "trade"].includes(data.theme) ? 2.4 : 0);
   const dockWidth = 4.8 + (dockThemeSeed % 3) * 0.38 + (data.theme === "naval" ? 0.8 : 0);
   const dockCenterZ = radius - 4;
+  const shopLocal = {
+    x: -radius * 0.3,
+    z: radius * 0.3,
+  };
   const mountainLocal = {
     x: -radius * 0.18,
     z: -radius * 0.2,
     r: radius * (data.theme === "rocky" ? 0.37 : 0.3),
   };
   const noTreeZones = [
-    { x: -radius * 0.24, z: -radius * 0.05, r: 7.5 },
+    { x: shopLocal.x, z: shopLocal.z, r: 7.5 },
     { x: mountainLocal.x, z: mountainLocal.z, r: mountainLocal.r + 5.5 },
+  ];
+  const reservedBuildZones = [
+    { x: shopLocal.x, z: shopLocal.z, r: 4.2 },
   ];
   const clearOfNoTreeZones = (x, z, buffer = 0) => noTreeZones.every((zone) => Math.hypot(x - zone.x, z - zone.z) > zone.r + buffer);
   const dock = new THREE.Mesh(new THREE.BoxGeometry(dockWidth, 0.45, dockLength), mats.wood);
@@ -3979,10 +3997,10 @@ function makeIsland(data) {
   dock.receiveShadow = true;
   group.add(dock);
   const obstacles = [
-    { x: data.x - radius * 0.24, z: data.z - radius * 0.05, r: 3.8 },
+    { x: data.x + shopLocal.x, z: data.z + shopLocal.z, r: 3.8 },
   ];
   const collisionBoxes = [
-    { x: data.x - radius * 0.24, z: data.z - radius * 0.05, w: 5.8, d: 5.0 },
+    { x: data.x + shopLocal.x, z: data.z + shopLocal.z, w: 5.8, d: 5.0 },
   ];
   const terrainFeatures = [];
   const walkPlatforms = [];
@@ -3997,19 +4015,42 @@ function makeIsland(data) {
     const edgeSlope = clamp((distance - radius * 0.62) / (radius * 0.34), 0, 1);
     return 2.9 - edgeSlope * 0.82;
   };
-  const clearBuildSpot = (x, z, size) => {
-    return Math.hypot(x, z) < radius * 0.56 && clearOfNoTreeZones(x, z, size * 1.45);
+  const localFootprintPoints = (x, z, w, d = w) => [
+    { x, z },
+    { x: x - w * 0.5, z: z - d * 0.5 },
+    { x: x + w * 0.5, z: z - d * 0.5 },
+    { x: x - w * 0.5, z: z + d * 0.5 },
+    { x: x + w * 0.5, z: z + d * 0.5 },
+  ];
+  const clearOfTerrainFeatures = (x, z, w, d = w) => {
+    const points = localFootprintPoints(x, z, w + 2.8, d + 2.8);
+    return terrainFeatures.every((feature) => {
+      const featureLocal = { x: feature.x - data.x, z: feature.z - data.z };
+      const featureClear = points.every((point) => Math.hypot(point.x - featureLocal.x, point.z - featureLocal.z) > feature.r * 1.1);
+      const peaksClear = (feature.peaks || []).every((peak) => {
+        const peakLocal = { x: peak.x - data.x, z: peak.z - data.z };
+        return points.every((point) => Math.hypot(point.x - peakLocal.x, point.z - peakLocal.z) > peak.r * 1.08 + 0.8);
+      });
+      return featureClear && peaksClear;
+    });
+  };
+  const clearBuildSpot = (x, z, w, d = w) => {
+    const footprintRadius = Math.hypot(w, d) * 0.5;
+    return localFootprintPoints(x, z, w, d).every((point) => Math.hypot(point.x, point.z) < radius * 0.62)
+      && reservedBuildZones.every((zone) => Math.hypot(x - zone.x, z - zone.z) > zone.r + footprintRadius + 1)
+      && clearOfTerrainFeatures(x, z, w, d);
   };
   const clearHouseProfile = (profile) => {
-    const size = Math.max(profile.w, profile.d);
-    if (clearBuildSpot(profile.x, profile.z, size)) return profile;
+    if (clearBuildSpot(profile.x, profile.z, profile.w, profile.d)) return profile;
     const candidates = [
       { x: radius * 0.34, z: radius * 0.18 },
       { x: radius * 0.22, z: radius * 0.34 },
       { x: -radius * 0.34, z: radius * 0.28 },
       { x: radius * 0.42, z: -radius * 0.02 },
+      { x: -radius * 0.08, z: radius * 0.42 },
+      { x: radius * 0.38, z: radius * 0.28 },
     ];
-    const spot = candidates.find((candidate) => clearBuildSpot(candidate.x, candidate.z, size));
+    const spot = candidates.find((candidate) => clearBuildSpot(candidate.x, candidate.z, profile.w, profile.d));
     return spot ? { ...profile, ...spot } : null;
   };
   const banner = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.2, 2.2), mat(accent));
@@ -4040,7 +4081,7 @@ function makeIsland(data) {
   roof.rotation.y = Math.PI / 4;
   roof.castShadow = true;
   shop.add(roof);
-  shop.position.set(-radius * 0.24, 0, -radius * 0.05);
+  shop.position.set(shopLocal.x, 0, shopLocal.z);
   group.add(shop);
   const addBlock = (x, z, w, h, d, color, y = 3.2, blocks = true) => {
     const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
@@ -4077,6 +4118,7 @@ function makeIsland(data) {
     const roofY = 3.12 + wallH + roofH * 0.5 - 0.06;
     const windowRows = floors > 1 ? [3.95, 5.18] : [4.3];
     noTreeZones.push({ x, z, r: Math.max(w, d) * 0.78 + 2.4 });
+    reservedBuildZones.push({ x, z, r: Math.hypot(w, d) * 0.5 + 0.6 });
     const house = new THREE.Group();
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: 0xffbd62,
@@ -4514,7 +4556,7 @@ function makeIsland(data) {
       { x: radius * 0.04, z: radius * 0.39, w: 3.7, d: 3.0 },
     ];
     slots
-      .filter((slot) => clearBuildSpot(slot.x, slot.z, Math.max(slot.w, slot.d)))
+      .filter((slot) => clearBuildSpot(slot.x, slot.z, slot.w, slot.d))
       .slice(0, denseTown ? 4 : 3)
       .forEach(addDecoratedHouse);
   };
@@ -4524,6 +4566,7 @@ function makeIsland(data) {
     const castleW = 24;
     const castleD = 20;
     noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(castleW, castleD) * 0.72 + 5.5 });
+    reservedBuildZones.push({ x: castleX, z: castleZ, r: Math.hypot(castleW, castleD) * 0.5 + 1.2 });
     const baseY = 3.02;
     const wallH = 5.2;
     const wallSink = 1.1;
@@ -4813,6 +4856,7 @@ function makeIsland(data) {
     const wallBodyY = baseY + wallH * 0.5 - wallSink * 0.5;
     const topY = baseY + wallH + 0.18;
     noTreeZones.push({ x: castleX, z: castleZ, r: Math.max(fortW, fortD) * 0.72 + 8 });
+    reservedBuildZones.push({ x: castleX, z: castleZ, r: Math.hypot(fortW, fortD) * 0.5 + 1.4 });
     const stone = mat(0x7c8581);
     const paleStone = mat(0xb6b59e);
     const darkStone = mat(0x48565b);
@@ -5129,6 +5173,9 @@ function makeIsland(data) {
     addWalkPlatform(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, baseY + 0.12, 0, { maxRise: 0.7 });
     addCollisionBox(castleX, castleZ + fortD * 0.5 + 3.0, 4.8, 5.2, 0.08, 0, { maxY: baseY + 0.65, walkableTopY: baseY + 0.1 });
   };
+  if (!["atoll", "lagoon"].includes(data.theme)) {
+    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e);
+  }
   addThemeHouse();
   if (data.name === "Crown Harbor") addCrownHarborCastle();
   addExtraHouseCluster();
@@ -5141,9 +5188,6 @@ function makeIsland(data) {
   }
   if (["trade", "market", "iberian"].includes(data.theme)) {
     addForestPatch(radius * 0.32, radius * 0.16, 14, radius * 0.12, data.theme);
-  }
-  if (!["atoll", "lagoon"].includes(data.theme)) {
-    addMountain(-radius * 0.18, -radius * 0.2, radius * (data.theme === "rocky" ? 0.27 : 0.2), 3.8 + radius * 0.08, data.theme === "rocky" ? 0x4f5963 : 0x66706e);
   }
   if (["rocky", "schooner", "naval", "trade"].includes(data.theme)) {
     const wreckAngle = data.theme === "naval" ? -1.0 : data.theme === "trade" ? 1.05 : data.theme === "rocky" ? -2.2 : 2.35;
@@ -5479,7 +5523,7 @@ function makeIsland(data) {
     label,
     dockBox: { x: data.x, z: data.z + dockCenterZ, w: dockWidth + 0.25, d: dockLength + 0.4 },
     dock: new THREE.Vector3(data.x, 0, data.z + radius),
-    shop: new THREE.Vector3(data.x - radius * 0.24, 0, data.z - radius * 0.05),
+    shop: new THREE.Vector3(data.x + shopLocal.x, 0, data.z + shopLocal.z),
   };
 }
 
@@ -12108,11 +12152,7 @@ function setupNameGate() {
     const rawAccountMode = ui.accountModeInput?.value || state.accountMode || "";
     const googleAccount = state.googleAccount?.credential && (rawAccountMode === "create" || rawAccountMode === "signin") ? state.googleAccount : null;
     const accountMode = googleAccount ? (rawAccountMode || "signin") : accountName && accountPassword ? (rawAccountMode || "signin") : "";
-    const resolvedName = nextName || (googleAccount ? String(googleAccount.name || googleAccount.email || "Captain").slice(0, 18) : accountMode ? accountName.slice(0, 18) : "");
-    if (!resolvedName) {
-      ui.nameInput.focus();
-      return;
-    }
+    const resolvedName = nextName || randomCaptainName();
     if ((rawAccountMode === "create" || rawAccountMode === "signin") && !googleAccount && (!accountName || !accountPassword)) {
       setAccountMode(rawAccountMode, "Enter an account name and password.");
       if (!accountName) ui.accountNameInput?.focus();
@@ -12136,10 +12176,10 @@ function setupNameGate() {
       state.xp = 0;
     }
     state.joined = true;
-    saveValue("islandwakeName", resolvedName);
     if (state.accountName) saveValue("islandwakeAccount", state.accountName);
     if (state.accountMode) setAccountMode(state.accountMode, hasGoldDiggerPowers() ? "Contacting account server. GoldDigger progress will not save." : "Contacting account server...");
     ui.nameGate.classList.add("hidden");
+    setMenuScreen(false);
     sendHello();
     updateHud();
     showBeginnerQuestion();
@@ -12182,6 +12222,7 @@ function setupNameGate() {
   if (ui.accountNameInput) ui.accountNameInput.value = state.accountName;
   setAccountMode("");
   ui.nameGate.classList.remove("hidden");
+  setMenuScreen(true);
   setTimeout(() => {
     ui.nameInput.focus();
     ui.nameInput.select();
@@ -12191,6 +12232,7 @@ function setupNameGate() {
   ui.playerName.addEventListener("click", () => {
     ui.nameInput.value = state.name;
     ui.nameGate.classList.remove("hidden");
+    setMenuScreen(true);
     ui.nameInput.focus();
     ui.nameInput.select();
   });
@@ -14872,35 +14914,35 @@ function updateHud() {
     state.xp = 0;
   }
   const spec = getShipStats();
+  const levelLabel = state.infiniteLevels
+    ? t("lvlInfinite")
+    : state.level >= MAX_PLAYER_LEVEL
+      ? t("lvlMax", { level: MAX_PLAYER_LEVEL })
+      : t("lvl", { level: state.level });
   const nameText = captainName();
   if (nameText !== hudNameText) {
     hudNameText = nameText;
     setTextIfChanged(ui.playerName, nameText);
   }
-  const modeText = state.viewMode === "swim"
-    ? t("swimming")
-    : state.viewMode === "deck"
-      ? t("onDeck")
-      : state.mode === "ship" ? t("atSea") : t("docked", { island: islandName(state.dockedAt) });
-  if (modeText !== hudModeText) {
-    hudModeText = modeText;
-    setTextIfChanged(ui.modeLabel, modeText);
+  if (levelLabel !== hudLevelText) {
+    hudLevelText = levelLabel;
+    setTextIfChanged(ui.playerLevel, levelLabel);
   }
   const hpWidth = `${clamp((state.hp / maxHp()) * 100, 0, 100).toFixed(2)}%`;
   if (hpWidth !== hudHpWidth) {
     hudHpWidth = hpWidth;
     setWidthIfChanged(ui.hpBar, hpWidth);
   }
+  const hpText = `${Math.ceil(state.hp)}/${spec.hp}`;
+  if (hpText !== hudHpText) {
+    hudHpText = hpText;
+    setTextIfChanged(ui.hpCounter, hpText);
+  }
   const xpWidth = state.infiniteLevels || state.level >= MAX_PLAYER_LEVEL ? "100%" : `${clamp((state.xp / xpForLevel(state.level)) * 100, 0, 100).toFixed(2)}%`;
   if (xpWidth !== hudXpWidth) {
     hudXpWidth = xpWidth;
     setWidthIfChanged(ui.xpBar, xpWidth);
   }
-  const levelLabel = state.infiniteLevels
-    ? t("lvlInfinite")
-    : state.level >= MAX_PLAYER_LEVEL
-      ? t("lvlMax", { level: MAX_PLAYER_LEVEL })
-      : t("lvl", { level: state.level });
   const fireLabel = state.fire ? ` | ${t("burning", { seconds: Math.ceil(state.fire.remaining) })}` : "";
   const blubberLabel = state.shipType === "whaler"
     ? ` | ${t("blubber")} ${blubberCount()}/${blubberCapacity()}`
@@ -14920,7 +14962,7 @@ function updateHud() {
       ? `Rocket burst cooldown ${Math.ceil(state.rocketCooldown)}s`
       : `Rocket bursts ${ammoCount("rocketburst")}`;
   const rocketLabel = state.shipType === "rocketeer" ? ` | ${rocketStatus}` : "";
-  const statsText = `${levelLabel} | ${Math.floor(state.gold)}g | ${shipName(spec)} | ${t("hp")} ${Math.ceil(state.hp)}/${spec.hp} | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${turtleLabel}${rocketLabel}${fireLabel}`;
+  const statsText = `${Math.floor(state.gold)}g | ${t("armor")} ${Math.round(spec.armor * 100)}% | ${t("speed")} ${state.shipType === "whaler" && state.whalerNets ? 9 : spec.speed} | ${t("regen")} ${spec.regen} | ${t("hold")} ${cargoCount()}/${cargoCapacity()}${blubberLabel}${netLabel}${turtleLabel}${rocketLabel}${fireLabel}`;
   if (statsText !== hudStatsText) {
     hudStatsText = statsText;
     setTextIfChanged(ui.statsLine, statsText);
@@ -14970,20 +15012,21 @@ function updateHud() {
 function renderLeaderboard() {
   if (!ui.leaderboardList || ui.leaderboardPanel.classList.contains("hidden")) return;
   const rows = [
-    { name: captainName(), gold: Math.floor(state.gold), self: true },
+    { name: captainName(), gold: Math.floor(state.gold), infiniteGold: Boolean(state.infiniteGold), self: true },
     ...[...remotePlayers.values()].map((player) => ({
       name: player.name || t("captain"),
       gold: Math.floor(Number(player.gold) || 0),
+      infiniteGold: Boolean(player.infiniteGold),
       self: false,
     })),
   ]
     .sort((a, b) => b.gold - a.gold)
     .slice(0, 10);
-  const signature = rows.map((row) => `${row.self ? 1 : 0}:${row.name}:${row.gold}`).join("|");
+  const signature = rows.map((row) => `${row.self ? 1 : 0}:${row.name}:${row.gold}:${row.infiniteGold ? 1 : 0}`).join("|");
   if (signature === leaderboardSignature) return;
   leaderboardSignature = signature;
   setHtmlIfChanged(ui.leaderboardList, rows.map((row) => (
-    `<li${row.self ? ' class="self"' : ""}><span>${escapeMarkup(row.name)}</span><b>${row.gold}g</b></li>`
+    `<li${row.self ? ' class="self"' : ""}><span>${escapeMarkup(row.name)}</span><b>${row.infiniteGold ? "Infinite" : `${row.gold}g`}</b></li>`
   )).join(""));
 }
 
@@ -15353,6 +15396,7 @@ function multiplayerMotionPayload() {
     name: captainName(),
     level: state.level,
     gold: Math.floor(state.gold),
+    infiniteGold: Boolean(state.infiniteGold),
     hp: state.hp,
     shipType: state.shipType,
     mode: state.mode,
@@ -15603,6 +15647,7 @@ function upsertRemotePlayer(data) {
   remote.updated = clock.elapsedTime;
   remote.level = data.level || 1;
   remote.gold = Number(data.gold) || 0;
+  remote.infiniteGold = Boolean(data.infiniteGold);
   remote.hp = data.hp || getShipStats(shipType).hp;
   if (acceptPose) {
     if (poseTime) remote.lastPoseTime = poseTime;
@@ -16190,6 +16235,7 @@ function handleMultiplayerMessage(message) {
     setAccountMode(state.accountMode, reason);
     if (ui.nameGate && state.accountName) {
       ui.nameGate.classList.remove("hidden");
+      setMenuScreen(true);
       if (state.googleAccount?.credential) {
         ui.accountStatus?.focus?.();
       } else {
