@@ -252,6 +252,54 @@ function accountKey(value) {
   return cleanAccountName(value).toLowerCase();
 }
 
+function cleanPlayerDisplayName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ").replace(/[<>]/g, "").slice(0, 24);
+  return cleaned || "Captain";
+}
+
+function isGeneratedCaptainName(value) {
+  return /^Captain \d{3,}$/i.test(cleanPlayerDisplayName(value));
+}
+
+function takenGeneratedCaptainNames(exceptId = "") {
+  const taken = new Set();
+  for (const client of clients.values()) {
+    if (!client?.player || client.id === exceptId) continue;
+    const name = cleanPlayerDisplayName(client.player.name);
+    if (isGeneratedCaptainName(name)) taken.add(name.toLowerCase());
+  }
+  return taken;
+}
+
+function captainNumberRange(digits) {
+  const min = 10 ** (digits - 1);
+  return { min, max: min * 10 - 1 };
+}
+
+function captainNameForNumber(number) {
+  return `Captain ${number}`;
+}
+
+function uniqueGeneratedCaptainName(preferred, exceptId = "") {
+  const cleaned = cleanPlayerDisplayName(preferred);
+  if (!isGeneratedCaptainName(cleaned)) return cleaned;
+  const taken = takenGeneratedCaptainNames(exceptId);
+  if (!taken.has(cleaned.toLowerCase())) return cleaned;
+  for (let digits = 3; digits <= 8; digits += 1) {
+    const { min, max } = captainNumberRange(digits);
+    const total = max - min + 1;
+    for (let attempt = 0; attempt < Math.min(64, total); attempt += 1) {
+      const candidate = captainNameForNumber(min + Math.floor(Math.random() * total));
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+    for (let number = min; number <= max; number += 1) {
+      const candidate = captainNameForNumber(number);
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+  }
+  return captainNameForNumber(Date.now());
+}
+
 function hashPassword(password, salt) {
   return crypto.createHash("sha256").update(`${salt}:${password}`).digest("hex");
 }
@@ -458,7 +506,7 @@ async function authenticateGoogleAccount(socket, account, progress) {
     accountStore.accounts[key] = entry;
     queueAccountWrite();
   } else if (mode === "create") {
-    accountError(socket, "That Google account already exists. Use Log in with Google.");
+    accountError(socket, "This Google account already exists. Use Log in with Google.");
     return null;
   } else {
     entry.name = displayName || entry.name;
@@ -503,7 +551,7 @@ async function authenticateAccount(socket, account, progress) {
     accountStore.accounts[key] = entry;
     queueAccountWrite();
   } else if (mode === "create") {
-    accountError(socket, "That account already exists. Use Sign in.");
+    accountError(socket, "This account already exists.");
     return;
   } else if (entry.hash !== hashPassword(password, entry.salt)) {
     accountError(socket, "Wrong account password.");
@@ -3951,6 +3999,13 @@ async function handleMessage(socket, text) {
       next.dockedAt = active.dockedAt || loadedProgress.dockedAt || next.dockedAt;
       next.fleetShips = Array.isArray(loadedProgress.fleetShips) ? loadedProgress.fleetShips : next.fleetShips;
     }
+    const generatedCaptainName = isGeneratedCaptainName(next.name);
+    const generatedAutoName = generatedCaptainName && Boolean(next.autoName);
+    next.name = cleanPlayerDisplayName(next.name);
+    if (message.type === "hello" && generatedAutoName) {
+      next.name = uniqueGeneratedCaptainName(next.name, socket.id);
+    }
+    next.autoName = generatedAutoName && isGeneratedCaptainName(next.name);
     const nextX = Number(next.x);
     const nextZ = Number(next.z);
     const prevX = Number(previous?.x);
@@ -3978,6 +4033,7 @@ async function handleMessage(socket, text) {
       next.turtleFire = wantsTurtleFire && Number(socket.turtleFireActiveUntil || 0) > now;
     }
     socket.player = next;
+    if (message.type === "hello") send(socket, { type: "nameAssigned", name: socket.player.name, autoName: Boolean(socket.player.autoName) });
     if (message.type === "state" && message.progress) saveAccountProgress(socket, message.progress);
     broadcast({ type: "state", player: socket.player }, socket);
     if (message.type === "hello") {

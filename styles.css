@@ -70,6 +70,149 @@ body.menu-screen #forgePanel {
   gap: 10px;
 }
 
+.menu-title {
+  position: relative;
+  justify-self: center;
+  width: min(360px, calc(100vw - 36px));
+  min-height: 60px;
+  margin: 0 0 6px;
+  padding: 6px 16px 8px;
+  color: #fff8d8;
+  font-size: 44px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+}
+
+.menu-title-word {
+  position: relative;
+  display: inline-block;
+  padding-top: 10px;
+  background: linear-gradient(180deg, #fffef3 8%, #fff4cf 52%, #ffd989 94%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  z-index: 2;
+  filter:
+    drop-shadow(0 3px 7px rgba(7, 28, 38, 0.3))
+    drop-shadow(0 0 6px rgba(255, 244, 184, 0.42))
+    drop-shadow(0 0 13px rgba(255, 229, 123, 0.22));
+}
+
+.menu-title-word::before {
+  content: "Islandwake";
+  position: absolute;
+  inset: 10px 0 auto;
+  z-index: 3;
+  color: transparent;
+  background:
+    radial-gradient(circle at 4% 24%, #fffbe1 0 1px, transparent 1.4px),
+    radial-gradient(circle at 9% 12%, #e7c58d 0 0.9px, transparent 1.3px),
+    radial-gradient(circle at 15% 31%, #f8e3ad 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 22% 17%, #fff9dc 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 29% 35%, #eccd99 0 1px, transparent 1.5px),
+    radial-gradient(circle at 36% 18%, #fff5ce 0 1.1px, transparent 1.6px),
+    radial-gradient(circle at 43% 29%, #e3c28d 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 49% 12%, #fffbe1 0 1px, transparent 1.5px),
+    radial-gradient(circle at 56% 36%, #efcf98 0 1.1px, transparent 1.6px),
+    radial-gradient(circle at 62% 19%, #fff8d8 0 1px, transparent 1.5px),
+    radial-gradient(circle at 69% 31%, #e1bf8a 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 76% 15%, #fff7d2 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 83% 34%, #efce95 0 1px, transparent 1.5px),
+    radial-gradient(circle at 91% 20%, #fff9db 0 1px, transparent 1.5px),
+    radial-gradient(circle at 97% 38%, #e5c28b 0 0.9px, transparent 1.4px),
+    linear-gradient(180deg, #fff6d2 0 44%, #f4d197 45% 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  clip-path: polygon(0 0, 100% 0, 100% 50%, 93% 60%, 82% 44%, 73% 58%, 62% 43%, 52% 56%, 41% 47%, 30% 61%, 18% 44%, 7% 56%, 0 47%);
+}
+
+.menu-title-word::after {
+  content: "Islandwake";
+  position: absolute;
+  inset: 10px 0 auto;
+  z-index: 4;
+  color: transparent;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 2% 44%, #fff9d9 0 1.5px, transparent 2px),
+    radial-gradient(circle at 5% 18%, #e0bf8c 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 8% 66%, #f6dda6 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 12% 31%, #fffbe1 0 1.1px, transparent 1.6px),
+    radial-gradient(circle at 16% 54%, #e6c493 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 20% 12%, #ffefbf 0 1.4px, transparent 1.9px),
+    radial-gradient(circle at 24% 70%, #dfbd8c 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 28% 41%, #fff9dc 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 32% 23%, #edcb99 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 36% 64%, #fff5cd 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 40% 38%, #e1bf8c 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 44% 15%, #fffbe2 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 48% 58%, #ebc895 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 52% 31%, #fae5b6 0 1.4px, transparent 1.9px),
+    radial-gradient(circle at 56% 72%, #dfbd8d 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 60% 45%, #fff9dc 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 64% 22%, #e6c391 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 68% 63%, #fff2c7 0 1.4px, transparent 1.9px),
+    radial-gradient(circle at 72% 35%, #dfbe8d 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 76% 70%, #fffbe2 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 80% 20%, #eac999 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 84% 51%, #fff5d1 0 1.4px, transparent 1.9px),
+    radial-gradient(circle at 88% 30%, #dfbd8c 0 0.9px, transparent 1.4px),
+    radial-gradient(circle at 92% 67%, #fae5b6 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 96% 41%, #fff9dd 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 99% 17%, #dfbe8d 0 0.8px, transparent 1.3px);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  clip-path: polygon(0 0, 100% 0, 100% 56%, 91% 65%, 81% 51%, 70% 62%, 60% 47%, 49% 64%, 39% 52%, 28% 66%, 17% 49%, 8% 61%, 0 54%);
+  filter: drop-shadow(0 1px 0 rgba(90, 55, 28, 0.14));
+}
+
+.menu-barnacle {
+  position: absolute;
+  z-index: 5;
+  width: 23px;
+  height: 18px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 6px 12px, #fff8e7 0 2.2px, #cba077 2.7px 3.6px, transparent 4px),
+    radial-gradient(circle at 13px 7px, #fff8e7 0 2px, #b98962 2.5px 3.4px, transparent 3.8px),
+    radial-gradient(circle at 18px 13px, #f5dcc5 0 1.8px, #c89b73 2.3px 3px, transparent 3.5px);
+  filter:
+    drop-shadow(0 2px 3px rgba(7, 28, 38, 0.24))
+    drop-shadow(0 0 3px rgba(255, 244, 194, 0.2));
+}
+
+.menu-barnacle-a {
+  left: 70px;
+  top: 25px;
+  transform: rotate(-9deg);
+}
+
+.menu-barnacle-b {
+  right: 84px;
+  top: 34px;
+  transform: scale(0.85) rotate(11deg);
+}
+
+@media (max-width: 420px) {
+  .menu-title {
+    padding-inline: 12px;
+    font-size: 38px;
+  }
+
+  .menu-barnacle-a {
+    left: 49px;
+    top: 24px;
+  }
+
+  .menu-barnacle-b {
+    right: 58px;
+    top: 32px;
+  }
+}
+
 .name-card {
   width: min(360px, calc(100vw - 36px));
   display: grid;

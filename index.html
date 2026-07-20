@@ -5,13 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="google-signin-client_id" content="" />
   <title>Islandwake</title>
-  <link rel="stylesheet" href="styles.css?v=273" />
+  <link rel="stylesheet" href="styles.css?v=282" />
 </head>
 <body class="menu-screen">
   <canvas id="game"></canvas>
 
   <div id="nameGate" class="name-gate">
     <div class="name-stack">
+      <h1 class="menu-title" aria-label="Islandwake">
+        <span class="menu-title-word">Islandwake</span>
+        <span class="menu-barnacle menu-barnacle-a" aria-hidden="true"></span>
+        <span class="menu-barnacle menu-barnacle-b" aria-hidden="true"></span>
+      </h1>
       <div id="nameForm" class="name-card">
         <span>Username</span>
         <input id="captainNameInput" maxlength="18" autocomplete="off" placeholder="Enter your name" data-i18n-placeholder="enterName" />
@@ -239,9 +244,11 @@
           return;
         }
         const accountMode = account && password ? (rawAccountMode || "signin") : "";
+        const autoName = !name;
         const finalName = name || randomCaptainName();
         event.preventDefault();
         window.ISLANDWAKE_PENDING_JOIN = finalName;
+        window.ISLANDWAKE_PENDING_AUTO_NAME = autoName;
         window.ISLANDWAKE_PENDING_TOKEN = token;
         window.ISLANDWAKE_PENDING_ACCOUNT = accountMode ? account : "";
         window.ISLANDWAKE_PENDING_PASSWORD = accountMode ? password : "";
@@ -249,7 +256,7 @@
         try {
           if (accountMode) localStorage.setItem("islandwakeAccount", account);
         } catch {}
-        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(finalName, token, accountMode ? account : "", accountMode ? password : "", accountMode);
+        if (typeof window.islandwakeJoin === "function") window.islandwakeJoin(finalName, token, accountMode ? account : "", accountMode ? password : "", accountMode, autoName);
       }
       function showCaptainMenu() {
         document.querySelector("#nameForm")?.classList.remove("hidden");
@@ -303,6 +310,6 @@
       }, true);
     })();
   </script>
-  <script type="module" src="game.js?v=273"></script>
+  <script type="module" src="game.js?v=282"></script>
 </body>
 </html>
