@@ -5549,7 +5549,7 @@ function setLabelText(sprite, text) {
 }
 
 function makeLabel(text) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: true, depthWrite: false }));
   sprite.scale.set(18, 4.5, 1);
   setLabelText(sprite, text);
   return sprite;
