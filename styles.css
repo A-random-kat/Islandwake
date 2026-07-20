@@ -82,6 +82,8 @@ body.menu-screen #forgePanel {
   font-weight: 950;
   line-height: 1;
   text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .menu-title-word {
